@@ -24,6 +24,7 @@ import {
   Package,
   Users,
 } from 'lucide-react';
+import { FormSection } from '@/CustomComponent/PageComponents';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { usePRBasicInfoFields, usePRItemDetailsFields } from '@/FieldDatas/PRData';
 import usePost from '@/hooks/usePostHook';
@@ -36,6 +37,7 @@ import {
   prSaveDeptDraft,
   prUpdateDeptDraft,
 } from '@/Services/Api';
+import { SOCKET_JOIN_PR_SCOPE, SOCKET_LEAVE_PR_SCOPE } from '@/Services/Socket';
 import { toast } from 'sonner';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import type { FieldType } from '@/FieldDatas/fieldType/fieldType';
@@ -200,9 +202,9 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   useEffect(() => {
     if (!socket) return;
     if (scopeKey) {
-      socket.emit('join-pr-scope', scopeKey);
+      socket.emit(SOCKET_JOIN_PR_SCOPE, scopeKey);
       return () => {
-        socket.emit('leave-pr-scope', scopeKey);
+        socket.emit(SOCKET_LEAVE_PR_SCOPE, scopeKey);
       };
     }
   }, [scopeKey, socket]);
@@ -589,11 +591,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
             <form onSubmit={handleSubmit} className="space-y-6">
 
               {/* ── Basic Information ─────────────────────────────────── */}
-              <section className="space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b">
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="text-sm font-semibold text-foreground">Basic Information</h3>
-                </div>
+              <FormSection icon={Building2} title="Basic Information">
 
                 {/* Main grid fields (selects, dates, numbers) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-5">
@@ -650,24 +648,18 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
                     </ul>
                   </div>
                 )}
-              </section>
+              </FormSection>
 
               {/* ── Item Entry ────────────────────────────────────────── */}
-              <section className="space-y-4">
-                <div className="flex items-center justify-between pb-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <Package className="h-4 w-4 text-muted-foreground" />
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {editingItemId ? 'Edit Item' : 'Add Item'}
-                    </h3>
-                  </div>
-                  {editingItemId && (
-                    <Button type="button" size="sm" variant="outline" onClick={handleCancelEdit} className="h-7 text-xs">
-                      <X className="h-3.5 w-3.5 mr-1" />
-                      Cancel Edit
-                    </Button>
-                  )}
-                </div>
+              <FormSection
+                icon={Package}
+                title={editingItemId ? 'Edit Item' : 'Add Item'}
+                action={editingItemId ? (
+                  <Button type="button" size="sm" variant="outline" onClick={handleCancelEdit} className="h-7 text-xs">
+                    <X className="h-3.5 w-3.5 mr-1" />Cancel Edit
+                  </Button>
+                ) : undefined}
+              >
 
                 <div className="rounded-xl border bg-muted/20 p-4 space-y-4">
                   {/* Grid fields */}
@@ -750,7 +742,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
                     )}
                   </div>
                 </div>
-              </section>
+              </FormSection>
 
               {/* ── Items Table ───────────────────────────────────────── */}
               {savedItems.length > 0 ? (

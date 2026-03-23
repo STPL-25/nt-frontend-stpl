@@ -1,5 +1,15 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import socketClient from '@/SocketConnection/socketClient';
+import {
+  SOCKET_CONNECT,
+  SOCKET_DISCONNECT,
+  SOCKET_CONNECT_ERROR,
+  SOCKET_RECONNECT_ATTEMPT,
+  SOCKET_RECONNECT,
+  SOCKET_RECONNECT_FAILED,
+  SOCKET_JOIN_COMPANY,
+  SOCKET_LEAVE_COMPANY,
+} from '@/Services/Socket';
 /* =========================
    TYPES
 ========================= */
@@ -51,7 +61,7 @@ export const connectSocket = createAsyncThunk<
         }
 
         // Connect event
-        socket.on('connect', () => {
+        socket.on(SOCKET_CONNECT, () => {
           console.log('✅ Socket Connected:', socket.id);
           dispatch(setSocketId(socket.id || null));
           dispatch(setConnectionStatus('connected'));
@@ -61,7 +71,7 @@ export const connectSocket = createAsyncThunk<
 
           // Join company room
           if (companyId) {
-            socket.emit('join-company', companyId);
+            socket.emit(SOCKET_JOIN_COMPANY, companyId);
             console.log(`📍 Joined company room: ${companyId}`);
           }
 
@@ -69,7 +79,7 @@ export const connectSocket = createAsyncThunk<
         });
 
         // Disconnect event
-        socket.on('disconnect', (reason) => {
+        socket.on(SOCKET_DISCONNECT, (reason) => {
           console.log('❌ Socket Disconnected:', reason);
           dispatch(setIsConnected(false));
           dispatch(setConnectionStatus('disconnected'));
@@ -77,7 +87,7 @@ export const connectSocket = createAsyncThunk<
         });
 
         // Connection error
-        socket.on('connect_error', (error: Error) => {
+        socket.on(SOCKET_CONNECT_ERROR, (error: Error) => {
           console.error('🔴 Socket Connection Error:', error.message);
           dispatch(setError(error.message));
           dispatch(setConnectionStatus('error'));
@@ -86,26 +96,26 @@ export const connectSocket = createAsyncThunk<
         });
 
         // Reconnect attempt
-        socket.io.on('reconnect_attempt', (attemptNumber) => {
+        socket.io.on(SOCKET_RECONNECT_ATTEMPT, (attemptNumber) => {
           console.log(`🔄 Reconnection attempt: ${attemptNumber}`);
           dispatch(setConnectionStatus('connecting'));
           dispatch(incrementConnectionAttempts());
         });
 
         // Reconnect success
-        socket.io.on('reconnect', (attemptNumber) => {
+        socket.io.on(SOCKET_RECONNECT, (attemptNumber) => {
           console.log(`✅ Reconnected after ${attemptNumber} attempts`);
           dispatch(setConnectionStatus('connected'));
           dispatch(resetConnectionAttempts());
-          
+
           // Rejoin company room on reconnect
           if (companyId) {
-            socket.emit('join-company', companyId);
+            socket.emit(SOCKET_JOIN_COMPANY, companyId);
           }
         });
 
         // Reconnect failed
-        socket.io.on('reconnect_failed', () => {
+        socket.io.on(SOCKET_RECONNECT_FAILED, () => {
           console.error('❌ Reconnection failed');
           dispatch(setError('Failed to reconnect'));
           dispatch(setConnectionStatus('error'));
@@ -134,17 +144,17 @@ export const disconnectSocket = createAsyncThunk(
     if (socket && socket.connected) {
       // Leave company room before disconnect
       if (companyId) {
-        socket.emit('leave-company', companyId);
+        socket.emit(SOCKET_LEAVE_COMPANY, companyId);
         console.log(`📍 Left company room: ${companyId}`);
       }
 
       // Remove all listeners
-      socket.off('connect');
-      socket.off('disconnect');
-      socket.off('connect_error');
-      socket.io.off('reconnect_attempt');
-      socket.io.off('reconnect');
-      socket.io.off('reconnect_failed');
+      socket.off(SOCKET_CONNECT);
+      socket.off(SOCKET_DISCONNECT);
+      socket.off(SOCKET_CONNECT_ERROR);
+      socket.io.off(SOCKET_RECONNECT_ATTEMPT);
+      socket.io.off(SOCKET_RECONNECT);
+      socket.io.off(SOCKET_RECONNECT_FAILED);
     }
 
     socketClient.disconnect();

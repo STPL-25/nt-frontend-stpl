@@ -42,7 +42,7 @@ const stored = loadStored()
 
 const initialState: ThemeState = {
   color: (stored.color as ThemeColor) ?? 'blue',
-  mode: (stored.mode as ThemeMode) ?? 'system',
+  mode: (stored.mode as ThemeMode) ?? 'light',
   radius: stored.radius ?? 0.625,
 }
 

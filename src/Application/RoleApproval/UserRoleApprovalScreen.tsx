@@ -1,418 +1,747 @@
+/**
+ * UserRoleApprovalScreen — Permission Manager
+ *
+ * Real-time flows:
+ *  • When a new user registers  → socket "user:new"                → user dropdown auto-refreshes
+ *  • When admin saves           → socket "admin:permissions:updated"→ other admins watching same
+ *                                                                     user auto-refresh their view
+ *  • The saved user             → socket "permissions:updated"      → their sidebar re-renders
+ *                                                                     instantly (no page reload)
+ */
 
-import React, { useEffect, useMemo, useState, useCallback } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import useFetch from "@/hooks/useFetchHook";
-import usePost from "@/hooks/usePostHook";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { isEqual } from "lodash";
-import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
-import PermissionTable from "@/CustomComponent/InputComponents/PermissionTableProps";
 import { toast } from "sonner";
+import {
+  Shield,
+  Wifi,
+  WifiOff,
+  UserPlus,
+  RefreshCw,
+  Save,
+  RotateCcw,
+  Plus,
+  Minus,
+  Loader2,
+} from "lucide-react";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge }  from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn }     from "@/lib/utils";
+
+import useFetch  from "@/hooks/useFetchHook";
+import usePost   from "@/hooks/usePostHook";
+import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
+import PermissionTable      from "@/CustomComponent/InputComponents/PermissionTableProps";
+import {
+  socket,
+  SOCKET_USER_NEW,
+  SOCKET_ADMIN_PERMISSIONS_UPDATED,
+} from "@/Services/Socket";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface User {
   nt_sign_up_sno: string;
-  ecno: string;
+  ecno:  string;
   ename: string;
-  dept: string;
+  dept:  string;
 }
 
-type Branch = { brn_sno: string; brn_name: string };
+type Branch   = { brn_sno: string; brn_name: string };
 type Division = { div_sno: string; div_name: string; branches: Branch[] };
-type Company = { com_sno: string; com_name: string; divisions: Division[] };
-interface HierarchyResponse {
-  companies: Company[];
-}
+type Company  = { com_sno: string; com_name: string; divisions: Division[] };
 
+// API shapes ─────────────────────────────────────────────────
 interface ScreenGroup {
-  group_id: number;
-  group_name: string;
-  screen_id: number;
-  screen_name: string;
-  screen_code: string;
+  group_id:      number;
+  group_name:    string;
+  screen_id:     number;
+  screen_name:   string;
+  screen_code:   string;
   display_order: number | null;
 }
-
-interface ScreensResponse {
-  success: boolean;
-  data: ScreenGroup[];
-}
-
 interface PermissionDetail {
-  permission_id: number;
-  permission_name: string;
+  permission_id:          number;
+  permission_name:        string;
   permission_description: string;
 }
-
 type Permissions = Record<string, Record<number, boolean>>;
+interface ExistingPermData {
+  success:      boolean;
+  permissions:  Permissions;
+  companies?:   string[];
+  divisions?:   string[];
+  branches?:    string[];
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Build empty groups + permissions map from the screen list */
+function buildFromScreens(screens: ScreenGroup[] | undefined) {
+  const groups:      Record<string, string[]> = {};
+  const permissions: Permissions              = {};
+  if (!screens) return { groups, permissions };
+
+  for (const s of screens) {
+    if (!groups[s.group_name])               groups[s.group_name]      = [];
+    if (!groups[s.group_name].includes(s.screen_name))
+      groups[s.group_name].push(s.screen_name);
+    if (!permissions[s.screen_name])         permissions[s.screen_name] = {};
+  }
+  return { groups, permissions };
+}
+
+/** Count total enabled permission-cells */
+function countEnabled(p: Permissions) {
+  return Object.values(p).reduce(
+    (sum, perms) => sum + Object.values(perms).filter(Boolean).length,
+    0
+  );
+}
+
+/** Compare two snapshots → { added, removed } cell counts */
+function diffPermissions(original: Permissions, current: Permissions) {
+  let added = 0, removed = 0;
+  const allScreens = new Set([...Object.keys(original), ...Object.keys(current)]);
+  for (const screen of allScreens) {
+    const origPerms    = original[screen] ?? {};
+    const currentPerms = current[screen]  ?? {};
+    const allPerms     = new Set([
+      ...Object.keys(origPerms).map(Number),
+      ...Object.keys(currentPerms).map(Number),
+    ]);
+    for (const id of allPerms) {
+      const was = !!origPerms[id];
+      const is  = !!currentPerms[id];
+      if (!was && is)  added++;
+      if (was  && !is) removed++;
+    }
+  }
+  return { added, removed };
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function LiveBadge({ connected }: { connected: boolean }) {
+  return (
+    <div className={cn(
+      "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+      connected
+        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+        : "border-muted text-muted-foreground bg-muted/40"
+    )}>
+      {connected ? (
+        <>
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
+          <Wifi className="h-3 w-3" />
+          Live
+        </>
+      ) : (
+        <>
+          <WifiOff className="h-3 w-3" />
+          Offline
+        </>
+      )}
+    </div>
+  );
+}
+
+function StatChip({
+  icon,
+  label,
+  value,
+  variant = "default",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  variant?: "default" | "add" | "remove";
+}) {
+  return (
+    <div className={cn(
+      "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium",
+      variant === "add"    && "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+      variant === "remove" && "border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+      variant === "default" && "border-border bg-muted/40 text-muted-foreground",
+    )}>
+      {icon}
+      <span>{value} {label}</span>
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function PermissionManager() {
-  const [selectedUser, setSelectedUser] = useState<string>("");
-  const [selectedUserEcno, setSelectedUserEcno] = useState<string>("");
+  const API = import.meta.env.VITE_API_URL as string;
+
+  // ── Selection state ────────────────────────────────────────────────────────
+  const [selectedUser,      setSelectedUser]      = useState("");
+  const [selectedUserEcno,  setSelectedUserEcno]  = useState("");
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
-  const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
-  const [permissions, setPermissions] = useState<Permissions>({});
-  const [groups, setGroups] = useState<Record<string, string[]>>({});
-  const [permissionMap, setPermissionMap] = useState<Record<number, string>>({});
+  const [selectedBranches,  setSelectedBranches]  = useState<string[]>([]);
 
-  const { data: userFetchData } = useFetch(
-    `${import.meta.env.VITE_API_URL}/api/secure/get_all_users_sign_up`
-  ) as { data?: { data?: User[] }; loading: boolean; error: Error | null };
+  // ── Permission state ───────────────────────────────────────────────────────
+  const [permissions,         setPermissions]         = useState<Permissions>({});
+  const [originalPermissions, setOriginalPermissions] = useState<Permissions>({});
+  const [groups,              setGroups]              = useState<Record<string, string[]>>({});
+  const [permissionMap,       setPermissionMap]       = useState<Record<number, string>>({});
 
-  const { data: hierarchyFetchData } = useFetch(
-    `${import.meta.env.VITE_API_URL}/api/user_approval/get_hierachy_com_details`
-  ) as { data?: HierarchyResponse | null; loading: boolean; error: Error | null };
+  // ── Real-time / UI state ───────────────────────────────────────────────────
+  const [userListRefreshKey, setUserListRefreshKey] = useState(0);
+  const [permRefreshKey,     setPermRefreshKey]     = useState(0);
+  const [isLive,             setIsLive]             = useState(socket.connected);
+  const [saving,             setSaving]             = useState(false);
+  const [flashUserEcno,      setFlashUserEcno]      = useState<string | null>(null);
 
-  const { data: screensData } = useFetch(
-    `${import.meta.env.VITE_API_URL}/api/user_approval/get_screens_with_groups`
-  ) as { data?: ScreensResponse | null; loading: boolean; error: Error | null };
+  // Ref so socket listeners always see the latest selectedUser w/o re-registering
+  const selectedUserRef = useRef(selectedUser);
+  useEffect(() => { selectedUserRef.current = selectedUser; }, [selectedUser]);
 
-  const { data: permissionDetailsData } = useFetch(
-    `${import.meta.env.VITE_API_URL}/api/user_approval/get_permission_details`
-  ) as { data?: { success: boolean; data: PermissionDetail[] }; loading: boolean; error: Error | null };
+  // ── Fetches ────────────────────────────────────────────────────────────────
 
-  const { data: existingPermFetch } = useFetch(
+  // API: { success, data: User[] }
+  const { data: usersRes, loading: usersLoading } = useFetch<{ data?: User[] }>(
+    `${API}/api/secure/get_all_users_sign_up`,
+    "", null, userListRefreshKey
+  );
+
+  // API: { success, data: { companies: [...] } }
+  const { data: hierarchyRes } = useFetch<{ data?: { companies: Company[] } }>(
+    `${API}/api/user_approval/get_hierachy_com_details`
+  );
+
+  // API: { success, data: ScreenGroup[] }
+  const { data: screensRes } = useFetch<{ data?: ScreenGroup[] }>(
+    `${API}/api/user_approval/get_screens_with_groups`
+  );
+
+  // API: { success, data: PermissionDetail[] }
+  const { data: permDetailsRes } = useFetch<{ data?: PermissionDetail[] }>(
+    `${API}/api/user_approval/get_permission_details`
+  );
+
+  // API: { success, permissions, companies, divisions, branches }
+  // Null URL → skipped until a user is selected
+  const {
+    data:    existingPermRes,
+    loading: existingLoading,
+  } = useFetch<ExistingPermData>(
     selectedUser
-      ? `${import.meta.env.VITE_API_URL}/api/user_approval/get_user_permissions/${selectedUser}`
-      : null
-  ) as {
-    data?: { success: boolean; permissions: Permissions; companies?: string[]; divisions?: string[]; branches?: string[] };
-    loading: boolean;
-    error: Error | null;
-  };
+      ? `${API}/api/user_approval/get_user_permissions/${selectedUser}`
+      : null,
+    "", null, permRefreshKey
+  );
 
   const { postData } = usePost();
 
-  const buildFromScreens = (screens: ScreenGroup[] | undefined) => {
-    const newGroups: Record<string, string[]> = {};
-    const newPermissions: Permissions = {};
-    if (!screens) return { newGroups, newPermissions };
-    screens.forEach((item) => {
-      if (!newGroups[item.group_name]) newGroups[item.group_name] = [];
-      if (!newGroups[item.group_name].includes(item.screen_name)) {
-        newGroups[item.group_name].push(item.screen_name);
-      }
-      if (!newPermissions[item.screen_name]) newPermissions[item.screen_name] = {};
-    });
-    return { newGroups, newPermissions };
-  };
+  // ── Convenient accessors ───────────────────────────────────────────────────
+  const allUsers       = usersRes?.data              ?? [];
+  const allCompanies   = hierarchyRes?.data?.companies ?? [];
+  const allScreens     = screensRes?.data            ?? [];
+  const permDetails    = permDetailsRes?.data        ?? [];
 
+  // ── Socket: real-time listeners ────────────────────────────────────────────
   useEffect(() => {
-    const screens = screensData?.data;
-    if (!screens) return;
-    const { newGroups, newPermissions } = buildFromScreens(screens);
-    if (!isEqual(groups, newGroups) || !isEqual(Object.keys(permissions), Object.keys(newPermissions))) {
-      setGroups(newGroups);
-      setPermissions(newPermissions);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screensData]);
+    setIsLive(socket.connected);
+    const onConnect    = () => setIsLive(true);
+    const onDisconnect = () => setIsLive(false);
 
+    // New user registered → refresh dropdown
+    const onUserNew = (data: { ename?: string; ecno?: string }) => {
+      setUserListRefreshKey((k) => k + 1);
+      toast.info(`New user registered: ${data.ename ?? data.ecno ?? "unknown"}`, {
+        icon: <UserPlus className="h-4 w-4" />,
+      });
+    };
+
+    // Another admin saved permissions → refresh if viewing the same user
+    const onAdminPermsUpdated = (data: { user_id?: string; user_ecno?: string }) => {
+      if (data.user_id && data.user_id === selectedUserRef.current) {
+        setPermRefreshKey((k) => k + 1);
+        toast.warning("Permissions updated by another admin — refreshing…", {
+          icon: <RefreshCw className="h-4 w-4" />,
+        });
+      }
+      if (data.user_ecno) {
+        setFlashUserEcno(data.user_ecno);
+        setTimeout(() => setFlashUserEcno(null), 4000);
+      }
+    };
+
+    socket.on("connect",                        onConnect);
+    socket.on("disconnect",                     onDisconnect);
+    socket.on(SOCKET_USER_NEW,                  onUserNew);
+    socket.on(SOCKET_ADMIN_PERMISSIONS_UPDATED, onAdminPermsUpdated);
+    return () => {
+      socket.off("connect",                        onConnect);
+      socket.off("disconnect",                     onDisconnect);
+      socket.off(SOCKET_USER_NEW,                  onUserNew);
+      socket.off(SOCKET_ADMIN_PERMISSIONS_UPDATED, onAdminPermsUpdated);
+    };
+  }, []); // stable — refs handle stale-closure for selectedUser
+
+  // ── Build groups/base-permissions when screen list loads ───────────────────
+  useEffect(() => {
+    if (!allScreens.length) return;
+    const { groups: g, permissions: p } = buildFromScreens(allScreens);
+    if (!isEqual(groups, g)) setGroups(g);
+    if (Object.keys(permissions).length === 0) {
+      setPermissions(p);
+      setOriginalPermissions(p);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allScreens]);
+
+  // ── Reset when selected user changes ──────────────────────────────────────
   useEffect(() => {
     setSelectedCompanies([]);
     setSelectedDivisions([]);
     setSelectedBranches([]);
-    if (screensData?.data) {
-      const { newPermissions } = buildFromScreens(screensData.data);
-      setPermissions(newPermissions);
-    } else {
-      setPermissions({});
-    }
-    // Track ecno for real-time socket notification
-    const user = userFetchData?.data?.find((u) => u.nt_sign_up_sno === selectedUser);
+    const base = buildFromScreens(allScreens).permissions;
+    setPermissions(base);
+    setOriginalPermissions(base);
+    const user = allUsers.find((u) => u.nt_sign_up_sno === selectedUser);
     setSelectedUserEcno(user?.ecno ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUser]);
 
+  // ── Merge saved permissions when they arrive ───────────────────────────────
   useEffect(() => {
-    if (!existingPermFetch?.permissions || !screensData?.data) {
-      if (existingPermFetch && screensData?.data) {
-        const { newPermissions } = buildFromScreens(screensData.data);
-        setPermissions(newPermissions);
-      }
+    if (!allScreens.length) return;
+
+    const base = buildFromScreens(allScreens).permissions;
+
+    if (!existingPermRes?.permissions || Object.keys(existingPermRes.permissions).length === 0) {
+      // No existing permissions found → blank slate
+      setPermissions(base);
+      setOriginalPermissions(base);
       return;
     }
-    const { permissions: saved } = existingPermFetch;
-    const { newPermissions } = buildFromScreens(screensData.data);
-    const merged: Permissions = { ...newPermissions };
-    Object.keys(saved).forEach((screen) => {
-      if (merged[screen]) {
-        merged[screen] = { ...merged[screen], ...saved[screen] };
-      } else {
-        merged[screen] = { ...saved[screen] };
-      }
-    });
-    setPermissions(merged);
-    if (existingPermFetch.companies) setSelectedCompanies(existingPermFetch.companies);
-    if (existingPermFetch.divisions) setSelectedDivisions(existingPermFetch.divisions);
-    if (existingPermFetch.branches) setSelectedBranches(existingPermFetch.branches);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existingPermFetch, screensData]);
 
-  useEffect(() => {
-    if (selectedCompanies.length > 0) {
-      const validDivisionIds = getAvailableDivisions().map((d) => d.div_sno);
-      setSelectedDivisions((prev) => prev.filter((id) => validDivisionIds.includes(id)));
-    } else {
-      if (!existingPermFetch?.divisions) setSelectedDivisions([]);
+    // Merge saved permissions ON TOP of the blank base
+    const merged: Permissions = { ...base };
+    for (const [screen, perms] of Object.entries(existingPermRes.permissions)) {
+      merged[screen] = { ...(merged[screen] ?? {}), ...perms };
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    setPermissions(merged);
+    setOriginalPermissions(JSON.parse(JSON.stringify(merged))); // deep-clone as baseline
+
+    if (existingPermRes.companies) setSelectedCompanies(existingPermRes.companies);
+    if (existingPermRes.divisions) setSelectedDivisions(existingPermRes.divisions);
+    if (existingPermRes.branches)  setSelectedBranches(existingPermRes.branches);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingPermRes]);
+
+  // ── Cascade: prune stale divisions / branches when parents deselected ──────
+  useEffect(() => {
+    if (!selectedCompanies.length) return;
+    const valid = new Set(availableDivisions().map((d) => d.div_sno));
+    setSelectedDivisions((p) => p.filter((id) => valid.has(id)));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCompanies]);
 
   useEffect(() => {
-    if (selectedDivisions.length > 0) {
-      const validBranchIds = getAvailableBranches().map((b) => b.brn_sno);
-      setSelectedBranches((prev) => prev.filter((id) => validBranchIds.includes(id)));
-    } else {
-      if (!existingPermFetch?.branches) setSelectedBranches([]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!selectedDivisions.length) return;
+    const valid = new Set(availableBranches().map((b) => b.brn_sno));
+    setSelectedBranches((p) => p.filter((id) => valid.has(id)));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDivisions]);
 
+  // ── Permission description map ─────────────────────────────────────────────
   useEffect(() => {
-    if (permissionDetailsData?.data) {
-      const map: Record<number, string> = {};
-      permissionDetailsData.data.forEach((perm) => {
-        map[perm.permission_id] = perm.permission_description;
-      });
-      setPermissionMap(map);
-    }
-  }, [permissionDetailsData]);
+    if (!permDetails.length) return;
+    const m: Record<number, string> = {};
+    permDetails.forEach((p) => { m[p.permission_id] = p.permission_description; });
+    setPermissionMap(m);
+  }, [permDetails]);
 
-  function togglePerm(screen: string, permissionId: number) {
-    setPermissions((curr) => {
-      const currScreen = curr[screen] ?? {};
-      return { ...curr, [screen]: { ...currScreen, [permissionId]: !currScreen[permissionId] } };
-    });
-  }
-
-  const getAvailableDivisions = (): Division[] => {
-    const companiesToUse = selectedCompanies.length > 0 ? selectedCompanies : existingPermFetch?.companies ?? [];
-    if (companiesToUse.length === 0 || !hierarchyFetchData?.data) return [];
-    const divisions: Division[] = [];
-    companiesToUse.forEach((companyId) => {
-      const company = hierarchyFetchData?.data?.companies.find((c) => c.com_sno === companyId);
-      if (company) divisions.push(...company.divisions);
-    });
-    return divisions;
+  // ── Hierarchy helpers ──────────────────────────────────────────────────────
+  const availableDivisions = (): Division[] => {
+    const coms = selectedCompanies.length ? selectedCompanies : existingPermRes?.companies ?? [];
+    return coms.flatMap(
+      (id) => allCompanies.find((c) => c.com_sno === id)?.divisions ?? []
+    );
   };
 
-  const getAvailableBranches = (): Branch[] => {
-    const divisionsToUse = selectedDivisions.length > 0 ? selectedDivisions : existingPermFetch?.divisions ?? [];
-    if (divisionsToUse.length === 0 || !hierarchyFetchData?.data) return [];
-    const branches: Branch[] = [];
-    divisionsToUse.forEach((divisionId) => {
-      const division = hierarchyFetchData?.data?.companies
-        .flatMap((c) => c.divisions)
-        .find((d) => d.div_sno === divisionId);
-      if (division) branches.push(...division.branches);
-    });
-    return branches;
+  const availableBranches = (): Branch[] => {
+    const divs = selectedDivisions.length ? selectedDivisions : existingPermRes?.divisions ?? [];
+    const allDivs = allCompanies.flatMap((c) => c.divisions);
+    return divs.flatMap(
+      (id) => allDivs.find((d) => d.div_sno === id)?.branches ?? []
+    );
   };
 
-  const toggleCompany = (id: string) =>
-    setSelectedCompanies((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  const toggleDivision = (id: string) =>
-    setSelectedDivisions((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  const toggleBranch = (id: string) =>
-    setSelectedBranches((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  // ── Toggle helpers ─────────────────────────────────────────────────────────
+  const togglePerm = useCallback((screen: string, permissionId: number) =>
+    setPermissions((curr) => ({
+      ...curr,
+      [screen]: { ...(curr[screen] ?? {}), [permissionId]: !curr[screen]?.[permissionId] },
+    })), []);
 
-  const getCompanyNames = () => {
-    const ids = selectedCompanies.length > 0 ? selectedCompanies : existingPermFetch?.companies ?? [];
-    if (!hierarchyFetchData?.data) return [];
-    return ids.map((id) => hierarchyFetchData?.data?.companies.find((c) => c.com_sno === id)?.com_name).filter(Boolean) as string[];
-  };
+  const permChecked = useCallback(
+    (screen: string, permissionId: number) => !!permissions?.[screen]?.[permissionId],
+    [permissions]
+  );
 
-  const buildHierarchyPayload = () => {
-    if (!hierarchyFetchData?.data) return { hierarchy: [] };
-    const hierarchy: Array<{ com_sno: string | null; div_sno: string | null; brn_sno: string | null }> = [];
-    const coms = selectedCompanies.length > 0 ? selectedCompanies : existingPermFetch?.companies ?? [];
-    const divs = selectedDivisions.length > 0 ? selectedDivisions : existingPermFetch?.divisions ?? [];
-    const brs = selectedBranches.length > 0 ? selectedBranches : existingPermFetch?.branches ?? [];
+  // ── Payload builders ───────────────────────────────────────────────────────
+  const buildHierarchyPayload = useCallback(() => {
+    const coms = selectedCompanies.length ? selectedCompanies : existingPermRes?.companies ?? [];
+    const divs = selectedDivisions.length ? selectedDivisions : existingPermRes?.divisions ?? [];
+    const brs  = selectedBranches.length  ? selectedBranches  : existingPermRes?.branches  ?? [];
+    const allDivs = allCompanies.flatMap((c) => c.divisions);
+    const allBrs  = allDivs.flatMap((d) => d.branches);
 
-    coms.forEach((comId) => hierarchy.push({ com_sno: comId, div_sno: null, brn_sno: null }));
+    return {
+      hierarchy: [
+        ...coms.map((id) => ({ com_sno: id, div_sno: null, brn_sno: null })),
+        ...divs.map((id) => {
+          const com = allCompanies.find((c) => c.divisions.some((d) => d.div_sno === id));
+          return { com_sno: com?.com_sno ?? null, div_sno: id, brn_sno: null };
+        }),
+        ...brs.map((id) => {
+          const div = allDivs.find((d) => d.branches.some((b) => b.brn_sno === id));
+          const com = allCompanies.find((c) => c.divisions.some((d) => d.branches.some((b) => b.brn_sno === id)));
+          return { com_sno: com?.com_sno ?? null, div_sno: div?.div_sno ?? null, brn_sno: id };
+        }),
+      ],
+    };
+  }, [allCompanies, selectedCompanies, selectedDivisions, selectedBranches, existingPermRes]);
 
-    divs.forEach((divId) => {
-      const div = hierarchyFetchData.data?.companies.flatMap((c) => c.divisions).find((d) => d.div_sno === divId);
-      const company = hierarchyFetchData.data?.companies.find((c) => c.divisions.some((d) => d.div_sno === divId));
-      hierarchy.push({ com_sno: company?.com_sno || null, div_sno: div?.div_sno || null, brn_sno: null });
-    });
-
-    brs.forEach((brId) => {
-      const div = hierarchyFetchData.data?.companies.flatMap((c) => c.divisions).find((d) => d.branches.some((b) => b.brn_sno === brId));
-      const company = hierarchyFetchData.data?.companies.find((c) => c.divisions.some((d) => d.branches.some((b) => b.brn_sno === brId)));
-      const br = hierarchyFetchData.data?.companies.flatMap((c) => c.divisions.flatMap((d) => d.branches)).find((b) => b.brn_sno === brId);
-      hierarchy.push({ com_sno: company?.com_sno || null, div_sno: div?.div_sno || null, brn_sno: br?.brn_sno || null });
-    });
-
-    return { hierarchy };
-  };
-
-  const buildPermissionsPayload = () => {
-    if (!screensData?.data) return [];
-    const screenNameToId = new Map<string, number>();
-    screensData.data.forEach((s) => screenNameToId.set(s.screen_name, s.screen_id));
+  const buildPermissionsPayload = useCallback(() => {
+    const nameToId = new Map<string, number>(allScreens.map((s) => [s.screen_name, s.screen_id]));
     return Object.entries(permissions)
-      .map(([screenName, screenPerms]) => {
-        const screenId = screenNameToId.get(screenName);
-        if (!screenId) return null;
-        const selectedPermIds = Object.entries(screenPerms).filter(([_, v]) => v === true).map(([id]) => Number(id));
-        return selectedPermIds.length > 0 ? { screen_id: screenId, permissions: selectedPermIds } : null;
+      .map(([name, perms]) => {
+        const id = nameToId.get(name);
+        if (!id) return null;
+        const enabled = Object.entries(perms).filter(([, v]) => v).map(([k]) => Number(k));
+        return enabled.length ? { screen_id: id, permissions: enabled } : null;
       })
       .filter(Boolean) as { screen_id: number; permissions: number[] }[];
-  };
+  }, [allScreens, permissions]);
 
-  const handleReset = () => {
+  // ── Reset ──────────────────────────────────────────────────────────────────
+  const handleReset = useCallback(() => {
     setSelectedUser("");
     setSelectedUserEcno("");
     setSelectedCompanies([]);
     setSelectedDivisions([]);
     setSelectedBranches([]);
-    const { newPermissions } = buildFromScreens(screensData?.data);
-    setPermissions(newPermissions);
-  };
+    const base = buildFromScreens(allScreens).permissions;
+    setPermissions(base);
+    setOriginalPermissions(base);
+  }, [allScreens]);
 
+  const handleDiscardChanges = useCallback(() => {
+    setPermissions(JSON.parse(JSON.stringify(originalPermissions)));
+  }, [originalPermissions]);
+
+  // ── Save ───────────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
-    if (!selectedUser) {
-      toast.error("Please select a user first.");
-      return;
-    }
-    const payload = {
-      user_id: selectedUser,
-      user_ecno: selectedUserEcno,  // backend uses this for real-time Socket.IO notification
-      ...buildHierarchyPayload(),
-      screens: buildPermissionsPayload(),
-    };
-
+    if (!selectedUser) { toast.error("Select a user first."); return; }
+    setSaving(true);
     try {
-      const res = await postData(`${import.meta.env.VITE_API_URL}/api/user_approval/save_user_permissions`, payload);
-      if (res && (res as any).success) {
-        handleReset();
-        toast.success("Permissions updated. The user will see changes immediately.");
+      const res: any = await postData(
+        `${API}/api/user_approval/save_user_permissions`,
+        {
+          user_id:   selectedUser,
+          user_ecno: selectedUserEcno,
+          ...buildHierarchyPayload(),
+          screens: buildPermissionsPayload(),
+        }
+      );
+      if (res?.success) {
+        // Update baseline so diff resets to 0 after save
+        setOriginalPermissions(JSON.parse(JSON.stringify(permissions)));
+        toast.success("Saved — permissions pushed to user instantly via WebSocket.");
       } else {
-        toast.error("Failed to update permissions");
+        toast.error("Failed to save permissions.");
       }
     } catch {
-      toast.error("Error saving permissions");
+      toast.error("Error saving permissions.");
+    } finally {
+      setSaving(false);
     }
-  }, [selectedUser, selectedUserEcno, selectedCompanies, selectedDivisions, selectedBranches, permissions, postData, hierarchyFetchData, screensData]);
+  }, [
+    selectedUser, selectedUserEcno,
+    buildHierarchyPayload, buildPermissionsPayload,
+    postData, permissions, API,
+  ]);
 
-  const permChecked = (screen: string, permissionId: number) => !!permissions?.[screen]?.[permissionId];
-  const shouldShowPermissions = !!selectedUser && Object.keys(groups).length > 0;
+  // ── Derived values ─────────────────────────────────────────────────────────
+  const { added, removed } = useMemo(
+    () => diffPermissions(originalPermissions, permissions),
+    [originalPermissions, permissions]
+  );
+  const hasChanges = added > 0 || removed > 0;
 
+  const enabledCount = useMemo(() => countEnabled(permissions), [permissions]);
+
+  const companyNames = useMemo(() => {
+    const ids = selectedCompanies.length ? selectedCompanies : existingPermRes?.companies ?? [];
+    return ids.map((id) => allCompanies.find((c) => c.com_sno === id)?.com_name).filter(Boolean) as string[];
+  }, [selectedCompanies, existingPermRes, allCompanies]);
+
+  const userOptions = useMemo(
+    () => allUsers.map((u) => ({
+      label: flashUserEcno === u.ecno
+        ? `${u.ename} (${u.dept}) ✦`
+        : `${u.ename} (${u.dept})`,
+      value: u.nt_sign_up_sno,
+    })),
+    [allUsers, flashUserEcno]
+  );
+
+  const selectedUserName = useMemo(
+    () => allUsers.find((u) => u.nt_sign_up_sno === selectedUser)?.ename ?? "",
+    [allUsers, selectedUser]
+  );
+
+  const showPermissions = !!selectedUser && Object.keys(groups).length > 0;
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-8">
-      <div className="mx-auto space-y-8">
-        {/* USER SELECT */}
-        <Card className="shadow-sm border border-slate-200">
-          <CardContent className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+    <div className="min-h-screen bg-background p-4 md:p-8">
+      <div className="mx-auto max-w-7xl space-y-5">
+
+        {/* ── Page header ──────────────────────────────────────────────────── */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+              <Shield className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">
+                Role & Permissions
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                Changes reflect on the user's screen instantly
+              </p>
+            </div>
+          </div>
+          <LiveBadge connected={isLive} />
+        </div>
+
+        {/* ── User selector ─────────────────────────────────────────────────── */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="border-b border-border px-6 pb-4 pt-5">
+            <CardTitle className="text-sm font-semibold text-foreground">
+              Select User
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="md:col-span-2">
                 <CustomInputField
                   field="user"
-                  label="Select User"
+                  label="User"
                   type="select"
-                  className="w-100"
-                  options={userFetchData?.data?.map((u) => ({ label: `${u.ename} (${u.dept})`, value: u.nt_sign_up_sno })) ?? []}
+                  options={userOptions}
                   value={selectedUser}
                   onChange={setSelectedUser}
-                  placeholder="Choose a user..."
+                  placeholder={usersLoading ? "Loading users…" : "Choose a user…"}
                 />
               </div>
+
+              {/* Existing permission summary chip */}
+              {selectedUser && !existingLoading && (
+                <div className="flex items-end gap-2">
+                  <Badge
+                    variant={enabledCount > 0 ? "default" : "secondary"}
+                    className="h-9 gap-1.5 px-3 text-sm font-normal"
+                  >
+                    <Shield className="h-3.5 w-3.5" />
+                    {enabledCount} permission{enabledCount !== 1 ? "s" : ""} enabled
+                  </Badge>
+                </div>
+              )}
+              {selectedUser && existingLoading && (
+                <div className="flex items-end">
+                  <div className="flex h-9 items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading existing permissions…
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* HIERARCHY */}
+        {/* ── Organisation scope ───────────────────────────────────────────── */}
         {selectedUser && (
-          <Card className="shadow-sm border border-slate-200">
+          <Card className="border-border shadow-sm">
+            <CardHeader className="border-b border-border px-6 pb-4 pt-5">
+              <CardTitle className="text-sm font-semibold text-foreground">
+                Organisation Scope
+              </CardTitle>
+            </CardHeader>
             <CardContent className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <CustomInputField
-                    field="companies"
-                    label="Companies"
-                    type="multi-select"
-                    options={hierarchyFetchData?.data?.companies?.map((c) => ({ label: c.com_name, value: c.com_sno })) ?? []}
-                    value={selectedCompanies.length > 0 ? selectedCompanies : existingPermFetch?.companies ?? []}
-                    onChange={setSelectedCompanies}
-                  />
-                </div>
-                <div>
-                  <CustomInputField
-                    field="divisions"
-                    label="Divisions"
-                    type="multi-select"
-                    options={getAvailableDivisions().map((d) => ({ label: d.div_name, value: d.div_sno }))}
-                    value={selectedDivisions.length > 0 ? selectedDivisions : existingPermFetch?.divisions ?? []}
-                    onChange={setSelectedDivisions}
-                  />
-                </div>
-                <div>
-                  <CustomInputField
-                    field="branches"
-                    label="Branches"
-                    type="multi-select"
-                    options={getAvailableBranches().map((b) => ({ label: b.brn_name, value: b.brn_sno }))}
-                    value={selectedBranches.length > 0 ? selectedBranches : existingPermFetch?.branches ?? []}
-                    onChange={setSelectedBranches}
-                  />
-                </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <CustomInputField
+                  field="companies"
+                  label="Companies"
+                  type="multi-select"
+                  options={allCompanies.map((c) => ({ label: c.com_name, value: c.com_sno }))}
+                  value={selectedCompanies.length ? selectedCompanies : existingPermRes?.companies ?? []}
+                  onChange={setSelectedCompanies}
+                />
+                <CustomInputField
+                  field="divisions"
+                  label="Divisions"
+                  type="multi-select"
+                  options={availableDivisions().map((d) => ({ label: d.div_name, value: d.div_sno }))}
+                  value={selectedDivisions.length ? selectedDivisions : existingPermRes?.divisions ?? []}
+                  onChange={setSelectedDivisions}
+                />
+                <CustomInputField
+                  field="branches"
+                  label="Branches"
+                  type="multi-select"
+                  options={availableBranches().map((b) => ({ label: b.brn_name, value: b.brn_sno }))}
+                  value={selectedBranches.length ? selectedBranches : existingPermRes?.branches ?? []}
+                  onChange={setSelectedBranches}
+                />
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* PERMISSIONS */}
-        {shouldShowPermissions ? (
-          <Card className="shadow-sm border border-slate-200">
-            <CardContent className="p-0">
-              <div className="border-b px-6 py-4">
-                <h2 className="text-lg font-medium text-slate-700">Screen Permissions</h2>
-                <p className="text-sm text-slate-500">
-                  Changes reflect instantly for the user after save.
-                </p>
+        {/* ── Permission matrix ─────────────────────────────────────────────── */}
+        {selectedUser && (
+          <Card className="border-border shadow-sm">
+            <CardHeader className="border-b border-border px-6 pb-4 pt-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-sm font-semibold text-foreground">
+                    Screen Permissions
+                    {selectedUserName && (
+                      <span className="ml-2 font-normal text-muted-foreground">
+                        — {selectedUserName}
+                      </span>
+                    )}
+                  </CardTitle>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Existing permissions are pre-checked. Uncheck to revoke.
+                  </p>
+                </div>
+                {/* Live change diff */}
+                {hasChanges && (
+                  <div className="flex items-center gap-2">
+                    {added   > 0 && <StatChip icon={<Plus  className="h-3 w-3" />} label="added"   value={added}   variant="add"    />}
+                    {removed > 0 && <StatChip icon={<Minus className="h-3 w-3" />} label="removed" value={removed} variant="remove" />}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+                      onClick={handleDiscardChanges}
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Discard
+                    </Button>
+                  </div>
+                )}
               </div>
-              <div className="p-4 md:p-6">
+            </CardHeader>
+
+            <CardContent className="p-6">
+              {existingLoading ? (
+                // Loading skeleton
+                <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                  <p className="text-sm">Loading existing permissions…</p>
+                </div>
+              ) : showPermissions ? (
                 <PermissionTable
                   groups={groups}
                   permissions={permissions}
                   permChecked={permChecked}
                   togglePerm={togglePerm}
                   permissionMap={permissionMap}
-                  permissionDetails={permissionDetailsData?.data ?? []}
+                  permissionDetails={permDetails}
                   handleSave={handleSave}
                 />
-              </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
+                  <Shield className="h-10 w-10 opacity-30" />
+                  <p className="text-sm">No screens found or still loading…</p>
+                </div>
+              )}
             </CardContent>
           </Card>
-        ) : (
-          selectedUser && (
-            <div className="text-center py-16 text-slate-400">
-              <svg className="mx-auto h-12 w-12 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              <p className="text-sm">No screens/groups available or still loading.</p>
-            </div>
-          )
         )}
 
-        {/* Sticky Save Bar */}
+        {/* ── Sticky action bar ─────────────────────────────────────────────── */}
         {selectedUser && (
-          <div className="sticky bottom-0 bg-white shadow-lg border-t p-4 flex justify-between items-center md:justify-end gap-4">
-            <div className="hidden md:block text-sm text-slate-600">
-              <span className="mr-2">Selected:</span>
-              <span className="font-medium">{getCompanyNames().join(", ") || "No company selected"}</span>
+          <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/95 px-6 py-4 shadow-lg backdrop-blur">
+            {/* Left: scope summary */}
+            <div className="hidden flex-col md:flex">
+              <span className="text-xs text-muted-foreground">
+                {companyNames.length
+                  ? <>Scope: <span className="font-medium text-foreground">{companyNames.join(", ")}</span></>
+                  : <span className="italic">No company scope selected</span>}
+              </span>
+              {hasChanges && (
+                <span className="mt-0.5 text-xs text-muted-foreground">
+                  <span className="text-emerald-600 dark:text-emerald-400">{added > 0 ? `+${added}` : ""}</span>
+                  {added > 0 && removed > 0 && " "}
+                  <span className="text-rose-600 dark:text-rose-400">{removed > 0 ? `-${removed}` : ""}</span>
+                  {" "}unsaved change{added + removed !== 1 ? "s" : ""}
+                </span>
+              )}
             </div>
+
+            {/* Right: actions */}
             <div className="flex gap-2">
-              <button onClick={handleReset} className="px-4 py-2 border rounded-md text-sm text-slate-600 hover:bg-slate-50">
-                Reset
-              </button>
-              <button onClick={handleSave} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">
-                Save Changes
-              </button>
+              {hasChanges && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDiscardChanges}
+                  disabled={saving}
+                  className="gap-1.5"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Discard
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReset}
+                disabled={saving}
+              >
+                Clear
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={saving || !hasChanges}
+                className="gap-2 px-6"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {saving ? "Saving…" : hasChanges ? `Save ${added + removed} Change${added + removed !== 1 ? "s" : ""}` : "No Changes"}
+              </Button>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );

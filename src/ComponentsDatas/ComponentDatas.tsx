@@ -4,6 +4,7 @@ import { lazy, LazyExoticComponent, ComponentType } from "react";
  export const MasterComponents = lazy(() => import(".././Application/Master-Screen/MasterPageScreen"));
 
  export const KYCEntry = lazy(() => import("../Application/Kyc-Screen/KycEntry"));
+ export const SupplierKYCEntry = lazy(() => import("../Application/Kyc-Screen/SupplierKYCEntry"));
  export const RoleApproval = lazy(() => import("../Application/RoleApproval/UserRoleApprovalScreen"));
  export const KYCDataView = lazy(() => import("../Application/Kyc-Screen/KYCDataView"));
  export const PurchaseRequisitionPage = lazy(() => import("../Application/PR/PurchaseRequisitionPage"));
@@ -23,6 +24,7 @@ export const sectionComponents: SectionComponentsMap = {
   masters: MasterComponents,
   RoleApproval: RoleApproval,
   KYCEntry,
+  SupplierKYCEntry,
   KYCDataView,
   PurchaseRequisitionPage,
   ApprovalWorkflowPage,

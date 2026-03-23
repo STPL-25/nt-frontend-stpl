@@ -69,7 +69,6 @@ const masterItems: MasterItemType[] = [
 
 const useCompanyMasterFields = (): FieldType[] => {
   const { formData } = useAppState();
-  console.log(formData)
   return useMemo<FieldType[]>(
     () => [
       { field: "com_sno", label: "S.No", require: false, view: false, type: "text", input: false },
@@ -127,15 +126,15 @@ const useDivisionMasterFields = (formData?: any): FieldType[] => {
 };
 
 const useBranchMasterFields = (formData?: any): FieldType[] => {
-  const { companyDetails, divDetails } = useAppState();
+  const { companyDetails, filteredDivDetails, filteredBranchDetails } = useAppState();
 
   return useMemo<FieldType[]>(
     () => [
       { field: "brn_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "com_sno", label: "Company Name", require: true, view: false, type: "select", options: companyDetails || [], input: true },
-      { field: "div_sno", label: "Division Name", require: true, view: false, type: "select", options: divDetails || [], input: true },
+      { field: "div_sno", label: "Division Name", require: true, view: false, type: "select", options: filteredDivDetails || [], input: true },
       { field: "com_name", label: "Company Name", require: true, view: true, type: "select", options: companyDetails || [], input: false },
-      { field: "div_name", label: "Division Name", require: true, view: true, type: "select", options: divDetails || [], input: false },
+      { field: "div_name", label: "Division Name", require: true, view: true, type: "select", options: filteredDivDetails || [], input: false },
       { field: "brn_name", label: "Branch Name", require: true, view: true, type: "text", input: true },
       { field: "brn_prefix", label: "Branch Prefix", require: true, view: true, type: "text", input: true },
       { field: "add_door_no", label: "Door No", require: false, view: true, type: "text", input: true },
@@ -145,7 +144,7 @@ const useBranchMasterFields = (formData?: any): FieldType[] => {
       { field: "add_state_code", label: "State Code", require: true, view: true, type: "text", input: true },
       { field: "add_pin_code", label: "Pincode", require: true, view: true, type: "text", input: true },
     ],
-    [companyDetails, divDetails]
+    [companyDetails, filteredDivDetails, filteredBranchDetails]
   );
 };
 
@@ -190,22 +189,22 @@ const useGSTMasterFields = (formData?: any): FieldType[] => {
 };
 
 const useDeptMasterFields = (formData?: any): FieldType[] => {
-  const { companyDetails, divDetails, branchDetails } = useAppState();
+  const { companyDetails, filteredDivDetails, filteredBranchDetails } = useAppState();
 
   return useMemo<FieldType[]>(
     () => [
       { field: "dept_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "com_sno", label: "Company Name", require: true, view: false, type: "select", options: companyDetails || [], input: true },
-      { field: "div_sno", label: "Division Name", require: true, view: false, type: "select", options: divDetails || [], input: true },
+      { field: "div_sno", label: "Division Name", require: true, view: false, type: "select", options: filteredDivDetails || [], input: true },
       { field: "com_name", label: "Company Name", require: true, view: true, type: "select", options: companyDetails || [], input: false },
-      { field: "div_name", label: "Division Name", require: true, view: true, type: "select", options: divDetails || [], input: false },
-      { field: "brn_sno", label: "Branch Name", require: true, view: false, type: "select", options: branchDetails || [], input: true },
-      { field: "brn_name", label: "Branch Name", require: true, view: true, type: "select", options: branchDetails || [], input: false },
+      { field: "div_name", label: "Division Name", require: true, view: true, type: "select", options: filteredDivDetails || [], input: false },
+      { field: "brn_sno", label: "Branch Name", require: true, view: false, type: "select", options: filteredBranchDetails || [], input: true },
+      { field: "brn_name", label: "Branch Name", require: true, view: true, type: "select", options: filteredBranchDetails || [], input: false },
       { field: "dept_name", label: "Department Name", require: true, view: true, type: "text", input: true },
       { field: "dept_code", label: "Department Code", require: true, view: true, type: "text", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
-    [companyDetails, divDetails, branchDetails]
+    [companyDetails, filteredDivDetails, filteredBranchDetails]
   );
 };
 

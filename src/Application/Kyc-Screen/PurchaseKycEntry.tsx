@@ -33,7 +33,6 @@ import {
 } from "@/FieldDatas/KycFieldDatas";
 import usePost from "@/hooks/usePostHook";
 import { toast } from "sonner";
-import {selectHierarchy} from "@/globalState/features/hierarchyCompanyDetailsSlice";
 type DynamicFormData = Record<string, any>;
 type AdditionalAddress = Record<string, string>;
 
@@ -42,7 +41,6 @@ export default function SupplierKYCForm() {
   const documentFields = useDocumentFields();
   const bankFields = useBankFields();
   const contactFields = useContactFields();
-console.log(selectHierarchy)
   // Initialize the usePost hook
   const { postData, loading: submitting, error: submitError } = usePost();
 
@@ -596,7 +594,7 @@ console.log(selectHierarchy)
                         onChange={(v) => handleBasicChange(field.field, v)}
                         placeholder={field.placeholder}
                         type={field.type}
-                        options={field.options}
+                        options={field.options||[]}
                       />
                     </div>
                   ))}

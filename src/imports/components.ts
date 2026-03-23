@@ -5,7 +5,7 @@
 //   import { CustomInputField, DynamicTable, Loading, ErrorMessage } from "@/imports/components";
 // ---------------------------------------------------------------------------
 
-export { default as CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
+export {  CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
 export { default as CustomModelComponent } from "@/CustomComponent/InputComponents/CustomModelComponent";
 export { default as DynamicTable } from "@/LayoutComponent/DynamicTable";
 export { default as FormLayout } from "@/LayoutComponent/FormLayout";

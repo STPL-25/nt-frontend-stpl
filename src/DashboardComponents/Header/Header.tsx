@@ -53,13 +53,14 @@ const Header: React.FC = () => {
     setUserData,
     setActiveItem,
     setActiveComponent,
+    themeSettingsOpen,
+    setThemeSettingsOpen,
   } = useAppState() as any;
 
   const navigate = useNavigate();
 
   const [showCugFull, setShowCugFull] = useState(false);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // ---------------------------------------------------------------------------
   // Derived values
@@ -181,7 +182,7 @@ const Header: React.FC = () => {
               variant="ghost"
               size="icon"
               className="h-9 w-9"
-              onClick={() => setSettingsOpen(true)}
+              onClick={() => setThemeSettingsOpen(true)}
               title="Appearance settings"
             >
               <Settings className="h-4 w-4" />
@@ -293,7 +294,7 @@ const Header: React.FC = () => {
                 {/* Appearance shortcut */}
                 <DropdownMenuItem
                   className="cursor-pointer"
-                  onClick={() => setSettingsOpen(true)}
+                  onClick={() => setThemeSettingsOpen(true)}
                 >
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Appearance</span>
@@ -314,7 +315,7 @@ const Header: React.FC = () => {
       </header>
 
       {/* Theme settings side-panel */}
-      <ThemeSettings open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <ThemeSettings open={themeSettingsOpen} onOpenChange={setThemeSettingsOpen} />
     </>
   );
 };

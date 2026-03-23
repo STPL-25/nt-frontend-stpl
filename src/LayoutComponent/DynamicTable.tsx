@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
 import { useAppState } from "@/globalState/hooks/useAppState";
+import usePost from "@/hooks/usePostHook";
+import useUpdate from "@/hooks/useUpdateHook";
+import useDelete from "@/hooks/useDeleteHook";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -49,34 +52,6 @@ type DynamicTableProps = {
   setCurrentScreen?: (screen: string) => void;
 };
 
-/* ── API helpers ──────────────────────────────────────────── */
-const apiPost = async (url: string, body: any) => {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return { status: res.status, ...(await res.json().catch(() => ({}))) };
-};
-
-const apiPut = async (url: string, body: any) => {
-  const res = await fetch(url, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return { status: res.status, ...(await res.json().catch(() => ({}))) };
-};
-
-const apiDelete = async (url: string, body?: any) => {
-  const res = await fetch(url, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return { status: res.status, ...(await res.json().catch(() => ({}))) };
-};
-
 /* ── Component ────────────────────────────────────────────── */
 const DynamicTable: React.FC<DynamicTableProps> = ({
   headers = [],
@@ -92,8 +67,12 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
   master = "",
   setCurrentScreen = () => {},
 }) => {
-  const { userData } = useAppState();
+  const { userData, setFormData } = useAppState();
   const API_BASE = import.meta.env.VITE_API_URL || "";
+
+  const { postData, loading: isAdding } = usePost();
+  const { updateData, loading: isUpdating } = useUpdate();
+  const { deleteData, loading: isDeleting } = useDelete();
 
   /* ── Table state ── */
   const [tableData, setTableData]   = useState<RowData[]>(data || []);
@@ -108,8 +87,6 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [editingItem,  setEditingItem]  = useState<RowData | null>(null);
   const [itemToDelete, setItemToDelete] = useState<RowData | null>(null);
-  const [isLoading,  setIsLoading]  = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   /* ── Form state (shared by add + edit modals) ── */
   const [formState, setFormState] = useState<RowData>({});
@@ -119,14 +96,23 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
   }, [data]);
 
   useEffect(() => {
-    if (showEditModal && editingItem) setFormState({ ...editingItem });
-    if (showAddModal) setFormState({});
+    if (showEditModal && editingItem) {
+      setFormState({ ...editingItem });
+      setFormData({ ...editingItem });
+    }
+    if (showAddModal) {
+      setFormState({});
+      setFormData({});
+    }
   }, [showAddModal, showEditModal, editingItem]);
 
   const formHeaders = headers.filter((h) => h.input !== false);
 
-  const handleFieldChange = (field: string, value: any) =>
-    setFormState((prev) => ({ ...prev, [field]: value }));
+  const handleFieldChange = (field: string, value: any) => {
+    const next = { ...formState, [field]: value };
+    setFormState(next);
+    setFormData(next);
+  };
 
   /* ── Sorting ── */
   const handleSort = (key: string) => {
@@ -174,15 +160,12 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
 
   /* ── CRUD ── */
   const handleAddSave = async (fd: RowData) => {
-    setIsLoading(true);
     try {
       if (master) {
-        fd.created_by = userData[0]?.ecno || "system";
-        const resp = await apiPost(`${API_BASE}/api/common_master/${master}`, fd);
-        if (resp.status >= 200 && resp.status < 300) {
-          if (resp.data && Array.isArray(resp.data)) setTableData(resp.data);
-          else if (resp.data) setTableData((p) => [...p, resp.data]);
-        }
+        fd.created_by = userData[0]?.ecno || "";
+        const resp = await postData(`${API_BASE}/api/common_master/${master}`, fd);
+        if (resp?.data && Array.isArray(resp.data)) setTableData(resp.data);
+        else if (resp?.data) setTableData((p) => [...p, resp.data]);
         toast.success(resp?.data?.[0]?.Message || resp?.message || "Item added");
       } else {
         setTableData((p) => [...p, { ...fd, id: Date.now() }]);
@@ -190,19 +173,16 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
       }
       setShowAddModal(false);
     } catch { toast.error("Failed to add item"); }
-    finally { setIsLoading(false); }
   };
 
   const handleEditSave = async (fd: RowData) => {
     if (!editingItem) return;
-    setIsLoading(true);
     try {
       if (master) {
-        const resp = await apiPut(`${API_BASE}/api/${master}`, { ...editingItem, ...fd });
-        if (resp.status >= 200 && resp.status < 300)
-          setTableData((prev) =>
-            prev.map((it) => (it.id ?? it.Sno) === (editingItem.id ?? editingItem.Sno) ? { ...it, ...fd } : it)
-          );
+        const resp = await updateData(`${API_BASE}/api/${master}`, null, { ...editingItem, ...fd });
+        setTableData((prev) =>
+          prev.map((it) => (it.id ?? it.Sno) === (editingItem.id ?? editingItem.Sno) ? { ...it, ...fd } : it)
+        );
         toast.success(resp?.message || "Item updated");
       } else {
         setTableData((prev) =>
@@ -213,16 +193,14 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
       setShowEditModal(false);
       setEditingItem(null);
     } catch { toast.error("Failed to update item"); }
-    finally { setIsLoading(false); }
   };
 
   const handleDeleteConfirm = async () => {
     if (!itemToDelete) return;
-    setIsDeleting(true);
     try {
       if (master) {
-        const resp = await apiDelete(`${API_BASE}/api/${master}`, itemToDelete);
-        if (resp.status === 201 && resp.data && Array.isArray(resp.data)) {
+        const resp = await deleteData(`${API_BASE}/api/${master}`, itemToDelete);
+        if (resp?.data && Array.isArray(resp.data)) {
           setTableData(resp.data);
         } else {
           setTableData((prev) =>
@@ -239,7 +217,6 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
       setShowDeleteModal(false);
       setItemToDelete(null);
     } catch { toast.error("Failed to delete item"); }
-    finally { setIsDeleting(false); }
   };
 
   /* ── CSV export ── */
@@ -515,8 +492,8 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
             <Button variant="outline" onClick={() => setShowAddModal(false)}>
               Cancel
             </Button>
-            <Button onClick={() => handleAddSave(formState)} disabled={isLoading}>
-              {isLoading ? "Saving…" : "Save"}
+            <Button onClick={() => handleAddSave(formState)} disabled={isAdding}>
+              {isAdding ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -552,8 +529,8 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
             >
               Cancel
             </Button>
-            <Button onClick={() => handleEditSave(formState)} disabled={isLoading}>
-              {isLoading ? "Updating…" : "Update"}
+            <Button onClick={() => handleEditSave(formState)} disabled={isUpdating}>
+              {isUpdating ? "Updating…" : "Update"}
             </Button>
           </DialogFooter>
         </DialogContent>

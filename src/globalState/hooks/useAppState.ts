@@ -1,8 +1,8 @@
 
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import { useDispatch, useSelector, TypedUseSelectorHook } from "react-redux"
 import type { RootState, AppDispatch } from "../store"
-import {socket} from"../../Services/Socket"
+import { socket, SOCKET_PERMISSIONS_UPDATED } from "../../Services/Socket"
 
 // ================= UI =================
 import {
@@ -23,7 +23,9 @@ import {
   selectHeaderComponentRender,
   selectIsFullscreen,
   selectActiveGroupId,
-  setActiveGroupId
+  setActiveGroupId,
+  setThemeSettingsOpen,
+  selectThemeSettingsOpen,
 } from "../features/uiSlice"
 
 // ================= FORM =================
@@ -92,7 +94,8 @@ export const useAppState = () => {
     isCollapsed: useAppSelector(selectIsCollapsed),
     headerComponentRender: useAppSelector(selectHeaderComponentRender),
     isFullscreen: useAppSelector(selectIsFullscreen),
-    activeGroupId: useAppSelector(selectActiveGroupId)
+    activeGroupId: useAppSelector(selectActiveGroupId),
+    themeSettingsOpen: useAppSelector(selectThemeSettingsOpen),
   }
 
   // ---------- FORM ----------
@@ -122,11 +125,51 @@ export const useAppState = () => {
   }
 
   // ---------- HIERARCHY COMPANY DETAILS ----------
+  const hierarchyCompanyData = useAppSelector(selectCompanyHierarchy)
   const hierarchyCompany = {
-    data: useAppSelector(selectCompanyHierarchy),
+    data: hierarchyCompanyData,
     loading: useAppSelector(selectCompanyHierarchyLoading),
     error: useAppSelector(selectCompanyHierarchyError)
   }
+
+  // Flat option lists derived from the nested hierarchy for use in select fields
+  const companyDetails = useMemo(
+    () => (hierarchyCompanyData?.companies ?? []).map((c) => ({ value: c.com_sno, label: c.com_name })),
+    [hierarchyCompanyData]
+  )
+  const divDetails = useMemo(
+    () => (hierarchyCompanyData?.companies ?? []).flatMap((c) =>
+      (c.divisions ?? []).map((d) => ({ value: d.div_sno, label: d.div_name }))
+    ),
+    [hierarchyCompanyData]
+  )
+  const branchDetails = useMemo(
+    () => (hierarchyCompanyData?.companies ?? []).flatMap((c) =>
+      (c.divisions ?? []).flatMap((d) =>
+        (d.branches ?? []).map((b) => ({ value: b.brn_sno, label: b.brn_name }))
+      )
+    ),
+    [hierarchyCompanyData]
+  )
+
+  // Filtered options based on current form selections (cascading dropdowns)
+  const selectedComSno = form.formData?.com_sno
+  const selectedDivSno = form.formData?.div_sno
+
+  const filteredDivDetails = useMemo(() => {
+    if (!selectedComSno) return divDetails
+    const company = (hierarchyCompanyData?.companies ?? []).find(
+      (c) => String(c.com_sno) === String(selectedComSno)
+    )
+    return (company?.divisions ?? []).map((d) => ({ value: d.div_sno, label: d.div_name }))
+  }, [hierarchyCompanyData, selectedComSno, divDetails])
+
+  const filteredBranchDetails = useMemo(() => {
+    if (!selectedDivSno) return branchDetails
+    const allDivisions = (hierarchyCompanyData?.companies ?? []).flatMap((c) => c.divisions ?? [])
+    const division = allDivisions.find((d) => String(d.div_sno) === String(selectedDivSno))
+    return (division?.branches ?? []).map((b) => ({ value: b.brn_sno, label: b.brn_name }))
+  }, [hierarchyCompanyData, selectedDivSno, branchDetails])
   const sidebarData={
     data:useAppSelector(selectSidebarData),
     loading:useAppSelector(selectSidebarLoading),
@@ -165,9 +208,9 @@ export const useAppState = () => {
       const ecno = Array.isArray(decode.userData) ? decode.userData[0]?.ecno : decode.userData?.ecno
       if (ecno) dispatch(fetchSidebarData(ecno))
     }
-    socket.on("permissions:updated", handlePermissionsUpdated)
+    socket.on(SOCKET_PERMISSIONS_UPDATED, handlePermissionsUpdated)
     return () => {
-      socket.off("permissions:updated", handlePermissionsUpdated)
+      socket.off(SOCKET_PERMISSIONS_UPDATED, handlePermissionsUpdated)
     }
   }, [socket, decode.userData, dispatch])
 
@@ -179,6 +222,11 @@ export const useAppState = () => {
     ...decode,
     ...hierarchyCompany,
     ...sidebarData,
+    companyDetails,
+    divDetails,
+    branchDetails,
+    filteredDivDetails,
+    filteredBranchDetails,
     config,
     socket,
 
@@ -197,6 +245,8 @@ export const useAppState = () => {
       dispatch(setActiveGroupId(groupId)),
     setIsFullscreen: (fullscreen: boolean) =>
       dispatch(setIsFullscreen(fullscreen)),
+    setThemeSettingsOpen: (open: boolean) =>
+      dispatch(setThemeSettingsOpen(open)),
 
     // ===== FORM ACTIONS =====
     setFormData: (data: any) => dispatch(setFormData(data)),

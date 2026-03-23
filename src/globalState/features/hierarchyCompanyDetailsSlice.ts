@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import axios, { AxiosError } from "axios";
+import { apiGetHierarchyDetails } from "@/Services/Api";
 
 /* =========================
    TYPES
@@ -55,9 +56,7 @@ interface ApiResponse<T> {
 export const fetchHierarchy = createAsyncThunk<
   HierarchyResponse,  void,  { rejectValue: string }>( "hierarchy/fetchHierarchy",  async (_, { rejectWithValue }) => {
     try {
-      const response = await axios.get<ApiResponse<HierarchyResponse>>(
-        `${import.meta.env.VITE_API_URL}/api/user_approval/get_hierachy_com_details`
-      );
+      const response = await axios.get<ApiResponse<HierarchyResponse>>(apiGetHierarchyDetails);
       return response?.data?.data;
     } catch (err) {
       const error = err as AxiosError;

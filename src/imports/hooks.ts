@@ -10,5 +10,5 @@ export { default as useFetch } from "@/hooks/useFetchHook";
 export { default as usePost } from "@/hooks/usePostHook";
 export { default as useUpdate } from "@/hooks/useUpdateHook";
 export { default as useDelete } from "@/hooks/useDeleteHook";
-export { default as useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
+export {  useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
 export { useIsMobile } from "@/hooks/use-mobile";

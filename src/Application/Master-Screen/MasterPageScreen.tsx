@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import DynamicTable from "@/LayoutComponent/DynamicTable";
 import ViewMode from "@/CustomComponent/ViewModes/ViewMode";
 import CategoryCard from "@/CustomComponent/MasterComponents/CatagoryCard";
@@ -8,6 +8,8 @@ import { useMasterDataFields } from "@/FieldDatas/useMasterDataFields";
 import useFetch from "@/hooks/useFetchHook";
 import { apiFetchCommonMaster } from "@/Services/Api";
 import { masterItems } from "@/FieldDatas/Data";
+import { socket, SOCKET_MASTER_UPDATED } from "@/Services/Socket";
+import { LoadingState, ErrorState } from "@/CustomComponent/PageComponents";
 
 interface MasterItem {
   id: string;
@@ -23,69 +25,50 @@ interface Category {
 }
 
 const MasterScreen: React.FC = () => {
-  const { selectedMaster, setCurrentScreen,setSelectedMaster } = useAppState() as any;
-console.log(selectedMaster)
+  const { selectedMaster, setCurrentScreen, setSelectedMaster } = useAppState() as any;
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const masterDataResult = useMasterDataFields() as any;
   const fields: Record<string, any[]> = masterDataResult?.fields || {};
   const headerData = selectedMaster ? (fields[selectedMaster] || []) : [];
 
+  useEffect(() => {
+    const handleMasterUpdated = ({ masterField }: { masterField: string }) => {
+      if (masterField === selectedMaster) {
+        setRefreshKey((k) => k + 1);
+      }
+    };
+    socket.on(SOCKET_MASTER_UPDATED, handleMasterUpdated);
+    return () => { socket.off(SOCKET_MASTER_UPDATED, handleMasterUpdated); };
+  }, [selectedMaster]);
+
   const { data: datas, loading, error } = useFetch(
-    selectedMaster ? `${apiFetchCommonMaster}${selectedMaster}` : ''
+    selectedMaster ? `${apiFetchCommonMaster}${selectedMaster}` : '',
+    "",
+    null,
+    refreshKey
   ) as { data?: any; loading: boolean; error: Error | null };
 
   if (!selectedMaster) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 flex items-center justify-center">
-        <div className="text-lg text-gray-600">Please select a master to view</div>
-      </div>
-    );
+    return <ErrorState message="Please select a master to view" fullPage />;
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 flex items-center justify-center">
-        <div className="text-lg text-gray-600">Loading...</div>
-      </div>
-    );
+    return <LoadingState message="Loading master data..." fullPage />;
   }
 
   if (error) {
-    const handleBackToMain = () => {
-      setCurrentScreen("main");
-      setSelectedMaster(null);
-    };
-
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 flex items-center justify-center p-4">
-  <div className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full text-center border-2 border-red-200">
-    <div className="flex flex-col items-center space-y-4">
-      <svg
-        className="w-12 h-12 text-red-600"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        viewBox="0 0 24 24"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12A9 9 0 113 12a9 9 0 0118 0z" />
-      </svg>
-      <div className="text-xl font-semibold text-red-600">Error Occurred</div>
-      <div className="text-gray-700">{error.message}</div>
-      <button
-        onClick={handleBackToMain}
-        className="mt-4 px-6 py-2 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-400"
-      >
-        Back to Main
-      </button>
-    </div>
-  </div>
-</div>
-
+      <ErrorState
+        message={error.message || "Failed to load master data"}
+        onRetry={() => { setCurrentScreen("main"); setSelectedMaster(null); }}
+        fullPage
+      />
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
+    <div className="min-h-screen bg-muted/20">
       <DynamicTable
         headers={headerData}
         data={datas?.data || []}
@@ -177,7 +160,7 @@ const MasterItemsGrid: React.FC = () => {
   };
 
   const MainGrid: React.FC = () => (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
+    <div className="min-h-screen bg-muted/20">
       <div className="mx-auto px-2 py-3">
         <div className="mb-8">
           <div className="flex flex-wrap gap-2">

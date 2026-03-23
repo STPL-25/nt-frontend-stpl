@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import axios, { AxiosError } from "axios";
+import { apiFetchSidebarData } from "@/Services/Api";
 
 /* =========================
    TYPES
@@ -52,9 +53,7 @@ export const fetchSidebarData = createAsyncThunk<
   "sidebar/fetchSidebarData",
   async (ecno, { rejectWithValue }) => {
     try {
-      const response = await axios.get<ApiResponse<SidebarResponse>>(
-        `${import.meta.env.VITE_API_URL}/api/user_approval/get_user_screens_and_permisssions/${ecno}`
-      );
+      const response = await axios.get<ApiResponse<SidebarResponse>>(apiFetchSidebarData + ecno);
 
       console.log(response.data.data,ecno);
       return response?.data?.data;

@@ -110,7 +110,7 @@ function App() {
     <ThemeProvider
       attribute="class"
       defaultTheme={mode}
-      enableSystem
+      enableSystem={false}
       disableTransitionOnChange={false}
     >
       <ThemeApplier />

@@ -13,6 +13,7 @@ export interface UIState {
   isCollapsed: boolean
   headerComponentRender: string
   isFullscreen: boolean
+  themeSettingsOpen: boolean
 }
 
 export interface RootState {
@@ -31,7 +32,8 @@ const initialState: UIState = {
   isCollapsed: false,
   headerComponentRender: '',
   isFullscreen: false,
-  activeGroupId: ''
+  activeGroupId: '',
+  themeSettingsOpen: false,
 }
 
 /**
@@ -68,7 +70,10 @@ const uiSlice = createSlice({
     },
     setIsFullscreen: (state, action: PayloadAction<boolean>) => {
       state.isFullscreen = action.payload
-    }
+    },
+    setThemeSettingsOpen: (state, action: PayloadAction<boolean>) => {
+      state.themeSettingsOpen = action.payload
+    },
   }
 })
 
@@ -84,7 +89,8 @@ export const {
   toggleCollapse,
   setHeaderComponentRender,
   setIsFullscreen,
-  setActiveGroupId
+  setActiveGroupId,
+  setThemeSettingsOpen,
 } = uiSlice.actions
 
 /**
@@ -100,5 +106,6 @@ export const selectHeaderComponentRender = (state: RootState) =>
   state.ui.headerComponentRender
 export const selectIsFullscreen = (state: RootState) => state.ui.isFullscreen
 export const selectActiveGroupId = (state: RootState) => state.ui.activeGroupId
+export const selectThemeSettingsOpen = (state: RootState) => state.ui.themeSettingsOpen
 
 export default uiSlice.reducer

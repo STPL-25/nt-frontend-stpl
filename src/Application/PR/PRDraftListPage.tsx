@@ -59,6 +59,16 @@ import {
   prSubmitDeptDraft,
   prSubmitAllDeptDrafts,
 } from '@/Services/Api';
+import {
+  SOCKET_CONNECT,
+  SOCKET_DISCONNECT,
+  SOCKET_JOIN_PR_SCOPE,
+  SOCKET_PR_DRAFT_NEW,
+  SOCKET_PR_DRAFT_UPDATED,
+  SOCKET_PR_DRAFT_DELETED,
+  SOCKET_PR_DRAFT_SUBMITTED,
+  SOCKET_PR_DRAFT_ALL_SUBMITTED,
+} from '@/Services/Socket';
 import PurchaseRequisitionPage from './PurchaseRequisitionPage';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import type { DeptDraft } from './PRDraftSidebar';
@@ -395,11 +405,11 @@ function SharedDraftsTab() {
     const onConnect = () => setIsConnected(true);
     const onDisconnect = () => setIsConnected(false);
     setIsConnected((socket as any).connected);
-    (socket as any).on('connect', onConnect);
-    (socket as any).on('disconnect', onDisconnect);
+    (socket as any).on(SOCKET_CONNECT, onConnect);
+    (socket as any).on(SOCKET_DISCONNECT, onDisconnect);
     return () => {
-      (socket as any).off('connect', onConnect);
-      (socket as any).off('disconnect', onDisconnect);
+      (socket as any).off(SOCKET_CONNECT, onConnect);
+      (socket as any).off(SOCKET_DISCONNECT, onDisconnect);
     };
   }, [socket]);
 
@@ -427,18 +437,18 @@ function SharedDraftsTab() {
       setSelectedIds(new Set());
     };
 
-    (socket as any).on('pr:draft:new', handleNew);
-    (socket as any).on('pr:draft:updated', handleUpdated);
-    (socket as any).on('pr:draft:deleted', handleDeleted);
-    (socket as any).on('pr:draft:submitted', handleSubmitted);
-    (socket as any).on('pr:draft:all_submitted', handleAllSubmitted);
+    (socket as any).on(SOCKET_PR_DRAFT_NEW, handleNew);
+    (socket as any).on(SOCKET_PR_DRAFT_UPDATED, handleUpdated);
+    (socket as any).on(SOCKET_PR_DRAFT_DELETED, handleDeleted);
+    (socket as any).on(SOCKET_PR_DRAFT_SUBMITTED, handleSubmitted);
+    (socket as any).on(SOCKET_PR_DRAFT_ALL_SUBMITTED, handleAllSubmitted);
 
     return () => {
-      (socket as any).off('pr:draft:new', handleNew);
-      (socket as any).off('pr:draft:updated', handleUpdated);
-      (socket as any).off('pr:draft:deleted', handleDeleted);
-      (socket as any).off('pr:draft:submitted', handleSubmitted);
-      (socket as any).off('pr:draft:all_submitted', handleAllSubmitted);
+      (socket as any).off(SOCKET_PR_DRAFT_NEW, handleNew);
+      (socket as any).off(SOCKET_PR_DRAFT_UPDATED, handleUpdated);
+      (socket as any).off(SOCKET_PR_DRAFT_DELETED, handleDeleted);
+      (socket as any).off(SOCKET_PR_DRAFT_SUBMITTED, handleSubmitted);
+      (socket as any).off(SOCKET_PR_DRAFT_ALL_SUBMITTED, handleAllSubmitted);
     };
   }, [socket, scopeKey]);
 
@@ -467,7 +477,7 @@ function SharedDraftsTab() {
     const key = `${com_sno}:${div_sno}:${brn_sno}`;
     setScopeKey(key);
     fetchDrafts(key);
-    if (socket) (socket as any).emit('join-pr-scope', key);
+    if (socket) (socket as any).emit(SOCKET_JOIN_PR_SCOPE, key);
   };
 
   const handleDelete = async () => {

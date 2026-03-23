@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
 import axios, { AxiosError } from 'axios'
+import { apiCommonBasicDetails, apiGetEmployee } from '@/Services/Api'
 
 /**
  * Types
@@ -64,7 +65,7 @@ export const fetchHierarchyData = createAsyncThunk<
         }
       }
 
-      const response = await axios.post(`${apiUrl}/api/common_basic_details`, formData, axiosConfig)
+      const response = await axios.post(apiCommonBasicDetails, formData, axiosConfig)
 
       const basicData = response.data
       return basicData.data as HierarchyResponsePayload
@@ -101,7 +102,7 @@ export const fetchEmployeeData = createAsyncThunk<
         }
       }
 
-      const response = await axios.post(`${apiUrl}/api/common_basic_details/getEmployee`, formData, axiosConfig)
+      const response = await axios.post(apiGetEmployee, formData, axiosConfig)
       const basicData = response.data
       return basicData.data
     } catch (err) {

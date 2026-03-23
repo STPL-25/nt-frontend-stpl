@@ -36,6 +36,15 @@ import {
   prSubmitDeptDraft,
   prSubmitAllDeptDrafts,
 } from '@/Services/Api';
+import {
+  SOCKET_CONNECT,
+  SOCKET_DISCONNECT,
+  SOCKET_PR_DRAFT_NEW,
+  SOCKET_PR_DRAFT_UPDATED,
+  SOCKET_PR_DRAFT_DELETED,
+  SOCKET_PR_DRAFT_SUBMITTED,
+  SOCKET_PR_DRAFT_ALL_SUBMITTED,
+} from '@/Services/Socket';
 import type { Socket } from 'socket.io-client';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -157,11 +166,11 @@ const PRDraftSidebar: React.FC<PRDraftSidebarProps> = ({
     const onConnect = () => setIsConnected(true);
     const onDisconnect = () => setIsConnected(false);
     setIsConnected(socket.connected);
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
+    socket.on(SOCKET_CONNECT, onConnect);
+    socket.on(SOCKET_DISCONNECT, onDisconnect);
     return () => {
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
+      socket.off(SOCKET_CONNECT, onConnect);
+      socket.off(SOCKET_DISCONNECT, onDisconnect);
     };
   }, [socket]);
 
@@ -202,18 +211,18 @@ const PRDraftSidebar: React.FC<PRDraftSidebarProps> = ({
       setSelectedIds(new Set());
     };
 
-    socket.on('pr:draft:new', handleNew);
-    socket.on('pr:draft:updated', handleUpdated);
-    socket.on('pr:draft:deleted', handleDeleted);
-    socket.on('pr:draft:submitted', handleSubmitted);
-    socket.on('pr:draft:all_submitted', handleAllSubmitted);
+    socket.on(SOCKET_PR_DRAFT_NEW, handleNew);
+    socket.on(SOCKET_PR_DRAFT_UPDATED, handleUpdated);
+    socket.on(SOCKET_PR_DRAFT_DELETED, handleDeleted);
+    socket.on(SOCKET_PR_DRAFT_SUBMITTED, handleSubmitted);
+    socket.on(SOCKET_PR_DRAFT_ALL_SUBMITTED, handleAllSubmitted);
 
     return () => {
-      socket.off('pr:draft:new', handleNew);
-      socket.off('pr:draft:updated', handleUpdated);
-      socket.off('pr:draft:deleted', handleDeleted);
-      socket.off('pr:draft:submitted', handleSubmitted);
-      socket.off('pr:draft:all_submitted', handleAllSubmitted);
+      socket.off(SOCKET_PR_DRAFT_NEW, handleNew);
+      socket.off(SOCKET_PR_DRAFT_UPDATED, handleUpdated);
+      socket.off(SOCKET_PR_DRAFT_DELETED, handleDeleted);
+      socket.off(SOCKET_PR_DRAFT_SUBMITTED, handleSubmitted);
+      socket.off(SOCKET_PR_DRAFT_ALL_SUBMITTED, handleAllSubmitted);
     };
   }, [socket]);
 

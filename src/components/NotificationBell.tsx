@@ -13,6 +13,12 @@ import { cn } from "@/lib/utils";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import axios from "axios";
 import { toast } from "sonner";
+import {
+  apiGetNotifications,
+  apiMarkNotificationRead,
+  apiMarkAllNotificationsRead,
+} from "@/Services/Api";
+import { SOCKET_NOTIFICATION_NEW } from "@/Services/Socket";
 
 interface Notification {
   id: string;
@@ -43,8 +49,6 @@ function timeAgo(iso: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
 const NotificationBell: React.FC = () => {
   const { socket, userData } = useAppState() as any;
   const [open, setOpen]       = useState(false);
@@ -56,7 +60,7 @@ const NotificationBell: React.FC = () => {
   const fetchNotifications = useCallback(async () => {
     try {
       setLoading(true);
-      const { data } = await axios.get(`${API}/api/notifications`);
+      const { data } = await axios.get(apiGetNotifications);
       if (data.success) setNotifs(data.data);
     } catch {
       /* silent */
@@ -80,27 +84,27 @@ const NotificationBell: React.FC = () => {
         icon: TYPE_CONFIG[notif.type]?.icon,
       });
     };
-    socket.on("notification:new", handler);
-    return () => socket.off("notification:new", handler);
+    socket.on(SOCKET_NOTIFICATION_NEW, handler);
+    return () => socket.off(SOCKET_NOTIFICATION_NEW, handler);
   }, [socket]);
 
   const markOne = async (id: string) => {
     try {
-      await axios.patch(`${API}/api/notifications/${id}/read`);
+      await axios.patch(apiMarkNotificationRead(id));
       setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
     } catch { /* silent */ }
   };
 
   const markAll = async () => {
     try {
-      await axios.patch(`${API}/api/notifications/read-all`);
+      await axios.patch(apiMarkAllNotificationsRead);
       setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch { /* silent */ }
   };
 
   const clearAll = async () => {
     try {
-      await axios.delete(`${API}/api/notifications`);
+      await axios.delete(apiGetNotifications);
       setNotifs([]);
     } catch { /* silent */ }
   };

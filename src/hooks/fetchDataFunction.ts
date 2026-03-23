@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import axios, { AxiosError } from "axios";
+import { apiGetMasterItems } from "@/Services/Api";
 
 interface MasterItem {
   id: string;
@@ -19,14 +20,12 @@ const fetchDataFunction = (): FetchDataReturn => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const apiUrl = import.meta.env.VITE_API_URL as string;
-
   const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await axios.get<MasterItem[]>(`${apiUrl}/api/MasterItems`);
+      const response = await axios.get<MasterItem[]>(apiGetMasterItems);
 
       setData(response.data);
     } catch (err) {

@@ -10,61 +10,63 @@ interface UseFetchReturn<T> {
 }
 
 /**
- * Generic useFetch hook.
- * @example
- * const { data, loading, error } = useFetch<MyType>("/api/items", "query", { page: 1 });
+ * Generic data-fetching hook.
+ *
+ * Pass `null` as the URL to skip the fetch entirely (useful for conditional
+ * fetches like `selectedId ? url + selectedId : null`).
+ *
+ * The `refreshKey` param can be bumped to force a re-fetch of the same URL
+ * (e.g. after a real-time socket event).
  */
 const useFetch = <T = any>(
-  url: string,
+  url: string | null,
   query: string = "",
-  params: Params = null
+  params: Params = null,
+  refreshKey: number = 0
 ): UseFetchReturn<T> => {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [data,    setData]    = useState<T | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error,   setError]   = useState<string | null>(null);
 
   useEffect(() => {
+    // Skip if no URL supplied
+    if (!url) {
+      setData(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     const controller = new AbortController();
 
     const fetchData = async () => {
+      setLoading(true);
+      setError(null);
+      setData(null);
+
       try {
-        setLoading(true);
-        setError(null);
-        setData(null);
-
         const endpoint = query ? `${url}/${query}` : url;
-
-        // Authorization header is attached automatically by the global axios
-        // request interceptor in main.tsx (reads JWT from localStorage).
         const config: AxiosRequestConfig = {
           params: params ?? undefined,
           signal: controller.signal as unknown as AbortSignal,
         };
-
         const response: AxiosResponse<T> = await axios.get(endpoint, config);
         setData(response.data);
       } catch (err: any) {
-        // if request was aborted, axios throws a DOMException with name 'CanceledError' in new versions
-        if (controller.signal.aborted) {
-          // request was cancelled — keep behavior similar to original
-          console.log("Request cancelled", err);
-        } else {
-          const message =
-            err?.response?.data?.message || err?.message || "An error occurred";
-          setError(message);
-        }
+        if (controller.signal.aborted) return; // request cancelled — ignore
+        const message =
+          err?.response?.data?.message || err?.message || "An error occurred";
+        setError(message);
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
+    return () => controller.abort();
 
-    return () => {
-      controller.abort();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, JSON.stringify(params), query]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, JSON.stringify(params), query, refreshKey]);
 
   return { data, loading, error };
 };
