@@ -1,55 +1,58 @@
-
-
-
-
-import { useState, useEffect, Suspense, ComponentType, CSSProperties } from "react";
+import React, { useState, useEffect, Suspense, type ComponentType } from "react";
 import Header from "@/DashboardComponents/Header";
 import Sidebar from "@/DashboardComponents/SideBar";
 import { sectionComponents } from "@/ComponentsDatas/ComponentDatas";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import ErrorMessage from "@/CustomComponent/ErrorMessage/ErrorMessage";
 import Loading from "@/CustomComponent/LoadingComponents/Loading";
+import type { MainContentCSSProperties } from "./Dashboard.types";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const getMainContentStyle = (
+  isMobile: boolean,
+  sidebarWidth: number
+): MainContentCSSProperties => {
+  if (isMobile) {
+    return { marginLeft: 0, width: "100%" };
+  }
+  return {
+    marginLeft: `${sidebarWidth}px`,
+    transition: "margin-left 300ms ease-in-out",
+    width: `calc(100% - ${sidebarWidth}px)`,
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 const Dashboard: React.FC = () => {
-  const { sidebarOpen, sidebarWidth, isFullscreen,socket } = useAppState() as any;
+  const { sidebarWidth, isFullscreen } = useAppState() as any;
+  const { activeItem } = useAppState();
+
   const [isMobile, setIsMobile] = useState<boolean>(false);
 
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 1024);
-    };
+    const handleResize = () => setIsMobile(window.innerWidth < 1024);
     handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const ActiveComponent: ComponentType | undefined = sectionComponents?.[
-    useAppState().activeItem
-  ];
-
-  const getMainContentStyle = (): CSSProperties => {
-    if (isMobile) {
-      return {
-        marginLeft: 0,
-        width: "100%",
-      };
-    }
-    return {
-      marginLeft: `${sidebarWidth}px`,
-      transition: "margin-left 300ms ease-in-out",
-      width: `calc(100% - ${sidebarWidth}px)`,
-    };
-  };
+  const ActiveComponent: ComponentType | undefined = sectionComponents?.[activeItem];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Sidebar */}
+      {/* Fixed left sidebar */}
       <Sidebar />
 
-      {/* Main content area */}
+      {/* Scrollable main content — offset by sidebar width */}
       <div
         className="flex min-h-screen flex-col"
-        style={getMainContentStyle()}
+        style={getMainContentStyle(isMobile, sidebarWidth)}
       >
         <Header />
 

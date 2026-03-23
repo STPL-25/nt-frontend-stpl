@@ -1,6 +1,7 @@
 import React from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useTheme } from "next-themes";
+import { Sun, Moon, Monitor, Check } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -11,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import {
   setThemeColor,
   setThemeMode,
@@ -20,47 +22,50 @@ import {
   selectThemeRadius,
   THEME_COLORS,
   type ThemeColor,
-  type ThemeMode,
 } from "@/globalState/features/themeSlice";
 import type { AppDispatch } from "@/globalState/store";
-import { Sun, Moon, Monitor, Check } from "lucide-react";
-import { cn } from "@/lib/utils";
+import type { ThemeSettingsProps, RadiusOption, ModeOption } from "./ThemeSettings.types";
 
-interface Props {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}
+// ---------------------------------------------------------------------------
+// Static option tables
+// ---------------------------------------------------------------------------
 
-const RADIUS_OPTIONS: { label: string; value: number; cls: string }[] = [
-  { label: "None", value: 0, cls: "radius-none" },
-  { label: "Small", value: 0.25, cls: "radius-sm" },
-  { label: "Medium", value: 0.5, cls: "radius-md" },
-  { label: "Large", value: 0.75, cls: "radius-lg" },
-  { label: "Full", value: 1.5, cls: "radius-full" },
+const RADIUS_OPTIONS: RadiusOption[] = [
+  { label: "None",   value: 0,     cls: "radius-none" },
+  { label: "Small",  value: 0.25,  cls: "radius-sm"   },
+  { label: "Medium", value: 0.5,   cls: "radius-md"   },
+  { label: "Large",  value: 0.75,  cls: "radius-lg"   },
+  { label: "Full",   value: 1.5,   cls: "radius-full" },
 ];
 
-const MODE_OPTIONS: { id: ThemeMode; label: string; icon: React.ReactNode }[] = [
-  { id: "light",  label: "Light",  icon: <Sun className="h-4 w-4" /> },
-  { id: "dark",   label: "Dark",   icon: <Moon className="h-4 w-4" /> },
+const MODE_OPTIONS: ModeOption[] = [
+  { id: "light",  label: "Light",  icon: <Sun className="h-4 w-4" />     },
+  { id: "dark",   label: "Dark",   icon: <Moon className="h-4 w-4" />    },
   { id: "system", label: "System", icon: <Monitor className="h-4 w-4" /> },
 ];
 
-// Apply theme color class to <html>
-function applyColorClass(color: ThemeColor) {
+// ---------------------------------------------------------------------------
+// Helpers — apply classes to <html>
+// ---------------------------------------------------------------------------
+
+const applyColorClass = (color: ThemeColor) => {
   const root = document.documentElement;
   THEME_COLORS.forEach(({ id }) => root.classList.remove(`theme-${id}`));
   if (color !== "blue") root.classList.add(`theme-${color}`);
-}
+};
 
-// Apply radius class to <html>
-function applyRadiusClass(radius: number) {
+const applyRadiusClass = (radius: number) => {
   const root = document.documentElement;
   RADIUS_OPTIONS.forEach(({ cls }) => root.classList.remove(cls));
   const option = RADIUS_OPTIONS.find((r) => r.value === radius);
   if (option && option.cls !== "radius-md") root.classList.add(option.cls);
-}
+};
 
-const ThemeSettings: React.FC<Props> = ({ open, onOpenChange }) => {
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+const ThemeSettings: React.FC<ThemeSettingsProps> = ({ open, onOpenChange }) => {
   const dispatch = useDispatch<AppDispatch>();
   const { setTheme } = useTheme();
 
@@ -73,7 +78,7 @@ const ThemeSettings: React.FC<Props> = ({ open, onOpenChange }) => {
     applyColorClass(color);
   };
 
-  const handleModeChange = (mode: ThemeMode) => {
+  const handleModeChange = (mode: ModeOption["id"]) => {
     dispatch(setThemeMode(mode));
     setTheme(mode);
   };
@@ -83,22 +88,28 @@ const ThemeSettings: React.FC<Props> = ({ open, onOpenChange }) => {
     applyRadiusClass(radius);
   };
 
+  const handleReset = () => {
+    handleColorChange("blue");
+    handleModeChange("system");
+    handleRadiusChange(0.625);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="w-[340px] sm:w-[380px] overflow-y-auto"
-      >
+      <SheetContent side="right" className="w-[340px] sm:w-[380px] overflow-y-auto">
+
         <SheetHeader className="pb-4">
-          <SheetTitle className="text-lg font-semibold">
-            Appearance Settings
-          </SheetTitle>
+          <SheetTitle className="text-lg font-semibold">Appearance Settings</SheetTitle>
           <SheetDescription>
             Customize the look and feel of your workspace.
           </SheetDescription>
         </SheetHeader>
 
-        {/* ── Color Theme ─────────────────────────────────────────────── */}
+        {/* ── Color theme ─────────────────────────────────────────────── */}
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold text-foreground">Color Theme</h3>
@@ -120,7 +131,6 @@ const ThemeSettings: React.FC<Props> = ({ open, onOpenChange }) => {
                 )}
                 title={theme.label}
               >
-                {/* Color swatch */}
                 <span
                   className="h-8 w-8 rounded-lg shadow-inner flex items-center justify-center"
                   style={{ backgroundColor: theme.previewHex }}
@@ -139,14 +149,16 @@ const ThemeSettings: React.FC<Props> = ({ open, onOpenChange }) => {
 
         <Separator className="my-5" />
 
-        {/* ── Color Preview Card ───────────────────────────────────────── */}
+        {/* ── Live preview card ────────────────────────────────────────── */}
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-foreground">Preview</h3>
           <div className="rounded-xl border bg-card p-4 space-y-3 shadow-sm">
             <div className="flex items-center gap-3">
               <div
                 className="h-10 w-10 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-md"
-                style={{ backgroundColor: THEME_COLORS.find(t => t.id === currentColor)?.previewHex }}
+                style={{
+                  backgroundColor: THEME_COLORS.find((t) => t.id === currentColor)?.previewHex,
+                }}
               >
                 NT
               </div>
@@ -170,7 +182,7 @@ const ThemeSettings: React.FC<Props> = ({ open, onOpenChange }) => {
 
         <Separator className="my-5" />
 
-        {/* ── Appearance Mode ───────────────────────────────────────────── */}
+        {/* ── Appearance mode ──────────────────────────────────────────── */}
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-foreground">Appearance Mode</h3>
           <div className="grid grid-cols-3 gap-2">
@@ -194,7 +206,7 @@ const ThemeSettings: React.FC<Props> = ({ open, onOpenChange }) => {
 
         <Separator className="my-5" />
 
-        {/* ── Border Radius ─────────────────────────────────────────────── */}
+        {/* ── Border radius ─────────────────────────────────────────────── */}
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-foreground">Border Radius</h3>
           <div className="grid grid-cols-5 gap-1.5">
@@ -221,18 +233,11 @@ const ThemeSettings: React.FC<Props> = ({ open, onOpenChange }) => {
 
         <Separator className="my-5" />
 
-        {/* ── Reset ────────────────────────────────────────────────────── */}
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={() => {
-            handleColorChange("blue");
-            handleModeChange("system");
-            handleRadiusChange(0.625);
-          }}
-        >
+        {/* ── Reset ─────────────────────────────────────────────────────── */}
+        <Button variant="outline" className="w-full" onClick={handleReset}>
           Reset to Defaults
         </Button>
+
       </SheetContent>
     </Sheet>
   );

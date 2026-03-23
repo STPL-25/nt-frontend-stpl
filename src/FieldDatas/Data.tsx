@@ -72,7 +72,7 @@ const useCompanyMasterFields = (): FieldType[] => {
   console.log(formData)
   return useMemo<FieldType[]>(
     () => [
-      { field: "com_sno", label: "S.No", require: false, view: true, type: "text", input: false },
+      { field: "com_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "com_name", label: "Company Name", require: true, view: true, type: "text", input: true },
       { field: "com_prefix", label: "Prefix", require: false, view: true, type: "text", input: true },
       { field: "add_pan", label: "Pan No", require: true, view: true, type: "text", input: true },
@@ -113,7 +113,7 @@ const useDivisionMasterFields = (formData?: any): FieldType[] => {
 
   return useMemo<FieldType[]>(
     () => [
-      { field: "div_sno", label: "S.No", require: false, view: true, type: "text", input: false },
+      { field: "div_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "div_name", label: "Division Name", require: true, view: true, type: "text", input: true },
       { field: "div_prefix", label: "Division Prefix", require: true, view: true, type: "text", input: true },
       { field: "div_type", label: "Division Category", require: true, view: true, type: "text", input: true },
@@ -131,7 +131,7 @@ const useBranchMasterFields = (formData?: any): FieldType[] => {
 
   return useMemo<FieldType[]>(
     () => [
-      { field: "brn_sno", label: "S.No", require: false, view: true, type: "text", input: false },
+      { field: "brn_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "com_sno", label: "Company Name", require: true, view: false, type: "select", options: companyDetails || [], input: true },
       { field: "div_sno", label: "Division Name", require: true, view: false, type: "select", options: divDetails || [], input: true },
       { field: "com_name", label: "Company Name", require: true, view: true, type: "select", options: companyDetails || [], input: false },
@@ -152,7 +152,7 @@ const useBranchMasterFields = (formData?: any): FieldType[] => {
 const useUomMasterFields = (formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
-      { field: "uom_sno", label: "S.No", require: false, view: true, type: "text", input: false },
+      { field: "uom_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "uom_code", label: "Code", require: true, view: true, type: "text", input: true },
       { field: "uom_name", label: "Name", require: true, view: true, type: "text", input: true },
       { field: "uom_class", label: "UOM Class", require: true, view: true, type: "text", input: true },
@@ -167,7 +167,7 @@ const useUomMasterFields = (formData?: any): FieldType[] => {
 const useAcYearFields = (formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
-      { field: "ac_sno", label: "S.No", require: false, view: true, type: "text", input: false },
+      { field: "ac_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "ac_year_code", label: "Year Code", require: true, view: true, type: "text", input: true },
       { field: "ac_year", label: "Year", require: true, view: true, type: "text", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
@@ -179,7 +179,7 @@ const useAcYearFields = (formData?: any): FieldType[] => {
 const useGSTMasterFields = (formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
-      { field: "gst_sno", label: "S.No", require: false, view: true, type: "text", input: false },
+      { field: "gst_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "gst_state_un_name", label: "State/Union Territory Name", require: true, view: true, type: "text", input: true },
       { field: "gst_code", label: "State Code", require: true, view: true, type: "text", input: true },
       { field: "gst_alpha_code", label: "Gst Alpha Code", require: true, view: true, type: "text", input: true },
@@ -194,7 +194,7 @@ const useDeptMasterFields = (formData?: any): FieldType[] => {
 
   return useMemo<FieldType[]>(
     () => [
-      { field: "dept_sno", label: "S.No", require: false, view: true, type: "text", input: false },
+      { field: "dept_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "com_sno", label: "Company Name", require: true, view: false, type: "select", options: companyDetails || [], input: true },
       { field: "div_sno", label: "Division Name", require: true, view: false, type: "select", options: divDetails || [], input: true },
       { field: "com_name", label: "Company Name", require: true, view: true, type: "select", options: companyDetails || [], input: false },
@@ -212,7 +212,7 @@ const useDeptMasterFields = (formData?: any): FieldType[] => {
 const usePrefixFieldsMaster = (formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
-      { field: "prefix_sno ", label: "S.No", require: false, view: true, type: "text", input: false },
+      { field: "prefix_sno ", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "prefix_name ", label: "Prefix", require: true, view: true, type: "text", input: true },
       { field: "prefix_desc ", label: "Prefix Description", require: true, view: true, type: "text", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
@@ -224,7 +224,7 @@ const usePrefixFieldsMaster = (formData?: any): FieldType[] => {
 const usePriorityFieldsMaster = (formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
-      { field: "priority_sno", label: "S.No", require: false, view: true, type: "text", input: false },
+      { field: "priority_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "priority_name", label: "Priority Name", require: true, view: true, type: "text", input: true },
       { field: "priority_desc", label: "Priority Description", require: true, view: true, type: "text", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
@@ -235,7 +235,7 @@ const usePriorityFieldsMaster = (formData?: any): FieldType[] => {
 const useScreensFieldsMaster = (formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
-      { field: "screen_id", label: "Screen ID", require: false, view: true, type: "text", input: false },
+      { field: "screen_id", label: "Screen ID", require: false, view: false, type: "text", input: false },
       { field: "screen_name", label: "Screen Name", require: true, view: true, type: "text", input: true },
       { field: "screen_code", label: "Screen Code", require: true, view: true, type: "text", input: false },
       { field: "parent_screen_id", label: "Parent Screen", require: false, view: true, type: "select", input: true },
@@ -250,7 +250,7 @@ const useScreensFieldsMaster = (formData?: any): FieldType[] => {
 const usePermissionFieldsMaster = (formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
-      { field: "permission_id", label: "Permission ID", require: false, view: true, type: "text", input: false },
+      { field: "permission_id", label: "Permission ID", require: false, view: false, type: "text", input: false },
       { field: "permission_name", label: "Permission Name", require: true, view: true, type: "text", input: true },
       { field: "permission_code", label: "Permission Code", require: true, view: true, type: "text", input: false },
       { field: "permission_description", label: "Permission Description", require: false, view: true, type: "text", input: true },
@@ -262,7 +262,7 @@ const usePermissionFieldsMaster = (formData?: any): FieldType[] => {
 const useProductCatagoryMaster = (formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
-      { field: "cat_sno", label: "Category ID", require: false, view: true, type: "text", input: false },
+      { field: "cat_sno", label: "Category ID", require: false, view: false, type: "text", input: false },
       { field: "cat_name", label: "Category Name", require: true, view: true, type: "text", input: true },
       { field: "cat_notes", label: "Category Notes", require: true, view: true, type: "text", input: false },
       { field: "cat_description", label: "Category Description", require: false, view: true, type: "text", input: true },
@@ -274,7 +274,7 @@ const useProductCatagoryMaster = (formData?: any): FieldType[] => {
 const useProductSubCatagoryMaster = (formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
-      { field: "subcat_sno", label: "Sub Category ID", require: false, view: true, type: "text", input: false },
+      { field: "subcat_sno", label: "Sub Category ID", require: false, view: false, type: "text", input: false },
       { field: "subcat_name", label: "Sub Category Name", require: true, view: true, type: "text", input: true },
       { field: "subcat_notes", label: "Sub Category Notes", require: true, view: true, type: "text", input: false },
       { field: "subcat_description", label: "Sub Category Description", require: false, view: true, type: "text", input: true },
@@ -288,7 +288,7 @@ const useProductFieldsMaster = (formData?: any): FieldType[] => {
   const {options, loading} = useMasterOptions(['ProductCategoryMaster','ProductSubCategoryMaster','UomMaster','TaxMaster']);
   return useMemo<FieldType[]>(
     () => [
-      { field: "prod_sno", label: "Product ID", require: false, view: true, type: "text", input: false },
+      { field: "prod_sno", label: "Product ID", require: false, view: false, type: "text", input: false },
       // { field: "com_sno", label: "Company", require: true, view: true, type: "select", input: true },
       // { field: "div_sno", label: "Division", require: true, view: true, type: "select", input: true },
       // { field: "brn_sno", label: "Branch", require: true, view: true, type: "select", input: true },

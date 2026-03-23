@@ -1,58 +1,109 @@
 import React, { useState } from "react";
 import {
-  ChevronDown, Menu, X, Minimize2, Maximize2,
-  Settings, User, Eye, EyeOff, Building2, Hash, Briefcase, Phone,
+  ChevronDown,
+  Menu,
+  X,
+  Minimize2,
+  Maximize2,
+  Settings,
+  User,
+  Eye,
+  EyeOff,
+  Building2,
+  Hash,
+  Briefcase,
+  Phone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useAppState } from "@/globalState/hooks/useAppState";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { useAppState } from "@/globalState/hooks/useAppState";
 import NotificationBell from "@/components/NotificationBell";
 import ThemeSettings from "@/components/ThemeSettings";
+import type { UserInfo, ProfileField } from "./Header.types";
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 const Header: React.FC = () => {
   const {
-    sidebarOpen, setSidebarOpen,
+    sidebarOpen,
+    setSidebarOpen,
     headerComponentRender,
-    isFullscreen, setIsFullscreen,
-    userData, setUserData,
-    setActiveItem, setActiveComponent,
+    isFullscreen,
+    setIsFullscreen,
+    userData,
+    setUserData,
+    setActiveItem,
+    setActiveComponent,
   } = useAppState() as any;
 
   const navigate = useNavigate();
-  const [showCugFull,       setShowCugFull]       = useState(false);
-  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
-  const [settingsOpen,      setSettingsOpen]      = useState(false);
 
-  /* ── Fullscreen ────────────────────────────────────────────────── */
+  const [showCugFull, setShowCugFull] = useState(false);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // ---------------------------------------------------------------------------
+  // Derived values
+  // ---------------------------------------------------------------------------
+
+  const userInfo: UserInfo = (userData?.[0] as UserInfo) ?? {};
+  const displayName = (userInfo.ename as string) || "User";
+  const avatarLetter = displayName.charAt(0).toUpperCase();
+  const cugNumber = (userInfo.sign_up_cug as string) ?? "";
+  const maskedCug = showCugFull
+    ? cugNumber
+    : cugNumber
+    ? `******${cugNumber.slice(-4)}`
+    : "N/A";
+
+  const profileFields: ProfileField[] = [
+    { label: "Employee Code", value: userInfo.ecno as string, Icon: Hash,      color: "blue"   },
+    { label: "Branch",        value: userInfo.branch as string, Icon: Building2, color: "purple" },
+    { label: "Department",    value: userInfo.dept as string,   Icon: Briefcase, color: "green"  },
+  ];
+
+  // ---------------------------------------------------------------------------
+  // Handlers
+  // ---------------------------------------------------------------------------
+
   const handleFullscreenToggle = async () => {
     try {
-      const el  = document.documentElement as any;
-      const doc = document as any;
+      const el  = document.documentElement as HTMLElement & Record<string, unknown>;
+      const doc = document as Document & Record<string, unknown>;
       if (!isFullscreen) {
-        if (el.requestFullscreen)            await el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
-        else if (el.msRequestFullscreen)     await el.msRequestFullscreen();
+        if (typeof el.requestFullscreen === "function")            await el.requestFullscreen();
+        else if (typeof el.webkitRequestFullscreen === "function") await (el.webkitRequestFullscreen as () => Promise<void>)();
+        else if (typeof el.msRequestFullscreen === "function")     await (el.msRequestFullscreen as () => Promise<void>)();
       } else {
-        if (doc.exitFullscreen)            await doc.exitFullscreen();
-        else if (doc.webkitExitFullscreen) await doc.webkitExitFullscreen();
-        else if (doc.msExitFullscreen)     await doc.msExitFullscreen();
+        if (typeof doc.exitFullscreen === "function")            await doc.exitFullscreen();
+        else if (typeof doc.webkitExitFullscreen === "function") await (doc.webkitExitFullscreen as () => Promise<void>)();
+        else if (typeof doc.msExitFullscreen === "function")     await (doc.msExitFullscreen as () => Promise<void>)();
       }
       setIsFullscreen?.(!isFullscreen);
-    } catch (err) {
+    } catch {
       toast.error("Unable to toggle fullscreen");
     }
   };
 
-  /* ── Sign-out ──────────────────────────────────────────────────── */
   const handleSignOut = async () => {
     try {
       setUserData?.(null);
@@ -66,11 +117,9 @@ const Header: React.FC = () => {
     }
   };
 
-  const displayName = (userData?.[0]?.ename as string) ?? "User";
-  const avatarLetter = displayName.charAt(0) ?? "U";
-  const userInfo    = userData?.[0] ?? {};
-  const cugNumber   = userInfo.sign_up_cug ?? "";
-  const maskedCug   = showCugFull ? cugNumber : (cugNumber ? `******${cugNumber.slice(-4)}` : "N/A");
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <>
@@ -81,11 +130,15 @@ const Header: React.FC = () => {
       >
         <div className="flex items-center justify-between px-4 py-2.5 lg:px-6">
 
-          {/* ── Left: mobile toggle + page title ─────────────────── */}
+          {/* ── Left: mobile toggle + page title ─────────────────────── */}
           <div className="flex items-center gap-3">
             <div className="lg:hidden">
-              <Button variant="ghost" size="icon" className="h-9 w-9"
-                onClick={() => setSidebarOpen?.(!sidebarOpen)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                onClick={() => setSidebarOpen?.(!sidebarOpen)}
+              >
                 {sidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
               </Button>
             </div>
@@ -99,24 +152,31 @@ const Header: React.FC = () => {
             </div>
           </div>
 
-          {/* ── Center (reserved) ─────────────────────────────────── */}
+          {/* ── Center (reserved for search / breadcrumb) ─────────────── */}
           <div className="hidden flex-1 items-center justify-center md:flex" />
 
-          {/* ── Right: actions ────────────────────────────────────── */}
+          {/* ── Right: action bar ─────────────────────────────────────── */}
           <div className="flex items-center gap-1">
 
-            {/* Fullscreen */}
-            <Button variant="ghost" size="sm" onClick={handleFullscreenToggle} className="h-9 px-3">
-              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {/* Fullscreen toggle */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleFullscreenToggle}
+              className="h-9 px-3"
+            >
+              {isFullscreen
+                ? <Minimize2 className="h-4 w-4" />
+                : <Maximize2 className="h-4 w-4" />}
               <span className="ml-2 hidden text-xs font-medium xl:inline">
                 {isFullscreen ? "Exit" : "Fullscreen"}
               </span>
             </Button>
 
-            {/* Notifications (Socket.IO + Redis) */}
+            {/* Real-time notification bell */}
             <NotificationBell />
 
-            {/* Theme Settings */}
+            {/* Appearance settings */}
             <Button
               variant="ghost"
               size="icon"
@@ -127,7 +187,7 @@ const Header: React.FC = () => {
               <Settings className="h-4 w-4" />
             </Button>
 
-            {/* Profile Dropdown */}
+            {/* Profile dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="h-9 px-2">
@@ -146,14 +206,17 @@ const Header: React.FC = () => {
               <DropdownMenuContent align="end" className="w-56 bg-background/95 backdrop-blur-md">
                 <DropdownMenuLabel>
                   <p className="text-sm font-medium">{displayName}</p>
-                  <p className="text-xs text-muted-foreground font-normal">{userInfo.ecno}</p>
+                  <p className="text-xs text-muted-foreground font-normal">{userInfo.ecno as string}</p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
 
-                {/* Profile Dialog */}
+                {/* Profile dialog */}
                 <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
                   <DialogTrigger asChild>
-                    <DropdownMenuItem className="cursor-pointer" onSelect={(e) => e.preventDefault()}>
+                    <DropdownMenuItem
+                      className="cursor-pointer"
+                      onSelect={(e) => e.preventDefault()}
+                    >
                       <User className="mr-2 h-4 w-4" />
                       <span>Profile</span>
                     </DropdownMenuItem>
@@ -169,19 +232,23 @@ const Header: React.FC = () => {
                         </Avatar>
                         <div>
                           <p className="text-base font-semibold">{displayName}</p>
-                          <p className="text-xs text-muted-foreground font-normal">Employee Profile</p>
+                          <p className="text-xs text-muted-foreground font-normal">
+                            Employee Profile
+                          </p>
                         </div>
                       </DialogTitle>
                     </DialogHeader>
 
                     <div className="space-y-3 py-3">
-                      {[
-                        { label: "Employee Code", value: userInfo.ecno,   Icon: Hash,      color: "blue" },
-                        { label: "Branch",         value: userInfo.branch, Icon: Building2, color: "purple" },
-                        { label: "Department",     value: userInfo.dept,   Icon: Briefcase, color: "green" },
-                      ].map(({ label, value, Icon, color }) => (
-                        <div key={label} className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
-                          <div className={`flex h-9 w-9 items-center justify-center rounded-full bg-${color}-500/10`}>
+                      {/* Dynamic profile fields */}
+                      {profileFields.map(({ label, value, Icon, color }) => (
+                        <div
+                          key={label}
+                          className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors"
+                        >
+                          <div
+                            className={`flex h-9 w-9 items-center justify-center rounded-full bg-${color}-500/10`}
+                          >
                             <Icon className={`h-4 w-4 text-${color}-600`} />
                           </div>
                           <div>
@@ -191,7 +258,7 @@ const Header: React.FC = () => {
                         </div>
                       ))}
 
-                      {/* CUG with toggle */}
+                      {/* CUG number with reveal toggle */}
                       <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
                         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-500/10">
                           <Phone className="h-4 w-4 text-orange-600" />
@@ -200,9 +267,15 @@ const Header: React.FC = () => {
                           <p className="text-[11px] text-muted-foreground">CUG Number</p>
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-semibold font-mono">{maskedCug}</p>
-                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
-                              onClick={() => setShowCugFull(!showCugFull)}>
-                              {showCugFull ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() => setShowCugFull(!showCugFull)}
+                            >
+                              {showCugFull
+                                ? <EyeOff className="h-3.5 w-3.5" />
+                                : <Eye className="h-3.5 w-3.5" />}
                             </Button>
                           </div>
                         </div>
@@ -210,18 +283,24 @@ const Header: React.FC = () => {
                     </div>
 
                     <div className="flex justify-end pt-2 border-t">
-                      <Button variant="outline" onClick={() => setProfileDialogOpen(false)}>Close</Button>
+                      <Button variant="outline" onClick={() => setProfileDialogOpen(false)}>
+                        Close
+                      </Button>
                     </div>
                   </DialogContent>
                 </Dialog>
 
-                {/* Settings entry */}
-                <DropdownMenuItem className="cursor-pointer" onClick={() => setSettingsOpen(true)}>
+                {/* Appearance shortcut */}
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => setSettingsOpen(true)}
+                >
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Appearance</span>
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
+
                 <DropdownMenuItem
                   className="cursor-pointer text-destructive focus:text-destructive"
                   onClick={handleSignOut}
@@ -234,7 +313,7 @@ const Header: React.FC = () => {
         </div>
       </header>
 
-      {/* Theme settings panel (Sheet) */}
+      {/* Theme settings side-panel */}
       <ThemeSettings open={settingsOpen} onOpenChange={setSettingsOpen} />
     </>
   );
