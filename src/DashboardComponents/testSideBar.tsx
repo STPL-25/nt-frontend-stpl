@@ -406,13 +406,13 @@ const Sidebar: React.FC = () => {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
 
   useEffect(() => {
-    if (data && data.data.screens) {
-      const mappedItems = data.data.screens.map((screen) => ({
+    if (data && data.screens) {
+      const mappedItems = data.screens.map((screen: Screen) => ({
         id: screen.screen_name.toLowerCase().replace(/\s+/g, ""),
         label: screen.screen_name,
         icon: getIconForScreen(screen.screen_name),
         badge: screen.permissions.length,
-        children: screen.permissions.map((perm) => ({
+        children: screen.permissions.map((perm: { permission_id: number; permission_name: string }) => ({
           id: `${screen.screen_name.toLowerCase().replace(/\s+/g, "")}_${perm.permission_name.toLowerCase()}`,
           label: perm.permission_name,
           icon: getIconForPermission(perm.permission_name),

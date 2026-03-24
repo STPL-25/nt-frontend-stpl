@@ -5,6 +5,7 @@ import usePost from "@/hooks/usePostHook";
 import { isEqual } from "lodash";
 import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
 import PermissionTable from "@/CustomComponent/InputComponents/PermissionTableProps";
+import { boolean } from "zod";
 
 interface User {
   nt_sign_up_sno: string;
@@ -38,7 +39,7 @@ type PermissionKeys = "view" | "create" | "edit" | "delete" | "approve";
 
 type Permission = {
   [K in PermissionKeys]: boolean;
-} & { more: string[] };
+} & { more: string[]; fullAccess?: boolean; [key: number]: boolean };
 
 type Permissions = {
   [screen: string]: Permission;
@@ -72,7 +73,7 @@ export default function PermissionManager() {
   const {
     data: hierarchyFetchData,
   } = useFetch(`${import.meta.env.VITE_API_URL}/api/user_approval/get_hierachy_com_details`) as {
-    data?: HierarchyResponse | null;
+    data?: { data: HierarchyResponse } | null;
     loading: boolean;
     error: Error | null;
   };
@@ -216,15 +217,14 @@ export default function PermissionManager() {
   }, [permissionDetailsData]);
 
   // Safe toggle permission (handles missing screen entries)
-  function togglePerm(screen: string, key: PermissionKeys) {
+  function togglePerm(screen: string, permissionId: number) {
     setPermissions((curr) => {
       const currScreen = curr[screen] ?? createPermissionTemplate();
       const screenPermissions: Permission = { ...currScreen, more: Array.from(currScreen.more ?? []) };
 
-      screenPermissions[key] = !screenPermissions[key];
+      screenPermissions[permissionId] = !screenPermissions[permissionId];
       const othersTrue = permissionDetailsData?.data.slice(1).every((k) => screenPermissions[k.permission_id]);
       screenPermissions.fullAccess = othersTrue;
-      // }
 
       return { ...curr, [screen]: screenPermissions };
     });
@@ -326,9 +326,8 @@ export default function PermissionManager() {
   }, [selectedUser, selectedCompanies, selectedDivisions, selectedBranches, permissions, postData]);
 
   // helper: safe boolean accessor for checkbox checked
-  const permChecked = (screen?: string, key?: PermissionKeys) => {
-    if (!screen || !key) return false;
-    return !!(permissions?.[screen]?.[key]);
+  const permChecked = (screen: string, permissionId: number): boolean => {
+    return !!(permissions?.[screen]?.[permissionId]);
   };
 
   // safe check for "more" options
@@ -368,7 +367,7 @@ export default function PermissionManager() {
                     label="Select Companies"
                     type="multi-select"
                     options={
-                      hierarchyFetchData?.data?.companies?.map((c: { com_name: string; com_sno: number }) => ({
+                      hierarchyFetchData?.data?.companies?.map((c) => ({
                         label: c.com_name,
                         value: c.com_sno,
                       })) ?? []

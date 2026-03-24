@@ -33,7 +33,7 @@ export {
 
 // Decode slice
 export {
-  decryptData,
+  initUser,
   clearDecryptedData,
   setUserData,
   selectUserData,

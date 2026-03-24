@@ -8,7 +8,7 @@
  * Must stay in sync with backend/src/Middleware/payloadCrypto.js
  */
 
-const SALT = 'api-payload-salt';
+const SALT = import.meta.env.VITE_CRYPTO_SALT as string;
 let _cachedKey: CryptoKey | null = null;
 
 async function getApiKey(): Promise<CryptoKey> {

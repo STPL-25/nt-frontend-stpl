@@ -57,10 +57,9 @@ import { selectConfig } from "../features/configSlice"
 
 // ================= DECODE =================
 import {
-  decryptData,
+  initUser,
   clearDecryptedData,
   clearError as clearDecodeErrorAction,
-  selectDecryptedData,
   selectIsLoading,
   selectError,
   selectUserData,
@@ -76,6 +75,8 @@ import {
   selectCompanyHierarchyError
 } from "../features/hierarchyCompanyDetailsSlice"
 import {fetchSidebarData,clearSidebarData,selectSidebarData,selectSidebarLoading,selectSidebarError} from "../features/fetchSidebarDataSlice"
+import { selectDeptDetails } from "../features/hierarchySlice"
+import type { HierarchyResponse } from "../features/hierarchyCompanyDetailsSlice"
 // ================= TYPED HOOKS =================
 export const useAppDispatch = () => useDispatch<AppDispatch>()
 export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector
@@ -118,14 +119,14 @@ export const useAppState = () => {
 
   // ---------- DECODE ----------
   const decode = {
-    decryptedData: useAppSelector(selectDecryptedData),
     isLoading: useAppSelector(selectIsLoading),
     error: useAppSelector(selectError),
     userData: useAppSelector(selectUserData)
   }
 
   // ---------- HIERARCHY COMPANY DETAILS ----------
-  const hierarchyCompanyData = useAppSelector(selectCompanyHierarchy)
+  const hierarchyCompanyData = useAppSelector(selectCompanyHierarchy) as HierarchyResponse | null
+  const deptDetails = useAppSelector(selectDeptDetails)
   const hierarchyCompany = {
     data: hierarchyCompanyData,
     loading: useAppSelector(selectCompanyHierarchyLoading),
@@ -177,20 +178,20 @@ export const useAppState = () => {
   }
 
   // ---------- AUTO FETCH (ONCE / CACHE AWARE) ----------
+  // The thunk's own condition guard prevents duplicate in-flight requests
+  // even when multiple components using useAppState mount simultaneously.
   useEffect(() => {
-    if (!hierarchyCompany.data && !hierarchyCompany.loading) {
-      dispatch(fetchHierarchy())
-    }
+    dispatch(fetchHierarchy())
   }, [dispatch])
 
-  // ---------- SOCKET: AUTO-CONNECT WITH JWT ----------------------------------------
-  // Watch decryptedData — when it contains a JWT token (after login or page reload)
-  // connect the socket with that token.  Disconnect when the token is cleared (logout).
+  // ---------- SOCKET: AUTO-CONNECT AFTER LOGIN ----------------------------------------
+  // Connect once the user data is populated (after login or session restore).
+  // The session cookie is sent automatically with the WebSocket handshake — no
+  // explicit token needed in socket.auth.
   useEffect(() => {
-    const jwtToken = decode.decryptedData?.token
-    if (jwtToken) {
+    const isLoggedIn = decode.userData && Object.keys(decode.userData).length > 0
+    if (isLoggedIn) {
       if (!socket.connected) {
-        socket.auth = { token: jwtToken }
         socket.connect()
       }
     } else {
@@ -198,7 +199,7 @@ export const useAppState = () => {
         socket.disconnect()
       }
     }
-  }, [decode.decryptedData])
+  }, [decode.userData])
 
   // ---------- REAL-TIME: PERMISSIONS UPDATED ----------
   // When an admin updates this user's permissions, refresh sidebar data immediately
@@ -225,6 +226,7 @@ export const useAppState = () => {
     companyDetails,
     divDetails,
     branchDetails,
+    deptDetails,
     filteredDivDetails,
     filteredBranchDetails,
     config,
@@ -267,7 +269,7 @@ export const useAppState = () => {
       dispatch(setSelectedMaster(master)),
 
     // ===== DECODE ACTIONS =====
-    decryptData: (payload: any) => dispatch(decryptData(payload)),
+    initUser: () => dispatch(initUser()),
     clearDecryptedData: () => dispatch(clearDecryptedData()),
     clearDecodeError: () => dispatch(clearDecodeErrorAction()),
     setUserData: (data: any) => dispatch(setUserData(data)),

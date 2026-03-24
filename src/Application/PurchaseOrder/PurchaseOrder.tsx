@@ -11,7 +11,8 @@ interface POItem {
   unit: string;
   unitPrice: number;
   taxRate: number;
-  totalPrice: number;
+  totalPrice?: number;
+  totalAmount?: number;
 }
 
 interface PurchaseOrder {
@@ -431,7 +432,7 @@ const POPage: React.FC = () => {
                           <td className="px-4 py-3 text-center">{item.quantity} {item.unit}</td>
                           <td className="px-4 py-3 text-right">{formatCurrency(item.unitPrice)}</td>
                           <td className="px-4 py-3 text-right">{item.taxRate}%</td>
-                          <td className="px-4 py-3 text-right font-medium">{formatCurrency(item.totalPrice)}</td>
+                          <td className="px-4 py-3 text-right font-medium">{formatCurrency(item.totalPrice||0)}</td>
                         </tr>
                       ))}
                     </tbody>

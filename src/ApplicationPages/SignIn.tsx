@@ -12,7 +12,6 @@ import { toast } from "sonner";
 import AuthLayout from "@/LayoutComponent/AuthLayout";
 
 const apiUrl = import.meta.env.VITE_API_URL as string;
-const cryptoSecret = import.meta.env.VITE_CRYPTO_SECRET as string;
 
 interface LoginForm {
   [key: string]: string;
@@ -25,7 +24,7 @@ export default function SignIn(): JSX.Element {
   const [isSigningIn, setIsSigningIn] = useState(false);
 
   const { postData } = usePost();
-  const { decryptData, clearDecodeError } = useAppState();
+  const { setUserData } = useAppState();
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -34,25 +33,15 @@ export default function SignIn(): JSX.Element {
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSigningIn(true);
-    clearDecodeError();
 
     try {
       const response = await postData(`${apiUrl}/api/secure/log_user`, { ...formData });
 
       if (response?.success) {
         toast.success(response?.message);
-        localStorage.setItem("userToken", JSON.stringify(response.data));
-
-        if (response?.data) {
-          const decryptResult = await decryptData({
-            encryptedData: response.data,
-            secretKey: cryptoSecret,
-          });
-
-          if (decryptResult.type !== "decode/decryptData/fulfilled") {
-            toast.error("Failed to decrypt user data: " + decryptResult.payload);
-          }
-        }
+        // User data comes directly from the server — no token in the browser.
+        // The session cookie (HttpOnly) is set automatically by the server.
+        setUserData(response.data);
       }
     } catch (error: any) {
       setFormData({});

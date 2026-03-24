@@ -14,6 +14,7 @@ import useFetch from "@/hooks/useFetchHook";
 import { apiGetAllKycDatas } from "@/Services/Api";
 import { KYCData, APIResponse } from "./types/KYCDataViewType";
 import { PageHeader, LoadingState, ErrorState, EmptyState } from "@/CustomComponent/PageComponents";
+import { getAuthFileUrl } from "@/Services/authUrl";
 
 type DocPreview = { url: string; name: string; docType?: string };
 
@@ -362,6 +363,7 @@ const KYCDataView = () => {
                                   const docUrl  = doc.document_path || doc.url || "";
                                   const docName = doc.document_name || doc.filename || `Document ${idx + 1}`;
                                   const docType = doc.document_type || doc.documentType || "File";
+                                  const authUrl = getAuthFileUrl(docUrl);
                                   return (
                                     <div key={idx} className="bg-card rounded-xl border border-border p-4 flex items-center gap-3">
                                       <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
@@ -377,12 +379,12 @@ const KYCDataView = () => {
                                             size="sm"
                                             variant="outline"
                                             className="h-7 text-xs gap-1.5"
-                                            onClick={() => setDocPreview({ url: docUrl, name: docName, docType })}
+                                            onClick={() => setDocPreview({ url: authUrl, name: docName, docType })}
                                           >
                                             <Eye className="h-3 w-3" /> View
                                           </Button>
                                           <a
-                                            href={docUrl}
+                                            href={authUrl}
                                             download={docName}
                                             target="_blank"
                                             rel="noopener noreferrer"
@@ -433,6 +435,8 @@ const KYCDataView = () => {
                 <a
                   href={docPreview.url}
                   download={docPreview.name}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
                 >
                   <Download className="h-3 w-3" /> Save
@@ -468,6 +472,7 @@ const KYCDataView = () => {
                   >
                     <ExternalLink className="h-4 w-4" /> Open in new tab
                   </a>
+
                 </div>
               )}
             </div>

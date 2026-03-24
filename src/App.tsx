@@ -5,7 +5,6 @@ import { Toaster } from "sonner";
 import { useAppState } from "./globalState/hooks/useAppState";
 import { useEffect } from "react";
 import Signup from "./ApplicationPages/SignupPage";
-import axios from "axios";
 import { ThemeProvider } from "next-themes";
 import { useSelector } from "react-redux";
 import {
@@ -15,19 +14,12 @@ import {
   THEME_COLORS,
 } from "./globalState/features/themeSlice";
 
-// Define types (adjust as needed)
 interface UserDataItem {
   ecno?: string;
   ename?: string;
   [key: string]: any;
 }
 
-interface StoredUserToken {
-  encrypted?: string;
-  [key: string]: any;
-}
-
-// Apply color + radius to <html> on mount and whenever they change
 function ThemeApplier() {
   const color  = useSelector(selectThemeColor);
   const radius = useSelector(selectThemeRadius);
@@ -56,34 +48,17 @@ function ThemeApplier() {
 }
 
 function App() {
-  const { userData, decryptData } = useAppState();
+  const { userData, initUser } = useAppState();
   const mode = useSelector(selectThemeMode);
 
-  const cryptoSecret = import.meta.env.VITE_CRYPTO_SECRET as string;
-
+  // On every page load, ask the server if the session is still valid.
+  // If yes, the user data is restored from the session-backed JWT.
+  // If no (401), the server returns an error and we stay on the login page.
   useEffect(() => {
-    const stored = localStorage.getItem("userToken");
-
-    if (stored) {
-      let storedUserToken: StoredUserToken | null = null;
-
-      try {
-        storedUserToken = JSON.parse(stored);
-      } catch (error) {
-        console.error("Invalid JSON from localStorage userToken");
-      }
-
-      if (
-        storedUserToken &&
-        (!userData || Object.keys(userData).length === 0)
-      ) {
-        decryptData({
-          encryptedData: storedUserToken,
-          secretKey: cryptoSecret,
-        });
-      }
+    if (!userData || Object.keys(userData).length === 0) {
+      initUser();
     }
-  }, [cryptoSecret, decryptData, userData]);
+  }, []);
 
   const router = createBrowserRouter([
     {
@@ -100,6 +75,20 @@ function App() {
           <SignIn />
         ),
     },
+    //  {
+    //   path: "/",
+    //   element:
+    //     userData && Object.keys(userData).length > 0 ? (
+    //       (userData as UserDataItem[]) 
+    //       ? (
+    //         <Dashboard />
+    //       ) : (
+    //         <SignIn />
+    //       )
+    //     ) : (
+    //       <SignIn />
+    //     ),
+    // },
     {
       path: "/signup",
       element: <Signup />,

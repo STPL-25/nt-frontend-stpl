@@ -171,8 +171,8 @@ const PRApprovalScreen: React.FC = () => {
     setSelectedQuotation(null);
   };
 
-  const handleAction = (action: 'approve' | 'reject') => {
-    setActionType(action);
+  const handleAction = (action: string) => {
+    setActionType(action as 'approve' | 'reject');
     setShowApprovalDialog(true);
   };
 
@@ -267,7 +267,7 @@ const PRApprovalScreen: React.FC = () => {
       handleAction={handleAction}
       showApprovalDialog={showApprovalDialog}
       setShowApprovalDialog={setShowApprovalDialog}
-        // action={action}
+      action={actionType}
       comments={comments}
       setComments={setComments}
       handleSubmit={handleSubmit}

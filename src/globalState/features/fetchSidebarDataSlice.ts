@@ -54,15 +54,20 @@ export const fetchSidebarData = createAsyncThunk<
   async (ecno, { rejectWithValue }) => {
     try {
       const response = await axios.get<ApiResponse<SidebarResponse>>(apiFetchSidebarData + ecno);
-
-      console.log(response.data.data,ecno);
       return response?.data?.data;
-    } catch (err) { 
+    } catch (err) {
       const error = err as AxiosError;
       return rejectWithValue(
         (error.response?.data as string) || "Failed to fetch sidebar data"
       );
     }
+  },
+  {
+    // Skip if a request is already in-flight (allow re-fetch after data loads, e.g. socket-triggered refresh)
+    condition: (_, { getState }) => {
+      const state = getState() as any;
+      return !state.sidebar.loading;
+    },
   }
 );
 

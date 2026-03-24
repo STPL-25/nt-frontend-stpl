@@ -54,7 +54,10 @@ interface ApiResponse<T> {
    ASYNC THUNK
 ========================= */
 export const fetchHierarchy = createAsyncThunk<
-  HierarchyResponse,  void,  { rejectValue: string }>( "hierarchy/fetchHierarchy",  async (_, { rejectWithValue }) => {
+  HierarchyResponse, void, { rejectValue: string }
+>(
+  "hierarchy/fetchHierarchy",
+  async (_, { rejectWithValue }) => {
     try {
       const response = await axios.get<ApiResponse<HierarchyResponse>>(apiGetHierarchyDetails);
       return response?.data?.data;
@@ -64,6 +67,14 @@ export const fetchHierarchy = createAsyncThunk<
         (error.response?.data as string) || "Failed to fetch hierarchy"
       );
     }
+  },
+  {
+    // Prevent duplicate dispatches: skip if data already loaded or request in-flight
+    condition: (_, { getState }) => {
+      const state = getState() as any;
+      const { data, loading } = state.hierarchyCompanyDetails;
+      return !data && !loading;
+    },
   }
 );
 /* =========================

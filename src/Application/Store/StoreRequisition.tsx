@@ -284,11 +284,7 @@ const StoreRequisitionDashboard: React.FC = () => {
     );
 
     if (invalidItems.length > 0) {
-      toast({
-        title: 'Invalid Quantities',
-        description: 'Please check requested quantities.',
-        variant: 'destructive',
-      });
+      toast.error('Invalid Quantities', { description: 'Please check requested quantities.' });
       return;
     }
 

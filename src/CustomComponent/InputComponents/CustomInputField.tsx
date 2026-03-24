@@ -22,7 +22,7 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, Command
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
-type Option = { label: string; value: string };
+type Option = { label: string; value: string | number };
 
 export interface CustomInputFieldProps {
   field: string;
@@ -293,7 +293,7 @@ export function CustomInputField({
     >
       {optionsArray.map((option) => (
         <div key={option.value} className="flex items-center space-x-2">
-          <RadioGroupItem value={option.value} id={`${field}-${option.value}`} />
+          <RadioGroupItem value={String(option.value)} id={`${field}-${option.value}`} />
           <Label
             htmlFor={`${field}-${option.value}`}
             className="text-sm font-normal cursor-pointer"

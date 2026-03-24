@@ -61,9 +61,9 @@ const Sidebar: React.FC = () => {
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [isResizing, setIsResizing] = useState(false);
 
-  // Fetch sidebar menu when ecno becomes available
+  // Fetch sidebar menu when ecno becomes available (skip if already loaded)
   useEffect(() => {
-    if (ecno) fetchSidebarData(ecno);
+    if (ecno && !sidebarData && !loading) fetchSidebarData(ecno);
   }, [ecno]);
 
   // Build menu items when sidebar data changes

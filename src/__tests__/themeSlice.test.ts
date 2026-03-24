@@ -11,10 +11,9 @@ import themeReducer, {
 } from "@/globalState/features/themeSlice";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-function buildStore(preloaded?: object) {
+function buildStore() {
   return configureStore({
     reducer: { theme: themeReducer },
-    preloadedState: preloaded as any,
   });
 }
 

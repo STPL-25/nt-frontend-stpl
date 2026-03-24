@@ -366,11 +366,11 @@ export default function MultiSupplierRFQSystem() {
               "under_approval"
     }))
 
-    toast({
-      title: approved ? "Approved" : "Rejected",
-      description: `Approval ${approved ? "granted" : "rejected"} at level ${level}`,
-      variant: approved ? "default" : "destructive"
-    })
+    if (approved) {
+      toast.success("Approved", { description: `Approval granted at level ${level}` })
+    } else {
+      toast.error("Rejected", { description: `Approval rejected at level ${level}` })
+    }
   }
 
   // Calculate lowest quote
