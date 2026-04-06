@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense, lazy } from "react";
 import DynamicTable from "@/LayoutComponent/DynamicTable";
 import ViewMode from "@/CustomComponent/ViewModes/ViewMode";
 import CategoryCard from "@/CustomComponent/MasterComponents/CatagoryCard";
@@ -66,7 +66,6 @@ const MasterScreen: React.FC = () => {
       />
     );
   }
-
   return (
     <div className="min-h-screen bg-muted/20">
       <DynamicTable
@@ -183,6 +182,8 @@ const MasterItemsGrid: React.FC = () => {
       </div>
     </div>
   );
+
+ 
 
   if (currentScreen === "master" && selectedMaster) {
     return <MasterScreen />;

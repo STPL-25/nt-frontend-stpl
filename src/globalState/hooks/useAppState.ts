@@ -178,11 +178,15 @@ export const useAppState = () => {
   }
 
   // ---------- AUTO FETCH (ONCE / CACHE AWARE) ----------
-  // The thunk's own condition guard prevents duplicate in-flight requests
-  // even when multiple components using useAppState mount simultaneously.
+  // Only fetch hierarchy when the user is logged in — this is a protected
+  // route and must NOT be called before authentication or it triggers a 401
+  // which fires the session-expired modal incorrectly.
+  const isLoggedIn = decode.userData && Object.keys(decode.userData).length > 0
   useEffect(() => {
-    dispatch(fetchHierarchy())
-  }, [dispatch])
+    if (isLoggedIn) {
+      dispatch(fetchHierarchy())
+    }
+  }, [isLoggedIn, dispatch])
 
   // ---------- SOCKET: AUTO-CONNECT AFTER LOGIN ----------------------------------------
   // Connect once the user data is populated (after login or session restore).

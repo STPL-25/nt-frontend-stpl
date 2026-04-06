@@ -1,163 +1,353 @@
-
-
-
-import React, { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, ArrowUp, ArrowDown, Save, CheckCircle } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  Save,
+  CheckCircle,
+} from "lucide-react";
 import { useApprovalFlowHierarchy } from "@/FieldDatas/ApprovalWorkFlow";
 import { toast } from "sonner";
 import usePost from "@/hooks/usePostHook";
-import { createWorkFlowApproval } from "@/Services/Api";
-import { Separator } from "@/components/ui/separator";
-import { WorkflowFormData, WorkflowType, AuthBranch, WorkflowStage, Approver, Condition } from "./types/ApprovalWorkflowManagerTypes";
+import { apiSaveFullWorkflow, apiGetEmployee, apiGetSignEmployee } from "@/Services/Api";
 import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
-// AuthBranch Component - Dynamic rendering
-const AuthBranchItem: React.FC<{
-  branch: AuthBranch;
-  branchIdx: number;
-  updateAuthBranch: (index: number, field: keyof AuthBranch, value: any) => void;
-  removeAuthBranch: (index: number) => void;
-}> = ({ branch, branchIdx, updateAuthBranch, removeAuthBranch }) => {
-  const { authBranchFields } = useApprovalFlowHierarchy(
-    branch.com_sno ? [Number(branch.com_sno)] : [],
-    branch.div_sno ? [Number(branch.div_sno)] : [],
-    branch.brn_sno ? [Number(branch.brn_sno)] : []
+import {
+  WorkflowFormData,
+  WorkflowType,
+  StageOrderItem,
+} from "./types/ApprovalWorkflowManagerTypes";
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const emptyStage = (): StageOrderItem => ({
+  approver_ecno: "",
+  stage: "",
+  required_approvals: "1",
+  is_mandatory: "Y",
+  escalation_hours: "24",
+  approver_condition: "",
+  next_approver_ecno: "",
+  can_forward: "Y",
+  can_backward: "N",
+  can_edit_data: "N",
+});
+
+const emptyType = (): WorkflowType => ({
+  workflow_types_name: "",
+  com_sno: "",
+  div_sno: "",
+  brn_sno: "",
+  dept_sno: "",
+  is_active: true,
+  stages: [emptyStage()],
+});
+
+const YN_OPTIONS = [
+  { label: "Yes", value: "Y" },
+  { label: "No",  value: "N" },
+];
+
+// ─── Workflow Type Card (cascade: company → division → branch + static dept) ─
+
+const WorkflowTypeCard: React.FC<{
+  type: WorkflowType;
+  typeIndex: number;
+  employeeOptions: { label: string; value: string }[];
+  onChange: (i: number, field: keyof WorkflowType, value: any) => void;
+  onStageChange: (typeIdx: number, stageIdx: number, field: keyof StageOrderItem, value: string) => void;
+  onAddStage: (typeIdx: number) => void;
+  onRemoveStage: (typeIdx: number, stageIdx: number) => void;
+  onMoveStage: (typeIdx: number, stageIdx: number, dir: "up" | "down") => void;
+  onRemove: (i: number) => void;
+  showStages: boolean;
+}> = React.memo(({ type, typeIndex, employeeOptions, onChange, onStageChange, onAddStage, onRemoveStage, onMoveStage, onRemove, showStages,}) => {
+  const { workflowTypeFields } = useApprovalFlowHierarchy(
+    type.com_sno ? [Number(type.com_sno)] : [],
+    type.div_sno ? [Number(type.div_sno)] : [],
+    type.brn_sno ? [Number(type.brn_sno)] : []
   );
 
-  return (
-    <Card className="mb-2 bg-muted/50">
-      <CardContent className="pt-4">
-        <div className="grid grid-cols-4 gap-3">
-          {authBranchFields.map((fieldConfig) => (
-            <CustomInputField
-              key={fieldConfig.field}
-              {...fieldConfig}
-              value={branch[fieldConfig.field as keyof AuthBranch]}
-              onChange={(value) => updateAuthBranch(branchIdx, fieldConfig.field as keyof AuthBranch, value)}
-            />
-          ))}
-        </div>
-
-        <Button
-          onClick={() => removeAuthBranch(branchIdx)}
-          variant="ghost"
-          size="sm"
-          className="mt-2 text-red-500 hover:text-red-600"
-        >
-          <Trash2 className="w-3 h-3 mr-1" />
-          Remove
-        </Button>
-      </CardContent>
-    </Card>
-  );
-};
-
-// Approver Component - Dynamic rendering
-const ApproverItem: React.FC<{
-  approver: Approver;
-  index: number;
-  stages: WorkflowStage[];
-  updateApprover: (index: number, field: keyof Approver, value: any) => void;
-  removeApprover: (index: number) => void;
-}> = ({ approver, index, stages, updateApprover, removeApprover }) => {
-  const { approverFields } = useApprovalFlowHierarchy(
-    approver.com_sno ? [Number(approver.com_sno)] : [],
-    approver.div_sno ? [Number(approver.div_sno)] : [],
-    approver.brn_sno ? [Number(approver.brn_sno)] : []
-  );
-
-  // Add stage options dynamically
-  const stageOptions = stages.map((stage, idx) => ({
-    label: stage.stage_name || `Stage ${idx + 1}`,
-    value: idx.toString(),
-  }));
-
-  // Update stage_id field with dynamic options
-  const fieldsWithStages = approverFields.map((field) => {
-    if (field.field === "stage_id") {
-      return { ...field, options: stageOptions };
+  const handleTypeField = (field: string, v: string) => {
+    // Reset downstream cascade values when parent changes
+    if (field === "com_sno") {
+      onChange(typeIndex, "com_sno", v);
+      onChange(typeIndex, "div_sno", "");
+      onChange(typeIndex, "brn_sno", "");
+    } else if (field === "div_sno") {
+      onChange(typeIndex, "div_sno", v);
+      onChange(typeIndex, "brn_sno", "");
+    } else {
+      onChange(typeIndex, field as keyof WorkflowType, v);
     }
-    return field;
-  });
+  };
 
   return (
     <Card className="border-2">
-      <CardContent className="pt-6">
-        <div className="flex items-start gap-4">
-          <Badge variant="outline">#{index + 1}</Badge>
-
-          <div className="flex-1 space-y-4">
-            {/* Stage Selection - First 3 fields */}
-            <div className="grid grid-cols-3 gap-4">
-              {fieldsWithStages.slice(0, 3).map((fieldConfig) => (
-                <CustomInputField
-                  key={fieldConfig.field}
-                  {...fieldConfig}
-                  value={
-                    fieldConfig.field === "stage_id"
-                      ? approver.stage_id.toString()
-                      : approver[fieldConfig.field as keyof Approver]
-                  }
-                  onChange={(value) => {
-                    const actualValue =
-                      fieldConfig.field === "stage_id" ? parseInt(value) : value;
-                    updateApprover(index, fieldConfig.field as keyof Approver, actualValue);
-                  }}
-                />
-              ))}
-            </div>
-
-            {/* Hierarchy Selection - Next 4 fields */}
-            <div className="grid grid-cols-4 gap-4">
-              {fieldsWithStages.slice(3, 7).map((fieldConfig) => (
-                <CustomInputField
-                  key={fieldConfig.field}
-                  {...fieldConfig}
-                  value={approver[fieldConfig.field as keyof Approver]}
-                  onChange={(value) =>
-                    updateApprover(index, fieldConfig.field as keyof Approver, value)
-                  }
-                />
-              ))}
-            </div>
-
-            {/* Active Switch - Last field */}
-            <div className="flex items-center space-x-2">
-              {fieldsWithStages.slice(7).map((fieldConfig) => (
-                <CustomInputField
-                  key={fieldConfig.field}
-                  {...fieldConfig}
-                  value={approver[fieldConfig.field as keyof Approver]}
-                  onChange={(value) =>
-                    updateApprover(index, fieldConfig.field as keyof Approver, value)
-                  }
-                />
-              ))}
-            </div>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Badge variant="secondary">Type {typeIndex + 1}</Badge>
+            <span className="font-medium text-sm">
+              {type.workflow_types_name || "Unnamed Type"}
+            </span>
+            {type.brn_sno && (
+              <Badge variant="outline" className="text-xs">
+                Brn: {type.brn_sno}
+              </Badge>
+            )}
+            {type.dept_sno && (
+              <Badge variant="outline" className="text-xs">
+                Dept: {type.dept_sno}
+              </Badge>
+            )}
           </div>
-
           <Button
-            onClick={() => removeApprover(index)}
+            onClick={() => onRemove(typeIndex)}
             variant="ghost"
             size="icon"
-            className="text-red-500 hover:text-red-600"
+            className="text-red-500 hover:text-red-600 h-8 w-8"
           >
             <Trash2 className="w-4 h-4" />
           </Button>
         </div>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {/* Type Name */}
+        <CustomInputField
+          {...workflowTypeFields[0]}
+          value={type.workflow_types_name}
+          onChange={(v) => onChange(typeIndex, "workflow_types_name", v)}
+        />
+
+        {/* Branch/Dept cascade */}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {workflowTypeFields.slice(1, 5).map((fc) => (
+            <CustomInputField
+              key={fc.field}
+              {...fc}
+              value={type[fc.field as keyof WorkflowType] as string}
+              onChange={(v) => handleTypeField(fc.field, v)}
+            />
+          ))}
+        </div>
+
+        {/* is_active */}
+        <CustomInputField
+          {...workflowTypeFields[5]}
+          value={type.is_active}
+          onChange={(v) => onChange(typeIndex, "is_active", v)}
+        />
+
+        {/* ── Stage Configuration (shown in step 3) ── */}
+        {showStages && (
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Stages ({type.stages.length})
+              </h4>
+              <Button
+                onClick={() => onAddStage(typeIndex)}
+                size="sm"
+                variant="outline"
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                Add Stage
+              </Button>
+            </div>
+
+            {type.stages.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No stages yet. Click "Add Stage" to begin.
+              </p>
+            )}
+
+            {type.stages.map((stage, stageIdx) => (
+              <Card key={stageIdx} className="border bg-muted/20">
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-start gap-3">
+                    {/* Reorder buttons */}
+                    <div className="flex flex-col gap-1 pt-1">
+                      <Button
+                        onClick={() => onMoveStage(typeIndex, stageIdx, "up")}
+                        disabled={stageIdx === 0}
+                        variant="outline"
+                        size="icon"
+                        className="h-6 w-6"
+                      >
+                        <ArrowUp className="w-3 h-3" />
+                      </Button>
+                      <Badge variant="secondary" className="justify-center text-xs px-1">
+                        {stageIdx + 1}
+                      </Badge>
+                      <Button
+                        onClick={() => onMoveStage(typeIndex, stageIdx, "down")}
+                        disabled={stageIdx === type.stages.length - 1}
+                        variant="outline"
+                        size="icon"
+                        className="h-6 w-6"
+                      >
+                        <ArrowDown className="w-3 h-3" />
+                      </Button>
+                    </div>
+
+                    <div className="flex-1 space-y-3">
+                      {/* Row 1: Stage name + Approver */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <CustomInputField
+                          field="stage"
+                          label="Stage Name"
+                          type="text"
+                          placeholder="e.g., Manager Review"
+                          require={true}
+                          input={true}
+                          view={true}
+                          value={stage.stage}
+                          onChange={(v) => onStageChange(typeIndex, stageIdx, "stage", v)}
+                        />
+                        <CustomInputField
+                          field="approver_ecno"
+                          label="Approver"
+                          type="select"
+                          placeholder="Select approver"
+                          require={true}
+                          input={true}
+                          view={true}
+                          options={employeeOptions}
+                          value={stage.approver_ecno}
+                          onChange={(v) => onStageChange(typeIndex, stageIdx, "approver_ecno", v)}
+                        />
+                      </div>
+
+                      {/* Row 2: Numeric fields */}
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        <CustomInputField
+                          field="required_approvals"
+                          label="Required Approvals"
+                          type="number"
+                          min="1"
+                          input={true}
+                          view={true}
+                          value={stage.required_approvals}
+                          onChange={(v) => onStageChange(typeIndex, stageIdx, "required_approvals", v)}
+                        />
+                        <CustomInputField
+                          field="is_mandatory"
+                          label="Is Mandatory"
+                          type="select"
+                          input={true}
+                          view={true}
+                          options={YN_OPTIONS}
+                          value={stage.is_mandatory}
+                          onChange={(v) => onStageChange(typeIndex, stageIdx, "is_mandatory", v)}
+                        />
+                        <CustomInputField
+                          field="escalation_hours"
+                          label="Escalation Hours"
+                          type="number"
+                          min="1"
+                          input={true}
+                          view={true}
+                          value={stage.escalation_hours}
+                          onChange={(v) => onStageChange(typeIndex, stageIdx, "escalation_hours", v)}
+                        />
+                        <CustomInputField
+                          field="next_approver_ecno"
+                          label="Next Approver"
+                          type="select"
+                          placeholder="Select (optional)"
+                          input={true}
+                          view={true}
+                          options={[{ label: "None", value: "0" }, ...employeeOptions]}
+                          value={stage.next_approver_ecno}
+                          onChange={(v) => onStageChange(typeIndex, stageIdx, "next_approver_ecno", v)}
+                        />
+                      </div>
+
+                      {/* Row 3: Condition + flags */}
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        <div className="sm:col-span-1">
+                          <CustomInputField
+                            field="approver_condition"
+                            label="Approver Condition"
+                            type="text"
+                            placeholder="e.g., amount > 50000"
+                            input={true}
+                            view={true}
+                            value={stage.approver_condition}
+                            onChange={(v) => onStageChange(typeIndex, stageIdx, "approver_condition", v)}
+                          />
+                        </div>
+                        <CustomInputField
+                          field="can_forward"
+                          label="Can Forward"
+                          type="select"
+                          input={true}
+                          view={true}
+                          options={YN_OPTIONS}
+                          value={stage.can_forward}
+                          onChange={(v) => onStageChange(typeIndex, stageIdx, "can_forward", v)}
+                        />
+                        <CustomInputField
+                          field="can_backward"
+                          label="Can Backward"
+                          type="select"
+                          input={true}
+                          view={true}
+                          options={YN_OPTIONS}
+                          value={stage.can_backward}
+                          onChange={(v) => onStageChange(typeIndex, stageIdx, "can_backward", v)}
+                        />
+                        <CustomInputField
+                          field="can_edit_data"
+                          label="Can Edit Data"
+                          type="select"
+                          input={true}
+                          view={true}
+                          options={YN_OPTIONS}
+                          value={stage.can_edit_data}
+                          onChange={(v) => onStageChange(typeIndex, stageIdx, "can_edit_data", v)}
+                        />
+                      </div>
+                    </div>
+
+                    <Button
+                      onClick={() => onRemoveStage(typeIndex, stageIdx)}
+                      variant="ghost"
+                      size="icon"
+                      className="text-red-500 hover:text-red-600 h-8 w-8"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
-};
+});
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 const ApprovalFlowDynamic: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(false);
-  const [workflowId, setWorkflowId] = useState<number | null>(null);
+  const [savedWorkflowId, setSavedWorkflowId] = useState<number | null>(null);
+  const [employeeOptions, setEmployeeOptions] = useState<{ label: string; value: string }[]>([]);
 
-  // Form States
   const [workflow, setWorkflow] = useState<WorkflowFormData>({
     workflow_name: "",
     workflow_code: "",
@@ -166,352 +356,233 @@ const ApprovalFlowDynamic: React.FC = () => {
     is_active: true,
   });
 
-  const [workflowTypes, setWorkflowTypes] = useState<WorkflowType[]>([
-    {
-      workflow_types_name: "",
-      types_branches: "",
-      is_active: true,
-    },
-  ]);
-
-  const [authBranches, setAuthBranches] = useState<AuthBranch[]>([]);
-  const [stages, setStages] = useState<WorkflowStage[]>([
-    {
-      stage_order: 1,
-      stage_name: "",
-      stage_type: "approval",
-      required_approvals: 1,
-      is_mandatory: true,
-      can_skip: false,
-      escalation_hours: 24,
-      is_active: true,
-    },
-  ]);
-
-  const [approvers, setApprovers] = useState<Approver[]>([]);
-  const [conditions, setConditions] = useState<Condition[]>([]);
+  const [workflowTypes, setWorkflowTypes] = useState<WorkflowType[]>([emptyType()]);
 
   const { postData } = usePost<any>();
-  const { workflowFields, workflowTypeFields, stageFields, conditionFields } = useApprovalFlowHierarchy();
+  const { workflowFields, entityTypeCount } = useApprovalFlowHierarchy();
 
-  // ============ WORKFLOW HANDLERS ============
-  const handleWorkflowChange = (field: keyof WorkflowFormData, value: any) => {
-    setWorkflow((prev) => ({ ...prev, [field]: value }));
-  };
-
-  // ============ WORKFLOW TYPES HANDLERS ============
-  const addWorkflowType = () => {
-    setWorkflowTypes((prev) => [
-      ...prev,
-      {
-        workflow_types_name: "",
-        types_branches: "",
-        is_active: true,
-      },
-    ]);
-  };
-
-  const updateWorkflowType = (index: number, field: keyof WorkflowType, value: any) => {
-    setWorkflowTypes((prev) =>
-      prev.map((type, i) => (i === index ? { ...type, [field]: value } : type))
-    );
-  };
-
-  const removeWorkflowType = (index: number) => {
-    setWorkflowTypes((prev) => prev.filter((_, i) => i !== index));
-    setAuthBranches((prev) => prev.filter((branch) => branch.workflow_types_id !== index));
-  };
-
-  // ============ AUTH BRANCHES HANDLERS ============
-  const addAuthBranch = (workflowTypeIndex: number) => {
-    setAuthBranches((prev) => [
-      ...prev,
-      {
-        workflow_types_id: workflowTypeIndex,
-        com_sno: "",
-        div_sno: "",
-        brn_sno: "",
-        dept_sno: "",
-      },
-    ]);
-  };
-
-  const updateAuthBranch = (index: number, field: keyof AuthBranch, value: any) => {
-    setAuthBranches((prev) =>
-      prev.map((branch, i) => {
-        if (i === index) {
-          if (field === "com_sno") {
-            return { ...branch, com_sno: value, div_sno: "", brn_sno: "", dept_sno: "" };
-          }
-          if (field === "div_sno") {
-            return { ...branch, div_sno: value, brn_sno: "", dept_sno: "" };
-          }
-          if (field === "brn_sno") {
-            return { ...branch, brn_sno: value, dept_sno: "" };
-          }
-          return { ...branch, [field]: value };
-        }
-        return branch;
+  // Fetch employee list once on mount
+  useEffect(() => {
+    postData(apiGetSignEmployee, {})
+      .then((res: any) => {
+        const list: any[] = Array.isArray(res?.data) ? res.data : [];
+        setEmployeeOptions(
+          list.map((e) => ({ label: `${e.ename} (${e.ecno})`, value: e.ecno }))
+        );
       })
-    );
-  };
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const removeAuthBranch = (index: number) => {
-    setAuthBranches((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  // ============ STAGE HANDLERS ============
-  const addStage = () => {
-    setStages((prev) => [
-      ...prev,
-      {
-        stage_order: prev.length + 1,
-        stage_name: "",
-        stage_type: "approval",
-        required_approvals: 1,
-        is_mandatory: true,
-        can_skip: false,
-        escalation_hours: 24,
-        is_active: true,
-      },
-    ]);
-  };
-
-  const updateStage = (index: number, field: keyof WorkflowStage, value: any) => {
-    setStages((prev) =>
-      prev.map((stage, i) => (i === index ? { ...stage, [field]: value } : stage))
-    );
-  };
-
-  const removeStage = (index: number) => {
-    setStages((prev) =>
-      prev.filter((_, i) => i !== index).map((stage, idx) => ({ ...stage, stage_order: idx + 1 }))
-    );
-  };
-
-  const moveStage = (index: number, direction: "up" | "down") => {
-    if (
-      (direction === "up" && index === 0) ||
-      (direction === "down" && index === stages.length - 1)
-    )
-      return;
-
-    const newStages = [...stages];
-    const targetIndex = direction === "up" ? index - 1 : index + 1;
-    [newStages[index], newStages[targetIndex]] = [newStages[targetIndex], newStages[index]];
-
-    setStages(newStages.map((stage, idx) => ({ ...stage, stage_order: idx + 1 })));
-  };
-
-  // ============ APPROVER HANDLERS ============
-  const addApprover = () => {
-    setApprovers((prev) => [
-      ...prev,
-      {
-        primary_approver_id: "",
-        secondary_approver_id: "0",
-        stage_id: 0,
-        com_sno: "",
-        div_sno: "",
-        brn_sno: "",
-        dept_sno: "",
-        is_active: true,
-      },
-    ]);
-  };
-
-  const updateApprover = (index: number, field: keyof Approver, value: any) => {
-    setApprovers((prev) =>
-      prev.map((approver, i) => {
-        if (i === index) {
-          if (field === "com_sno") {
-            return { ...approver, com_sno: value, div_sno: "", brn_sno: "", dept_sno: "" };
+  // ── Workflow master handlers ──
+  const handleWorkflowChange = useCallback(
+    (field: keyof WorkflowFormData, value: any) => {
+      setWorkflow((prev) => {
+        const updated: WorkflowFormData = { ...prev, [field]: value };
+        if (field === "entity_type" && value) {
+          const count = entityTypeCount[value] || 0;
+          updated.workflow_code = `WF_${value}_${String(count + 1).padStart(3, "0")}`;
+          if (!prev.workflow_name) {
+            updated.workflow_name = `${value} Approval Workflow`;
           }
-          if (field === "div_sno") {
-            return { ...approver, div_sno: value, brn_sno: "", dept_sno: "" };
-          }
-          if (field === "brn_sno") {
-            return { ...approver, brn_sno: value, dept_sno: "" };
-          }
-          return { ...approver, [field]: value };
         }
-        return approver;
-      })
-    );
-  };
+        return updated;
+      });
+    },
+    [entityTypeCount]
+  );
 
-  const removeApprover = (index: number) => {
-    setApprovers((prev) => prev.filter((_, i) => i !== index));
-  };
+  // ── WorkflowType handlers (all stable — functional setters only) ──
+  const addWorkflowType = useCallback(
+    () => setWorkflowTypes((prev) => [...prev, emptyType()]),
+    []
+  );
 
-  // ============ CONDITION HANDLERS ============
-  const addCondition = () => {
-    setConditions((prev) => [
-      ...prev,
-      {
-        condition_name: "",
-        condition_type: "amount",
-        operator_type: ">",
-        condition_value: "",
-        priority_order: prev.length + 1,
-        stage_id: 0,
-        target_stage_id: 0,
-        is_active: true,
-      },
-    ]);
-  };
+  const updateWorkflowType = useCallback(
+    (index: number, field: keyof WorkflowType, value: any) =>
+      setWorkflowTypes((prev) =>
+        prev.map((t, i) => (i === index ? { ...t, [field]: value } : t))
+      ),
+    []
+  );
 
-  const updateCondition = (index: number, field: keyof Condition, value: any) => {
-    setConditions((prev) =>
-      prev.map((condition, i) => (i === index ? { ...condition, [field]: value } : condition))
-    );
-  };
+  const removeWorkflowType = useCallback(
+    (index: number) =>
+      setWorkflowTypes((prev) => prev.filter((_, i) => i !== index)),
+    []
+  );
 
-  const removeCondition = (index: number) => {
-    setConditions((prev) =>
-      prev.filter((_, i) => i !== index).map((cond, idx) => ({ ...cond, priority_order: idx + 1 }))
-    );
-  };
+  // ── Stage handlers (per workflow type, all stable) ──
+  const addStage = useCallback(
+    (typeIdx: number) =>
+      setWorkflowTypes((prev) =>
+        prev.map((t, i) =>
+          i === typeIdx ? { ...t, stages: [...t.stages, emptyStage()] } : t
+        )
+      ),
+    []
+  );
 
-  // ============ VALIDATION ============
-  const validateStep = (step: number): boolean => {
-    switch (step) {
-      case 1:
+  const updateStage = useCallback(
+    (typeIdx: number, stageIdx: number, field: keyof StageOrderItem, value: string) =>
+      setWorkflowTypes((prev) =>
+        prev.map((t, i) =>
+          i === typeIdx
+            ? {
+                ...t,
+                stages: t.stages.map((s, si) =>
+                  si === stageIdx ? { ...s, [field]: value } : s
+                ),
+              }
+            : t
+        )
+      ),
+    []
+  );
+
+  const removeStage = useCallback(
+    (typeIdx: number, stageIdx: number) =>
+      setWorkflowTypes((prev) =>
+        prev.map((t, i) =>
+          i === typeIdx
+            ? { ...t, stages: t.stages.filter((_, si) => si !== stageIdx) }
+            : t
+        )
+      ),
+    []
+  );
+
+  const moveStage = useCallback(
+    (typeIdx: number, stageIdx: number, dir: "up" | "down") =>
+      setWorkflowTypes((prev) =>
+        prev.map((t, i) => {
+          if (i !== typeIdx) return t;
+          const arr = [...t.stages];
+          const target = dir === "up" ? stageIdx - 1 : stageIdx + 1;
+          if (target < 0 || target >= arr.length) return t;
+          [arr[stageIdx], arr[target]] = [arr[target], arr[stageIdx]];
+          return { ...t, stages: arr };
+        })
+      ),
+    []
+  );
+
+  // ── Validation ──
+  const validateStep = useCallback(
+    (step: number): boolean => {
+      if (step === 1) {
         if (!workflow.workflow_name || !workflow.workflow_code || !workflow.entity_type) {
           toast.error("Please fill all required workflow fields");
           return false;
         }
-        return true;
-
-      case 2:
-        if (workflowTypes.some((type) => !type.workflow_types_name)) {
-          toast.error("Please fill all workflow type names");
+      }
+      if (step === 2) {
+        if (workflowTypes.some((t) => !t.workflow_types_name || !t.brn_sno || !t.dept_sno)) {
+          toast.error("Each workflow type needs a name, branch, and department");
           return false;
         }
-        return true;
-
-      case 3:
-        if (stages.length === 0) {
-          toast.error("At least one stage is required");
-          return false;
+      }
+      if (step === 3) {
+        for (const t of workflowTypes) {
+          if (t.stages.length === 0) {
+            toast.error(`Workflow type "${t.workflow_types_name}" has no stages`);
+            return false;
+          }
+          if (t.stages.some((s) => !s.stage || !s.approver_ecno)) {
+            toast.error("Each stage must have a name and an approver");
+            return false;
+          }
         }
-        if (stages.some((stage) => !stage.stage_name)) {
-          toast.error("Please fill all stage names");
-          return false;
-        }
-        return true;
+      }
+      return true;
+    },
+    [workflow, workflowTypes]
+  );
 
-      case 4:
-        if (approvers.length === 0) {
-          toast.warning("No approvers added. Consider adding at least one.");
-        }
-        return true;
+  const handleNext = useCallback(
+    () => { if (validateStep(currentStep)) setCurrentStep((p) => Math.min(p + 1, 3)); },
+    [validateStep, currentStep]
+  );
+  const handlePrevious = useCallback(
+    () => setCurrentStep((p) => Math.max(p - 1, 1)),
+    []
+  );
 
-      case 5:
-        return true;
-
-      default:
-        return true;
-    }
-  };
-
-  const handleNext = () => {
-    if (validateStep(currentStep)) {
-      setCurrentStep((prev) => Math.min(prev + 1, 5));
-    }
-  };
-
-  const handlePrevious = () => {
-    setCurrentStep((prev) => Math.max(prev - 1, 1));
-  };
-
-  // ============ SUBMIT HANDLER ============
-  const handleSubmit = async () => {
-    if (!validateStep(5)) return;
-
+  // ── Submit ──
+  const handleSubmit = useCallback(async () => {
+    if (!validateStep(3)) return;
     setLoading(true);
 
     const payload = {
-      workflow,
-      workflowTypes,
-      authBranches,
-      stages,
-      approvers,
-      conditions,
+      workflow_name: workflow.workflow_name,
+      workflow_code: workflow.workflow_code,
+      entity_type:   workflow.entity_type,
+      description:   workflow.description,
+      is_active:     workflow.is_active ? "Y" : "N",
+      workflow_types: workflowTypes.map((t) => ({
+        workflow_types_name: t.workflow_types_name,
+        brn_sno:             t.brn_sno,
+        dept_sno:            t.dept_sno,
+        is_active:           t.is_active ? "Y" : "N",
+        stage_order_json:    JSON.stringify(t.stages),
+      })),
     };
 
     try {
-      const data = await postData(createWorkFlowApproval, payload);
-      console.log("Workflow created:", data);
-      setWorkflowId(data?.workflow_id || Math.floor(Math.random() * 1000) + 1);
+      const data = await postData(apiSaveFullWorkflow, payload);
+      setSavedWorkflowId(data?.data?.[0]?.workflow_id ?? null);
       toast.success("Workflow saved successfully!");
-    } catch (error) {
+    } catch {
       toast.error("Failed to save workflow");
-      console.error(error);
     } finally {
       setLoading(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [validateStep, workflow, workflowTypes]);
 
-  // Add stage options dynamically to condition fields
-  const stageOptions = stages.map((stage, idx) => ({
-    label: stage.stage_name || `Stage ${idx + 1}`,
-    value: idx.toString(),
-  }));
-
-  const conditionFieldsWithStages = conditionFields.map((field) => {
-    if (field.field === "stage_id" || field.field === "target_stage_id") {
-      return { ...field, options: stageOptions };
-    }
-    return field;
-  });
+  const steps = ["Basic Info", "Workflow Types", "Stage Configuration"];
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-7xl">
-      {/* Header */}
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Dynamic Workflow Configuration</h1>
-          <p className="text-muted-foreground">
-            Create approval workflows with cascading hierarchy selection
-          </p>
-        </div>
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold mb-2">Approval Workflow Configuration</h1>
+        <p className="text-muted-foreground">
+          Create approval workflows scoped to branch &amp; department
+        </p>
       </div>
 
       {/* Progress Indicator */}
       <div className="mb-8">
         <div className="flex items-center justify-between">
-          {["Basic Info", "Workflow Types", "Stages", "Approvers", "Conditions"].map(
-            (label, index) => (
-              <React.Fragment key={index}>
-                <div className="flex flex-col items-center">
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all ${
-                      currentStep > index + 1
-                        ? "bg-green-500 text-white"
-                        : currentStep === index + 1
-                        ? "bg-primary text-white"
-                        : "bg-gray-200 text-gray-500"
-                    }`}
-                  >
-                    {currentStep > index + 1 ? <CheckCircle className="w-5 h-5" /> : index + 1}
-                  </div>
-                  <span className="text-xs mt-2 text-center max-w-[100px]">{label}</span>
+          {steps.map((label, i) => (
+            <React.Fragment key={i}>
+              <div className="flex flex-col items-center">
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all ${
+                    currentStep > i + 1
+                      ? "bg-green-500 text-white"
+                      : currentStep === i + 1
+                      ? "bg-primary text-white"
+                      : "bg-gray-200 text-gray-500"
+                  }`}
+                >
+                  {currentStep > i + 1 ? <CheckCircle className="w-5 h-5" /> : i + 1}
                 </div>
-                {index < 4 && (
-                  <div
-                    className={`flex-1 h-1 mx-2 transition-all ${
-                      currentStep > index + 1 ? "bg-green-500" : "bg-gray-200"
-                    }`}
-                  />
-                )}
-              </React.Fragment>
-            )
-          )}
+                <span className="text-xs mt-2 text-center max-w-[110px]">{label}</span>
+              </div>
+              {i < steps.length - 1 && (
+                <div
+                  className={`flex-1 h-1 mx-2 transition-all ${
+                    currentStep > i + 1 ? "bg-green-500" : "bg-gray-200"
+                  }`}
+                />
+              )}
+            </React.Fragment>
+          ))}
         </div>
       </div>
 
-      {/* Step 1: Basic Workflow Info */}
+      {/* ── Step 1: Basic Workflow Info ── */}
       {currentStep === 1 && (
         <Card>
           <CardHeader>
@@ -520,38 +591,30 @@ const ApprovalFlowDynamic: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-2 gap-6">
-              {workflowFields.slice(0, 2).map((fieldConfig) => (
+              {workflowFields.slice(0, 2).map((fc) => (
                 <CustomInputField
-                  key={fieldConfig.field}
-                  {...fieldConfig}
-                  value={workflow[fieldConfig.field as keyof WorkflowFormData]}
-                  onChange={(value) =>
-                    handleWorkflowChange(fieldConfig.field as keyof WorkflowFormData, value)
-                  }
+                  key={fc.field}
+                  {...fc}
+                  value={workflow[fc.field as keyof WorkflowFormData]}
+                  onChange={(v) => handleWorkflowChange(fc.field as keyof WorkflowFormData, v)}
                 />
               ))}
             </div>
-
-            {workflowFields.slice(2, 4).map((fieldConfig) => (
+            {workflowFields.slice(2, 4).map((fc) => (
               <CustomInputField
-                key={fieldConfig.field}
-                {...fieldConfig}
-                value={workflow[fieldConfig.field as keyof WorkflowFormData]}
-                onChange={(value) =>
-                  handleWorkflowChange(fieldConfig.field as keyof WorkflowFormData, value)
-                }
+                key={fc.field}
+                {...fc}
+                value={workflow[fc.field as keyof WorkflowFormData]}
+                onChange={(v) => handleWorkflowChange(fc.field as keyof WorkflowFormData, v)}
               />
             ))}
-
             <div className="flex items-center space-x-2">
-              {workflowFields.slice(4).map((fieldConfig) => (
+              {workflowFields.slice(4).map((fc) => (
                 <CustomInputField
-                  key={fieldConfig.field}
-                  {...fieldConfig}
-                  value={workflow[fieldConfig.field as keyof WorkflowFormData]}
-                  onChange={(value) =>
-                    handleWorkflowChange(fieldConfig.field as keyof WorkflowFormData, value)
-                  }
+                  key={fc.field}
+                  {...fc}
+                  value={workflow[fc.field as keyof WorkflowFormData]}
+                  onChange={(v) => handleWorkflowChange(fc.field as keyof WorkflowFormData, v)}
                 />
               ))}
             </div>
@@ -559,14 +622,16 @@ const ApprovalFlowDynamic: React.FC = () => {
         </Card>
       )}
 
-      {/* Step 2: Workflow Types */}
+      {/* ── Step 2: Workflow Types (branch + dept selection) ── */}
       {currentStep === 2 && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Workflow Types</CardTitle>
-                <CardDescription>Define different types/variants for this workflow</CardDescription>
+                <CardDescription>
+                  Each type is scoped to a specific branch and department
+                </CardDescription>
               </div>
               <Button onClick={addWorkflowType} size="sm">
                 <Plus className="w-4 h-4 mr-2" />
@@ -576,370 +641,66 @@ const ApprovalFlowDynamic: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             {workflowTypes.map((type, index) => (
-              <Card key={index} className="border-2">
-                <CardContent className="pt-6">
-                  <div className="flex items-start gap-4">
-                    <Badge variant="outline" className="mt-2">
-                      Type {index + 1}
-                    </Badge>
-
-                    <div className="flex-1 space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        {workflowTypeFields.slice(0, 2).map((fieldConfig) => (
-                          <CustomInputField
-                            key={fieldConfig.field}
-                            {...fieldConfig}
-                            value={type[fieldConfig.field as keyof WorkflowType]}
-                            onChange={(value) =>
-                              updateWorkflowType(index, fieldConfig.field as keyof WorkflowType, value)
-                            }
-                          />
-                        ))}
-                      </div>
-
-                      <div className="flex items-center space-x-2">
-                        {workflowTypeFields.slice(2).map((fieldConfig) => (
-                          <CustomInputField
-                            key={fieldConfig.field}
-                            {...fieldConfig}
-                            value={type[fieldConfig.field as keyof WorkflowType]}
-                            onChange={(value) =>
-                              updateWorkflowType(index, fieldConfig.field as keyof WorkflowType, value)
-                            }
-                          />
-                        ))}
-                      </div>
-
-                      {/* Auth Branches Section */}
-                      <Separator />
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <label className="text-sm font-semibold">
-                            Authorized Branches for this Type
-                          </label>
-                          <Button
-                            onClick={() => addAuthBranch(index)}
-                            size="sm"
-                            variant="outline"
-                          >
-                            <Plus className="w-3 h-3 mr-1" />
-                            Add Branch
-                          </Button>
-                        </div>
-
-                        {authBranches
-                          .filter((branch) => branch.workflow_types_id === index)
-                          .map((branch) => {
-                            const branchIdx = authBranches.indexOf(branch);
-                            return (
-                              <AuthBranchItem
-                                key={branchIdx}
-                                branch={branch}
-                                branchIdx={branchIdx}
-                                updateAuthBranch={updateAuthBranch}
-                                removeAuthBranch={removeAuthBranch}
-                              />
-                            );
-                          })}
-                      </div>
-                    </div>
-
-                    <Button
-                      onClick={() => removeWorkflowType(index)}
-                      variant="ghost"
-                      size="icon"
-                      className="text-red-500 hover:text-red-600"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <WorkflowTypeCard
+                key={index}
+                type={type}
+                typeIndex={index}
+                employeeOptions={employeeOptions}
+                onChange={updateWorkflowType}
+                onStageChange={updateStage}
+                onAddStage={addStage}
+                onRemoveStage={removeStage}
+                onMoveStage={moveStage}
+                onRemove={removeWorkflowType}
+                showStages={false}
+              />
             ))}
           </CardContent>
         </Card>
       )}
 
-      {/* Step 3: Stages */}
+      {/* ── Step 3: Stage Configuration per workflow type ── */}
       {currentStep === 3 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Approval Stages</CardTitle>
-                <CardDescription>
-                  Define the sequential stages for approval workflow
-                </CardDescription>
-              </div>
-              <Button onClick={addStage} size="sm">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Stage
-              </Button>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Stage Configuration</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Configure approval stages for each workflow type
+              </p>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {stages.map((stage, index) => (
-              <Card key={index} className="border-2">
-                <CardContent className="pt-6">
-                  <div className="flex items-start gap-4">
-                    {/* Order Controls */}
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        onClick={() => moveStage(index, "up")}
-                        disabled={index === 0}
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                      >
-                        <ArrowUp className="w-4 h-4" />
-                      </Button>
-                      <Badge variant="secondary" className="justify-center">
-                        {stage.stage_order}
-                      </Badge>
-                      <Button
-                        onClick={() => moveStage(index, "down")}
-                        disabled={index === stages.length - 1}
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                      >
-                        <ArrowDown className="w-4 h-4" />
-                      </Button>
-                    </div>
+          </div>
 
-                    {/* Stage Details */}
-                    <div className="flex-1 space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        {stageFields.slice(0, 2).map((fieldConfig) => (
-                          <CustomInputField
-                            key={fieldConfig.field}
-                            {...fieldConfig}
-                            value={stage[fieldConfig.field as keyof WorkflowStage]}
-                            onChange={(value) =>
-                              updateStage(index, fieldConfig.field as keyof WorkflowStage, value)
-                            }
-                          />
-                        ))}
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-4">
-                        {stageFields.slice(2, 4).map((fieldConfig) => (
-                          <CustomInputField
-                            key={fieldConfig.field}
-                            {...fieldConfig}
-                            value={stage[fieldConfig.field as keyof WorkflowStage]}
-                            onChange={(value) => {
-                              const actualValue =
-                                fieldConfig.type === "number" ? parseInt(value) || 1 : value;
-                              updateStage(
-                                index,
-                                fieldConfig.field as keyof WorkflowStage,
-                                actualValue
-                              );
-                            }}
-                          />
-                        ))}
-
-                        <div className="space-y-2">
-                          <label className="text-sm text-transparent">Switches</label>
-                          <div className="flex flex-col gap-2">
-                            {stageFields.slice(4).map((fieldConfig) => (
-                              <div key={fieldConfig.field} className="flex items-center space-x-2">
-                                <CustomInputField
-                                  {...fieldConfig}
-                                  value={stage[fieldConfig.field as keyof WorkflowStage]}
-                                  onChange={(value) =>
-                                    updateStage(
-                                      index,
-                                      fieldConfig.field as keyof WorkflowStage,
-                                      value
-                                    )
-                                  }
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Remove Button */}
-                    <Button
-                      onClick={() => removeStage(index)}
-                      variant="ghost"
-                      size="icon"
-                      className="text-red-500 hover:text-red-600"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </CardContent>
-        </Card>
+          {workflowTypes.map((type, index) => (
+            <WorkflowTypeCard
+              key={index}
+              type={type}
+              typeIndex={index}
+              employeeOptions={employeeOptions}
+              onChange={updateWorkflowType}
+              onStageChange={updateStage}
+              onAddStage={addStage}
+              onRemoveStage={removeStage}
+              onMoveStage={moveStage}
+              onRemove={removeWorkflowType}
+              showStages={true}
+            />
+          ))}
+        </div>
       )}
 
-      {/* Step 4: Approvers */}
-      {currentStep === 4 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Stage Approvers</CardTitle>
-                <CardDescription>
-                  Assign primary and secondary approvers for each stage
-                </CardDescription>
-              </div>
-              <Button onClick={addApprover} size="sm">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Approver
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {approvers.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>No approvers added yet. Click "Add Approver" to get started.</p>
-              </div>
-            ) : (
-              approvers.map((approver, index) => (
-                <ApproverItem
-                  key={index}
-                  approver={approver}
-                  index={index}
-                  stages={stages}
-                  updateApprover={updateApprover}
-                  removeApprover={removeApprover}
-                />
-              ))
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step 5: Conditions */}
-      {currentStep === 5 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Routing Conditions</CardTitle>
-                <CardDescription>
-                  Define dynamic routing rules based on conditions (Optional)
-                </CardDescription>
-              </div>
-              <Button onClick={addCondition} size="sm">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Condition
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {conditions.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>No conditions added. Workflow will follow sequential stage order.</p>
-                <p className="text-sm mt-2">
-                  Add conditions for dynamic routing based on business rules.
-                </p>
-              </div>
-            ) : (
-              conditions.map((condition, index) => (
-                <Card key={index} className="border-2">
-                  <CardContent className="pt-6">
-                    <div className="flex items-start gap-4">
-                      <Badge variant="outline" className="mt-2">
-                        P{condition.priority_order}
-                      </Badge>
-
-                      <div className="flex-1 space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          {conditionFieldsWithStages.slice(0, 2).map((fieldConfig) => (
-                            <CustomInputField
-                              key={fieldConfig.field}
-                              {...fieldConfig}
-                              value={condition[fieldConfig.field as keyof Condition]}
-                              onChange={(value) =>
-                                updateCondition(
-                                  index,
-                                  fieldConfig.field as keyof Condition,
-                                  value
-                                )
-                              }
-                            />
-                          ))}
-                        </div>
-
-                        <div className="grid grid-cols-4 gap-4">
-                          {conditionFieldsWithStages.slice(2, 6).map((fieldConfig) => (
-                            <CustomInputField
-                              key={fieldConfig.field}
-                              {...fieldConfig}
-                              value={
-                                fieldConfig.field === "stage_id" ||
-                                fieldConfig.field === "target_stage_id"
-                                  ? condition[fieldConfig.field as keyof Condition].toString()
-                                  : condition[fieldConfig.field as keyof Condition]
-                              }
-                              onChange={(value) => {
-                                const actualValue =
-                                  fieldConfig.field === "stage_id" ||
-                                  fieldConfig.field === "target_stage_id"
-                                    ? parseInt(value)
-                                    : value;
-                                updateCondition(
-                                  index,
-                                  fieldConfig.field as keyof Condition,
-                                  actualValue
-                                );
-                              }}
-                            />
-                          ))}
-                        </div>
-
-                        <div className="flex items-center space-x-2">
-                          {conditionFieldsWithStages.slice(6).map((fieldConfig) => (
-                            <CustomInputField
-                              key={fieldConfig.field}
-                              {...fieldConfig}
-                              value={condition[fieldConfig.field as keyof Condition]}
-                              onChange={(value) =>
-                                updateCondition(
-                                  index,
-                                  fieldConfig.field as keyof Condition,
-                                  value
-                                )
-                              }
-                            />
-                          ))}
-                        </div>
-                      </div>
-
-                      <Button
-                        onClick={() => removeCondition(index)}
-                        variant="ghost"
-                        size="icon"
-                        className="text-red-500 hover:text-red-600"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Navigation Buttons */}
+      {/* Navigation */}
       <div className="flex justify-between mt-8">
-        <Button onClick={handlePrevious} disabled={currentStep === 1} variant="outline" size="lg">
+        <Button
+          onClick={handlePrevious}
+          disabled={currentStep === 1}
+          variant="outline"
+          size="lg"
+        >
           Previous
         </Button>
-
         <div className="flex gap-2">
-          {currentStep < 5 ? (
+          {currentStep < 3 ? (
             <Button onClick={handleNext} size="lg">
               Next Step
             </Button>
@@ -952,16 +713,18 @@ const ApprovalFlowDynamic: React.FC = () => {
         </div>
       </div>
 
-      {/* Success Message */}
-      {workflowId && (
-        <Card className="mt-6 border-green-500 bg-green-50">
+      {/* Success banner */}
+      {savedWorkflowId && (
+        <Card className="mt-6 border-green-500 bg-green-50 dark:bg-green-950">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
               <CheckCircle className="w-6 h-6 text-green-600" />
               <div>
-                <p className="font-semibold text-green-900">Workflow Created Successfully!</p>
-                <p className="text-sm text-green-700">
-                  Workflow ID: {workflowId} - Check browser console for full payload
+                <p className="font-semibold text-green-900 dark:text-green-100">
+                  Workflow Created Successfully!
+                </p>
+                <p className="text-sm text-green-700 dark:text-green-300">
+                  Workflow ID: {savedWorkflowId}
                 </p>
               </div>
             </div>
@@ -973,4 +736,3 @@ const ApprovalFlowDynamic: React.FC = () => {
 };
 
 export default ApprovalFlowDynamic;
-

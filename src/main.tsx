@@ -6,6 +6,8 @@ import { store } from "./globalState/store";
 import App from "./App";
 import axios from "axios";
 import { encryptPayload, decryptPayload } from "./Services/apiCrypto";
+import { clearUserData, setSessionExpired } from "./globalState/features/decodeSlice";
+import { clearSidebarData } from "./globalState/features/fetchSidebarDataSlice";
 
 // Send the session cookie automatically on every request (same as credentials: "include" in fetch)
 axios.defaults.withCredentials = true;
@@ -42,16 +44,21 @@ axios.interceptors.response.use(async (response) => {
 });
 
 // ─── GLOBAL AXIOS RESPONSE INTERCEPTOR ──────────────────────────────────────
-// On a 401 from a protected route the session has expired.
-// Reload to reset app state and show the login screen.
+// On a 401 from a protected route the session has expired or timed out.
+// Clear Redux auth state — routing reacts immediately and shows the login screen.
+// Only fires for non-login/logout routes so that a bad-credentials login attempt
+// does NOT clear an existing session.
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
     const requestUrl = error?.config?.url ?? "";
-    // if (status === 401 && !requestUrl.includes("/api/secure")) {
-    //   window.location.reload();
-    // }
+    // /api/secure/* = login, signup, logout, /me — never trigger session-expired on these
+    const isAuthRoute = requestUrl.includes("/api/secure");
+    if (status === 401 && !isAuthRoute) {
+      store.dispatch(clearSidebarData());
+      store.dispatch(setSessionExpired(true));
+    }
     return Promise.reject(error);
   }
 );

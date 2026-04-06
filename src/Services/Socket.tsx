@@ -23,6 +23,11 @@ export const SOCKET_JOIN_COMPANY = "join-company";
 export const SOCKET_LEAVE_COMPANY = "leave-company";
 export const SOCKET_JOIN_PR_SCOPE = "join-pr-scope";
 export const SOCKET_LEAVE_PR_SCOPE = "leave-pr-scope";
+export const SOCKET_JOIN_PR_APPROVAL = "join-pr-approval";
+export const SOCKET_LEAVE_PR_APPROVAL = "leave-pr-approval";
+
+// ── PR approval real-time events ─────────────────────────────────────────────
+export const SOCKET_PR_APPROVAL_UPDATED = "pr:approval:updated";
 
 // ── PR draft real-time events ─────────────────────────────────────────────────
 export const SOCKET_PR_DRAFT_NEW = "pr:draft:new";

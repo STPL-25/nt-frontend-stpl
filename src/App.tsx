@@ -5,14 +5,19 @@ import { Toaster } from "sonner";
 import { useAppState } from "./globalState/hooks/useAppState";
 import { useEffect } from "react";
 import Signup from "./ApplicationPages/SignupPage";
+import { useInactivityLogout } from "./hooks/useInactivityLogout";
+import SessionTimeoutModal from "./LayoutComponent/SessionTimeoutModal";
+import SessionExpiredModal from "./LayoutComponent/SessionExpiredModal";
 import { ThemeProvider } from "next-themes";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import {
   selectThemeColor,
   selectThemeMode,
   selectThemeRadius,
   THEME_COLORS,
 } from "./globalState/features/themeSlice";
+import { selectSessionExpired, setSessionExpired, clearUserData } from "./globalState/features/decodeSlice";
+import { clearSidebarData } from "./globalState/features/fetchSidebarDataSlice";
 
 interface UserDataItem {
   ecno?: string;
@@ -47,53 +52,64 @@ function ThemeApplier() {
   return null;
 }
 
-function App() {
-  const { userData, initUser } = useAppState();
-  const mode = useSelector(selectThemeMode);
+// Reads userData from Redux and renders the correct page.
+// Kept separate so the router instance (below) stays stable.
+function RootRoute() {
+  const { userData, isLoading, initUser } = useAppState();
 
-  // On every page load, ask the server if the session is still valid.
-  // If yes, the user data is restored from the session-backed JWT.
-  // If no (401), the server returns an error and we stay on the login page.
   useEffect(() => {
-    if (!userData || Object.keys(userData).length === 0) {
-      initUser();
-    }
+    initUser();
   }, []);
 
-  const router = createBrowserRouter([
-    {
-      path: "/",
-      element:
-        userData && Object.keys(userData).length > 0 ? (
-          (userData as UserDataItem[])[0]?.ecno &&
-          (userData as UserDataItem[])[0]?.ename ? (
-            <Dashboard />
-          ) : (
-            <SignIn />
-          )
-        ) : (
-          <SignIn />
-        ),
-    },
-    //  {
-    //   path: "/",
-    //   element:
-    //     userData && Object.keys(userData).length > 0 ? (
-    //       (userData as UserDataItem[]) 
-    //       ? (
-    //         <Dashboard />
-    //       ) : (
-    //         <SignIn />
-    //       )
-    //     ) : (
-    //       <SignIn />
-    //     ),
-    // },
-    {
-      path: "/signup",
-      element: <Signup />,
-    },
-  ]);
+  // Show a neutral loading screen while session is being restored —
+  // prevents the login page flashing on every page refresh.
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">Restoring session…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    userData &&
+    Object.keys(userData).length > 0 &&
+    (userData as UserDataItem[])[0]?.ecno &&
+    (userData as UserDataItem[])[0]?.ename
+  ) {
+    return <Dashboard />;
+  }
+  return <SignIn />;
+}
+
+// Created once outside the component so the router instance never changes.
+const router = createBrowserRouter([
+  { path: "/", element: <RootRoute /> },
+  { path: "/signup", element: <Signup /> },
+]);
+
+function App() {
+  const { userData } = useAppState();
+  const mode = useSelector(selectThemeMode);
+  const sessionExpired = useSelector(selectSessionExpired);
+  const dispatch = useDispatch();
+
+  const isLoggedIn =
+    !!userData &&
+    Object.keys(userData).length > 0 &&
+    !!(userData as UserDataItem[])[0]?.ecno;
+
+  // Auto-logout after 2 hrs of inactivity; shows warning popup before
+  const { showWarning, countdown, stayLoggedIn, logoutNow } = useInactivityLogout(isLoggedIn);
+
+  const handleSessionExpiredLogin = () => {
+    dispatch(clearSidebarData());
+    dispatch(clearUserData());
+    dispatch(setSessionExpired(false));
+  };
 
   return (
     <ThemeProvider
@@ -105,6 +121,16 @@ function App() {
       <ThemeApplier />
       <Toaster position="top-right" richColors />
       <RouterProvider router={router} />
+      <SessionTimeoutModal
+        isOpen={showWarning}
+        countdown={countdown}
+        onStayLoggedIn={stayLoggedIn}
+        onLogoutNow={logoutNow}
+      />
+      <SessionExpiredModal
+        isOpen={sessionExpired}
+        onLoginAgain={handleSessionExpiredLogin}
+      />
     </ThemeProvider>
   );
 }

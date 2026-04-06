@@ -398,13 +398,16 @@ const Sidebar: React.FC = () => {
     toggleCollapse,
     setHeaderComponentRender,
   } = useAppState() as any;
-  const ecno = userData?.[0]?.ecno ?? ''; // Replace with actual ecno
+  const ecno = userData?.[0]?.ecno ?? '';
+  // Only fetch when we have a valid ecno; passing null skips the fetch entirely
   const { data, loading, error } = useFetch<PermissionData>(
-    `${import.meta.env.VITE_API_URL}/api/user_approval/get_user_screens_and_permisssions/${ecno}`
+    ecno
+      ? `${import.meta.env.VITE_API_URL}/api/user_approval/get_user_screens_and_permisssions/${ecno}`
+      : null
   );
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-
+console.log(menuItems)
   useEffect(() => {
     if (data && data.screens) {
       const mappedItems = data.screens.map((screen: Screen) => ({
@@ -419,6 +422,9 @@ const Sidebar: React.FC = () => {
         })),
       }));
       setMenuItems(mappedItems);
+    } else {
+      // Clear stale menus when there's no data (e.g. after logout)
+      setMenuItems([]);
     }
   }, [data]);
 

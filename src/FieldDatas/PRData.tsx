@@ -214,7 +214,7 @@ export const usePRItemDetailsFields = (): FieldType[] => {
       {
         field: "prod_sno",
         label: "Product",
-        require: true,
+        require: false,
         view: false,
         type: "select",
         options: options?.ProductMaster,
@@ -231,7 +231,7 @@ export const usePRItemDetailsFields = (): FieldType[] => {
       {
         field: "qty",
         label: "Quantity",
-        require: true,
+        require: false,
         view: true,
         type: "number",
         input: true,

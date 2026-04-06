@@ -126,11 +126,6 @@ const formatDate = (iso: string) => {
 const formatAmount = (n: number) =>
   `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
-
 // ── Item detail table used by both draft types ────────────────────────────────
 
 function DraftItemsTable({ items }: { items: PrivateDraft['items'] }) {
@@ -185,7 +180,7 @@ function PrivateDraftsTab() {
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get(prGetDrafts, { headers: getAuthHeaders() });
+      const res = await axios.get(prGetDrafts);
       setDrafts(res.data?.data ?? []);
     } catch {
       toast.error('Failed to load private drafts');
@@ -201,7 +196,7 @@ function PrivateDraftsTab() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await axios.delete(prDeleteDraft(deleteTarget), { headers: getAuthHeaders() });
+      await axios.delete(prDeleteDraft(deleteTarget));
       toast.success('Draft deleted');
       setDrafts((prev) => prev.filter((d) => d.draftId !== deleteTarget));
     } catch {
@@ -214,7 +209,7 @@ function PrivateDraftsTab() {
   const handleSubmit = async (draftId: string) => {
     setSubmittingId(draftId);
     try {
-      const res = await axios.post(prSubmitDraft(draftId), {}, { headers: getAuthHeaders() });
+      const res = await axios.post(prSubmitDraft(draftId), {});
       const msg = res.data?.data?.[0]?.Message || 'Requisition submitted!';
       toast.success(msg);
       setDrafts((prev) => prev.filter((d) => d.draftId !== draftId));
@@ -458,8 +453,7 @@ function SharedDraftsTab() {
     setLoading(true);
     try {
       const res = await axios.get(
-        `${prGetDeptDrafts}?com_sno=${c}&div_sno=${d}&brn_sno=${b}`,
-        { headers: getAuthHeaders() }
+        `${prGetDeptDrafts}?com_sno=${c}&div_sno=${d}&brn_sno=${b}`
       );
       setDrafts(res.data?.data ?? []);
     } catch {
@@ -483,9 +477,7 @@ function SharedDraftsTab() {
   const handleDelete = async () => {
     if (!deleteTarget || !scopeKey) return;
     try {
-      await axios.delete(`${prDeleteDeptDraft(deleteTarget)}?scopeKey=${scopeKey}`, {
-        headers: getAuthHeaders(),
-      });
+      await axios.delete(`${prDeleteDeptDraft(deleteTarget)}?scopeKey=${scopeKey}`);
       toast.success('Draft deleted');
       setDrafts((prev) => prev.filter((d) => d.draftId !== deleteTarget));
     } catch {
@@ -499,7 +491,7 @@ function SharedDraftsTab() {
     if (!scopeKey) return;
     setSubmittingId(draftId);
     try {
-      await axios.post(prSubmitDeptDraft(draftId), { scopeKey }, { headers: getAuthHeaders() });
+      await axios.post(prSubmitDeptDraft(draftId), { scopeKey });
       toast.success('Draft submitted!');
       setDrafts((prev) => prev.filter((d) => d.draftId !== draftId));
       setSelectedIds((prev) => {
@@ -522,7 +514,7 @@ function SharedDraftsTab() {
     await Promise.allSettled(
       Array.from(selectedIds).map(async (id) => {
         try {
-          await axios.post(prSubmitDeptDraft(id), { scopeKey }, { headers: getAuthHeaders() });
+          await axios.post(prSubmitDeptDraft(id), { scopeKey });
           ok++;
           setDrafts((prev) => prev.filter((d) => d.draftId !== id));
           setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
@@ -538,7 +530,7 @@ function SharedDraftsTab() {
     if (!scopeKey) return;
     setSubmittingAll(true);
     try {
-      const res = await axios.post(prSubmitAllDeptDrafts, { scopeKey }, { headers: getAuthHeaders() });
+      const res = await axios.post(prSubmitAllDeptDrafts, { scopeKey });
       const results = res.data?.data ?? [];
       const succeeded = results.filter((r: any) => r.status === 'fulfilled').length;
       const failed = results.filter((r: any) => r.status === 'rejected').length;

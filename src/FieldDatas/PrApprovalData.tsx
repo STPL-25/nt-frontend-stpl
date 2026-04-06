@@ -1,18 +1,19 @@
 import { FieldType } from "./fieldType/fieldType";
 import { useMemo } from "react";
-import { useAppState } from "@/globalState/hooks/useAppState";
-
 
 export const usePrApprovalSideCardDatas = (): FieldType[] => {
-
   return useMemo<FieldType[]>(
     () => [
-      { field: "pr_no", label: "PR No", require: false, view: true, type: "text", input: false },
-      { field: "ename", label: "Employee Name", require: true, view: true, type: "text", input: true },
-      { field: "dept", label: "Department", require: true, view: true, type: "text", input: true },
-      { field: "total_cost", label: "Total Estimation Cost", require: true, view: true, type: "text", input: true },
-      { field: "purpose", label: "Purpose", require: true, view: false, type: "select", options:  [], input: true },
-      { field: "priority_name", label: "Priority", require: true, view: true, type: "text", input: false },
+      { field: "pr_no",              label: "PR No",              view: true, type: "text", input: false },
+      { field: "created_by_name",    label: "Requested By",       view: true, type: "text", input: false },
+      { field: "created_by",         label: "Employee No",        view: true, type: "text", input: false },
+      { field: "dept_name",          label: "Department",         view: true, type: "text", input: false },
+      { field: "brn_name",           label: "Branch",             view: true, type: "text", input: false },
+      { field: "div_name",           label: "Division",           view: true, type: "text", input: false },
+      { field: "com_name",           label: "Company",            view: true, type: "text", input: false },
+      { field: "reg_date",           label: "Request Date",       view: true, type: "date",  input: false },
+      { field: "required_date",      label: "Required By",        view: true, type: "date",  input: false },
+      { field: "current_approver_id",label: "Current Approver",   view: true, type: "text", input: false },
     ],
     []
   );

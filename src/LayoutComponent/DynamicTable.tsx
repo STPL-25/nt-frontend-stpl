@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, Search, Download, Plus,
   ChevronLeft, ChevronRight, Edit2, Trash2,
-  AlertTriangle, FileX,
+  AlertTriangle, FileX, Upload, FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
   TableHeader, TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { downloadExcelTemplate, parseExcelFile } from "@/utils/excelUtils";
 
 /* ── Types ────────────────────────────────────────────────── */
 type RowData = Record<string, any>;
@@ -69,7 +70,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
 }) => {
   const { userData, setFormData } = useAppState();
   const API_BASE = import.meta.env.VITE_API_URL || "";
-
+  console.log("master:", master);
   const { postData, loading: isAdding } = usePost();
   const { updateData, loading: isUpdating } = useUpdate();
   const { deleteData, loading: isDeleting } = useDelete();
@@ -78,6 +79,8 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
   const [tableData, setTableData]   = useState<RowData[]>(data || []);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState<{ key: string | null; direction: "asc" | "desc" }>({ key: null, direction: "asc" });
+  const [importing, setImporting]   = useState(false);
+  const importInputRef              = useRef<HTMLInputElement>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -162,8 +165,8 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
   const handleAddSave = async (fd: RowData) => {
     try {
       if (master) {
-        fd.created_by = userData[0]?.ecno || "";
-        const resp = await postData(`${API_BASE}/api/common_master/${master}`, fd);
+        // fd.created_by = userData[0]?.ecno || "";
+        const resp = await postData(`${API_BASE}/api/common_master/${master}`,fd);
         if (resp?.data && Array.isArray(resp.data)) setTableData(resp.data);
         else if (resp?.data) setTableData((p) => [...p, resp.data]);
         toast.success(resp?.data?.[0]?.Message || resp?.message || "Item added");
@@ -172,7 +175,10 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
         toast.success("Item added");
       }
       setShowAddModal(false);
-    } catch { toast.error("Failed to add item"); }
+    } catch (error) {
+      console.log(error)
+      toast.error("Failed to add item");
+    }
   };
 
   const handleEditSave = async (fd: RowData) => {
@@ -235,6 +241,67 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  /* ── Excel template download ── */
+  const handleDownloadTemplate = () => {
+    const inputFields = formHeaders.map((h) => ({
+      field: h.field,
+      label: h.label,
+      type: h.type,
+      require: h.require,
+      options: h.options,
+    }));
+    downloadExcelTemplate(inputFields, title);
+    toast.success(`Template downloaded — fill it and import back`);
+  };
+
+  /* ── Excel import ── */
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ""; // reset so same file can be re-selected
+
+    setImporting(true);
+    try {
+      const inputFields = formHeaders.map((h) => ({
+        field: h.field,
+        label: h.label,
+        type: h.type,
+        require: h.require,
+        options: h.options,
+      }));
+
+      const { rows, errors } = await parseExcelFile(file, inputFields);
+
+      if (errors.length > 0) {
+        errors.forEach((err) => toast.error(err));
+      }
+
+      if (rows.length === 0) {
+        toast.error("No valid rows found in the Excel file.");
+        return;
+      }
+
+      // Save each row via the same handler as manual Add
+      let successCount = 0;
+      for (const row of rows) {
+        try {
+          await handleAddSave({ ...row });
+          successCount++;
+        } catch {
+          // individual failure already toasted inside handleAddSave
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`${successCount} record${successCount > 1 ? "s" : ""} imported successfully`);
+      }
+    } catch (err: any) {
+      toast.error(`Import failed: ${err.message}`);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   /* ── Pagination numbers ── */
   const getPageNumbers = (): (number | "...")[] => {
     const pages: (number | "...")[] = [];
@@ -290,19 +357,57 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
                   />
                 </div>
               )}
+
+              {/* Excel template download */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                onClick={handleDownloadTemplate}
+                title="Download Excel template to fill and re-import"
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                <span className="hidden sm:inline">Template</span>
+              </Button>
+
+              {/* Excel import */}
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleImportExcel}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5 border-primary/40 text-primary hover:bg-primary/5"
+                onClick={() => importInputRef.current?.click()}
+                disabled={importing}
+                title="Import records from Excel"
+              >
+                {importing ? (
+                  <Download className="h-4 w-4 animate-bounce" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
+                <span className="hidden sm:inline">{importing ? "Importing…" : "Import"}</span>
+              </Button>
+
               {exportEnabled && (
                 <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={handleExportCSV}>
                   <Download className="h-4 w-4" />
-                  Export
+                  <span className="hidden sm:inline">Export</span>
                 </Button>
               )}
+
               <Button
                 size="sm"
                 className="h-9 gap-1.5"
                 onClick={() => (onAddNew ? onAddNew() : setShowAddModal(true))}
               >
                 <Plus className="h-4 w-4" />
-                Add New
+                <span className="hidden sm:inline">Add New</span>
               </Button>
             </div>
           </div>
@@ -492,7 +597,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
             <Button variant="outline" onClick={() => setShowAddModal(false)}>
               Cancel
             </Button>
-            <Button onClick={() => handleAddSave(formState)} disabled={isAdding}>
+            <Button onClick={() => handleAddSave(formState)} >
               {isAdding ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>

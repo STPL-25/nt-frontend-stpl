@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -23,7 +23,10 @@ import {
   Building2,
   Package,
   Users,
+  FileSpreadsheet,
+  Upload,
 } from 'lucide-react';
+import { downloadExcelTemplate, parseExcelFile } from '@/utils/excelUtils';
 import { FormSection } from '@/CustomComponent/PageComponents';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { usePRBasicInfoFields, usePRItemDetailsFields } from '@/FieldDatas/PRData';
@@ -112,6 +115,53 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   const [sidebarEditDraft, setSidebarEditDraft] = useState<DeptDraft | null>(null);
 
   const { postData } = usePost();
+  const itemImportRef = useRef<HTMLInputElement>(null);
+  const [importingItems, setImportingItems] = useState(false);
+
+  // ── Excel helpers ─────────────────────────────────────────────────────────
+
+  const handleDownloadItemTemplate = () => {
+    downloadExcelTemplate(excelItemFields, 'PR_Items');
+    toast.success('Item template downloaded — fill it and import back');
+  };
+
+  const handleImportItems = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    setImportingItems(true);
+    try {
+      const { rows, errors } = await parseExcelFile(file, excelItemFields);
+
+      if (errors.length > 0) errors.forEach((err) => toast.error(err));
+
+      if (rows.length === 0) {
+        toast.error('No valid rows found in the file');
+        return;
+      }
+
+      const newItems = rows.map((row) => {
+        const qty  = parseFloat(String(row.qty))  || 1;
+        const cost = parseFloat(String(row.est_cost)) || 0;
+        return {
+          ...buildEmptyItem(),
+          ...row,
+          qty,
+          est_cost: cost,
+          total_cost: qty * cost,
+          id: Date.now().toString() + Math.random().toString(36).slice(2),
+        };
+      });
+
+      setSavedItems((prev) => [...prev, ...newItems]);
+      toast.success(`${newItems.length} item${newItems.length > 1 ? 's' : ''} imported`);
+    } catch (err: any) {
+      toast.error(`Import failed: ${err.message}`);
+    } finally {
+      setImportingItems(false);
+    }
+  };
 
   // ── Initial form state builders ──────────────────────────────────────────
 
@@ -121,7 +171,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
       if (!field.input) return;
       if (field.defaultValue !== undefined) {
         d[field.field] = field.defaultValue;
-      } else if (field.field === 'req_date') {
+      } else if (field.type === 'date') {
         d[field.field] = new Date().toISOString().split('T')[0];
       } else if (field.type === 'number') {
         d[field.field] = 0;
@@ -305,6 +355,20 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
     [itemDetailsFields]
   );
 
+  const excelItemFields = useMemo(
+    () =>
+      inputItemFields
+        .filter((f) => !['total_cost'].includes(f.field) && !['checkbox', 'switch', 'file'].includes(f.type ?? ''))
+        .map((f) => ({
+          field: f.field,
+          label: f.label,
+          type: f.type,
+          require: f.require,
+          options: Array.isArray(f.options) ? f.options : [],
+        })),
+    [inputItemFields]
+  );
+
   const validateItem = (): boolean => {
     const errs: FormErrors = {};
     inputItemFields.forEach((field) => {
@@ -389,23 +453,17 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
     totalAmount,
   });
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
-
   // Save as shared dept draft
   const saveToDeptDraft = async () => {
     const payload = { ...buildPayload(), scopeKey };
     if (deptDraftId && deptDraftScopeKey) {
       const res = await axios.put(
         prUpdateDeptDraft(deptDraftId),
-        { ...payload, scopeKey: deptDraftScopeKey },
-        { headers: getAuthHeaders() }
+        { ...payload, scopeKey: deptDraftScopeKey }
       );
       return res;
     } else {
-      const res = await axios.post(prSaveDeptDraft, payload, { headers: getAuthHeaders() });
+      const res = await axios.post(prSaveDeptDraft, payload);
       if (res.data?.draftId) {
         setDeptDraftId(res.data.draftId);
         setDeptDraftScopeKey(res.data.scopeKey);
@@ -422,13 +480,12 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
     setSavingDraft(true);
     try {
       const payload = buildPayload();
-      const headers = getAuthHeaders();
       let res;
       if (draftId) {
-        res = await axios.put(prUpdateDraft(draftId), payload, { headers });
+        res = await axios.put(prUpdateDraft(draftId), payload);
         toast.success('Draft updated');
       } else {
-        res = await axios.post(prSaveDraft, payload, { headers });
+        res = await axios.post(prSaveDraft, payload);
         if (res.data?.draftId) setDraftId(res.data.draftId);
         toast.success('Draft saved — continue editing or submit later');
       }
@@ -464,11 +521,11 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!validateBasicForm()) {
-      const first = document.querySelector('[data-error="true"]');
-      if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
+    // if (!validateBasicForm()) {
+    //   const first = document.querySelector('[data-error="true"]');
+    //   if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    //   return;
+    // }
 
     if (savedItems.length === 0) {
       toast.error('Please add at least one item to the requisition');
@@ -477,13 +534,12 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
 
     setSubmitting(true);
     try {
-      const headers = getAuthHeaders();
       let res;
       if (draftId) {
-        await axios.put(prUpdateDraft(draftId), buildPayload(), { headers });
-        res = await axios.post(prSubmitDraft(draftId), {}, { headers });
+        await axios.put(prUpdateDraft(draftId), buildPayload());
+        res = await axios.post(prSubmitDraft(draftId), {});
       } else {
-        res = await axios.post(createPrRecord, buildPayload(), { headers });
+        res = await axios.post(createPrRecord, buildPayload());
       }
       const msg = res?.data?.data?.[0]?.Message || 'Purchase Requisition submitted successfully!';
       toast.success(msg);
@@ -651,14 +707,51 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
               </FormSection>
 
               {/* ── Item Entry ────────────────────────────────────────── */}
+              {/* Hidden file input for Excel import */}
+              <input
+                ref={itemImportRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleImportItems}
+              />
+
               <FormSection
                 icon={Package}
                 title={editingItemId ? 'Edit Item' : 'Add Item'}
-                action={editingItemId ? (
-                  <Button type="button" size="sm" variant="outline" onClick={handleCancelEdit} className="h-7 text-xs">
-                    <X className="h-3.5 w-3.5 mr-1" />Cancel Edit
-                  </Button>
-                ) : undefined}
+                action={
+                  editingItemId ? (
+                    <Button type="button" size="sm" variant="outline" onClick={handleCancelEdit} className="h-7 text-xs">
+                      <X className="h-3.5 w-3.5 mr-1" />Cancel Edit
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={handleDownloadItemTemplate}
+                        className="h-7 text-xs gap-1 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                        title="Download Excel template for bulk item entry"
+                      >
+                        <FileSpreadsheet className="h-3.5 w-3.5" />
+                        Template
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => itemImportRef.current?.click()}
+                        disabled={importingItems}
+                        className="h-7 text-xs gap-1 border-primary/40 text-primary hover:bg-primary/5"
+                        title="Import multiple items from Excel"
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                        {importingItems ? 'Importing…' : 'Import'}
+                      </Button>
+                    </div>
+                  )
+                }
               >
 
                 <div className="rounded-xl border bg-muted/20 p-4 space-y-4">

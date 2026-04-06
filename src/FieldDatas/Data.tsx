@@ -2,7 +2,7 @@ import React, { ReactElement, useMemo } from "react";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import {  Building, MapPin, FileCheck, IndianRupee, Package, FolderOpen,
   Receipt,CreditCard, Calendar, Truck, Hash,PiggyBank, UserPlus,Menu,
-  CheckCircle, Gift, FileText, Archive, Settings, Briefcase, Tag, TrendingUp,  Wallet,} from "lucide-react";
+  CheckCircle, Gift, FileText, Archive, Settings, Briefcase, Tag, TrendingUp, Wallet, GitBranch,} from "lucide-react";
 import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
 /* ---------- Types ---------- */
 
@@ -45,6 +45,8 @@ const masterItems: MasterItemType[] = [
   { icon: <Hash className="w-5 h-5" />, name: "Prefix Master", category: "administration", color: "bg-stone-500", id: "PrefixMaster" },
   { icon: <Hash className="w-5 h-5" />, name: "Screen Master", category: "administration", color: "bg-stone-500", id: "ScreenMaster" },
   { icon: <Hash className="w-5 h-5" />, name: "Screen Permission", category: "administration", color: "bg-stone-500", id: "ScreenPermission" },
+  { icon: <GitBranch className="w-5 h-5" />, name: "Workflow Master", category: "approvals", color: "bg-violet-600", id: "WorkflowMaster" },
+
   { icon: <TrendingUp className="w-5 h-5" />, name: "Priority Master", category: "finance", color: "bg-emerald-600", id: "PriorityMaster" },
   { icon: <FileCheck className="w-5 h-5" />, name: "PO Approval", category: "approvals", color: "bg-orange-500", id: "POApproval" },
   { icon: <IndianRupee className="w-5 h-5" />, name: "Ledger Master", category: "finance", color: "bg-emerald-500", id: "ledger_master" },
@@ -283,6 +285,25 @@ const useProductSubCatagoryMaster = (formData?: any): FieldType[] => {
   );
 };
 
+const useWorkflowMasterFields = (): FieldType[] => {
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "workflow_id", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "workflow_name", label: "Workflow Name", require: true, view: true, type: "text", input: true },
+      { field: "workflow_code", label: "Workflow Code", require: true, view: true, type: "text", input: false },
+      { field: "entity_type", label: "Entity Type", require: true, view: true, type: "text", input: true },
+      { field: "description", label: "Description", require: false, view: true, type: "textarea", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+      { field: "created_by", label: "Created By", require: false, view: false, type: "text", input: false },
+      { field: "created_at", label: "Created At", require: false, view: false, type: "date", input: false },
+      { field: "modified_data", label: "Modified Data", require: false, view: false, type: "text", input: false },
+      { field: "modified_by", label: "Modified By", require: false, view: false, type: "text", input: false },
+      { field: "modified_at", label: "Modified At", require: false, view: false, type: "date", input: false },
+    ],
+    []
+  );
+};
+
 const useProductFieldsMaster = (formData?: any): FieldType[] => {
   const {options, loading} = useMasterOptions(['ProductCategoryMaster','ProductSubCategoryMaster','UomMaster','TaxMaster']);
   return useMemo<FieldType[]>(
@@ -336,5 +357,6 @@ export {
   useProductFieldsMaster,
   useProductCatagoryMaster,
   useProductSubCatagoryMaster,
+  useWorkflowMasterFields,
 };
 

@@ -15,6 +15,8 @@ import {
   useProductCatagoryMaster,
   useProductFieldsMaster,
   useProductSubCatagoryMaster,
+    useWorkflowMasterFields,
+
 } from "./Data";
 import type { FieldType
 } from "./Data";
@@ -47,6 +49,8 @@ export const useMasterDataFields = () => {
     ProductMaster: useProductFieldsMaster(),
     ProductCategoryMaster: useProductCatagoryMaster(),
     ProductSubCategoryMaster: useProductSubCatagoryMaster(),
+    WorkflowMaster: useWorkflowMasterFields(),
+
   };
 
   return { fields };

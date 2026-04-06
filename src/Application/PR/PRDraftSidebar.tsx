@@ -91,11 +91,6 @@ interface PRDraftSidebarProps {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
-
 const formatDate = (iso: string) => {
   if (!iso) return '—';
   try {
@@ -121,7 +116,7 @@ const PRDraftSidebar: React.FC<PRDraftSidebarProps> = ({
   onEditDraft,
   currentUserEcno,
 }) => {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const [drafts, setDrafts] = useState<DeptDraft[]>([]);
   const [loading, setLoading] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -139,8 +134,7 @@ const PRDraftSidebar: React.FC<PRDraftSidebarProps> = ({
     setLoading(true);
     try {
       const res = await axios.get(
-        `${prGetDeptDrafts}?com_sno=${com_sno}&div_sno=${div_sno}&brn_sno=${brn_sno}`,
-        { headers: getAuthHeaders() }
+        `${prGetDeptDrafts}?com_sno=${com_sno}&div_sno=${div_sno}&brn_sno=${brn_sno}`
       );
       setDrafts(res.data?.data ?? []);
     } catch {
@@ -231,9 +225,7 @@ const PRDraftSidebar: React.FC<PRDraftSidebarProps> = ({
   const handleDelete = async () => {
     if (!deleteTarget || !scopeKey) return;
     try {
-      await axios.delete(`${prDeleteDeptDraft(deleteTarget)}?scopeKey=${scopeKey}`, {
-        headers: getAuthHeaders(),
-      });
+      await axios.delete(`${prDeleteDeptDraft(deleteTarget)}?scopeKey=${scopeKey}`);
       toast.success('Draft deleted');
       setDrafts((prev) => prev.filter((d) => d.draftId !== deleteTarget));
       setSelectedIds((prev) => {
@@ -252,11 +244,7 @@ const PRDraftSidebar: React.FC<PRDraftSidebarProps> = ({
     if (!scopeKey) return;
     setSubmittingId(draftId);
     try {
-      await axios.post(
-        prSubmitDeptDraft(draftId),
-        { scopeKey },
-        { headers: getAuthHeaders() }
-      );
+      await axios.post(prSubmitDeptDraft(draftId), { scopeKey });
       toast.success('Draft submitted!');
       setDrafts((prev) => prev.filter((d) => d.draftId !== draftId));
       setSelectedIds((prev) => {
@@ -281,11 +269,7 @@ const PRDraftSidebar: React.FC<PRDraftSidebarProps> = ({
     await Promise.allSettled(
       ids.map(async (draftId) => {
         try {
-          await axios.post(
-            prSubmitDeptDraft(draftId),
-            { scopeKey },
-            { headers: getAuthHeaders() }
-          );
+          await axios.post(prSubmitDeptDraft(draftId), { scopeKey });
           successCount++;
           setDrafts((prev) => prev.filter((d) => d.draftId !== draftId));
           setSelectedIds((prev) => {
@@ -308,11 +292,7 @@ const PRDraftSidebar: React.FC<PRDraftSidebarProps> = ({
     if (!scopeKey) return;
     setSubmittingAll(true);
     try {
-      const res = await axios.post(
-        prSubmitAllDeptDrafts,
-        { scopeKey },
-        { headers: getAuthHeaders() }
-      );
+      const res = await axios.post(prSubmitAllDeptDrafts, { scopeKey });
       const results = res.data?.data ?? [];
       const succeeded = results.filter((r: any) => r.status === 'fulfilled').length;
       const failed = results.filter((r: any) => r.status === 'rejected').length;
