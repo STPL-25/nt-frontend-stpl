@@ -97,6 +97,19 @@ export const purchaseTeamGetQuotationDrafts = baseUrl + "/api/purchase_team/getQ
 export const purchaseTeamDeleteQuotationDraft = (draftId: string) =>
   `${baseUrl}/api/purchase_team/deleteQuotationDraft/${draftId}`;
 
+// GRN — Goods Receipt Note
+export const grnGetPendingPOs = baseUrl + "/api/grn/getPendingPOs";
+export const grnGetGRNsByPO = (po_basic_sno: number) =>
+  `${baseUrl}/api/grn/getGRNsByPO/${po_basic_sno}`;
+export const grnCreateGRN = baseUrl + "/api/grn/createGRN";
+export const grnGetAllGRNs = baseUrl + "/api/grn/getAllGRNs";
+export const grnSaveDraft = baseUrl + "/api/grn/saveGRNDraft";
+export const grnGetDrafts = baseUrl + "/api/grn/getGRNDrafts";
+export const grnGetDraft = (draftId: string) => `${baseUrl}/api/grn/getGRNDraft/${draftId}`;
+export const grnUpdateDraft = (draftId: string) => `${baseUrl}/api/grn/updateGRNDraft/${draftId}`;
+export const grnDeleteDraft = (draftId: string) => `${baseUrl}/api/grn/deleteGRNDraft/${draftId}`;
+export const grnSubmitDraft = (draftId: string) => `${baseUrl}/api/grn/submitGRNDraft/${draftId}`;
+
 // Purchase Requisition — Dept-scoped shared drafts (Redis, dept-level visibility)
 export const prSaveDeptDraft = baseUrl + "/api/pr/saveDeptDraft";
 export const prGetDeptDrafts = baseUrl + "/api/pr/getDeptDrafts";
