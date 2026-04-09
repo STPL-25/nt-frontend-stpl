@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   CheckCircle2, XCircle, Clock,
   FileText, AlertCircle, ChevronRight, Package, Menu, X,
-  GitBranch, Layers,
+  GitBranch, Layers, History,
 } from 'lucide-react';
 import type { FieldType } from '@/FieldDatas/fieldType/fieldType';
 import {
@@ -84,6 +84,14 @@ function parsePrItems(pr: any): { parsedItems: any[]; totalCost: number } {
 function parseStages(pr: any): any[] {
   try {
     const raw = pr.stage_order_json;
+    if (!raw) return [];
+    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch { return []; }
+}
+
+function parseHistory(pr: any): any[] {
+  try {
+    const raw = pr.pr_history_data;
     if (!raw) return [];
     return typeof raw === 'string' ? JSON.parse(raw) : raw;
   } catch { return []; }
@@ -240,6 +248,53 @@ function PRListContent({
   );
 }
 
+// ─── Approval history ─────────────────────────────────────────────────────────
+
+function PRHistorySection({ history }: { history: any[] }) {
+  if (!history.length) return null;
+  return (
+    <Card className="shadow-sm">
+      <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-3">
+        <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+          <History className="h-4 w-4 sm:h-5 sm:w-5" />
+          Approval History
+          <Badge variant="secondary" className="ml-1 text-xs">{history.length}</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 sm:p-6 pt-0">
+        <div className="space-y-2">
+          {history.map((entry: any, idx: number) => (
+            <div
+              key={idx}
+              className="flex items-start gap-3 p-3 rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-800"
+            >
+              <div className="flex-shrink-0 mt-0.5">
+                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+              </div>
+              <div className="flex-1 min-w-0 space-y-0.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+                    {entry.ename ?? '—'}
+                  </p>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">{entry.status_by}</span>
+                </div>
+                {entry.status_date && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {formatDate(entry.status_date)}
+                  </p>
+                )}
+                {entry.commends && (
+                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 italic">"{entry.commends}"</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Approval stages ──────────────────────────────────────────────────────────
 
 function ApprovalStages({ stages, currentApproverId }: { stages: any[]; currentApproverId?: string }) {
@@ -344,6 +399,7 @@ function ApprovalStages({ stages, currentApproverId }: { stages: any[]; currentA
 function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction: (a: string) => void; fieldDatas: FieldType[] }) {
   const { parsedItems, totalCost } = useMemo(() => parsePrItems(pr), [pr]);
   const stages = useMemo(() => parseStages(pr), [pr]);
+  const history = useMemo(() => parseHistory(pr), [pr]);
   const priorityLabel = getPriorityLabel(pr.priority_sno);
   const statusLabel = getStatusLabel(pr.status);
 
@@ -522,6 +578,9 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
 
           {/* Approval workflow stages */}
           <ApprovalStages stages={stages} currentApproverId={pr.current_approver_id} />
+
+          {/* Approval history */}
+          <PRHistorySection history={history} />
         </div>
 
         {/* ── Right: action panel ── */}

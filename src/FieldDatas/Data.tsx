@@ -290,7 +290,7 @@ const useWorkflowMasterFields = (): FieldType[] => {
     () => [
       { field: "workflow_id", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "workflow_name", label: "Workflow Name", require: true, view: true, type: "text", input: true },
-      { field: "workflow_code", label: "Workflow Code", require: true, view: true, type: "text", input: false },
+      { field: "workflow_code", label: "Workflow Code", require: true, view: true, type: "text", input: true },
       { field: "entity_type", label: "Entity Type", require: true, view: true, type: "text", input: true },
       { field: "description", label: "Description", require: false, view: true, type: "textarea", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },

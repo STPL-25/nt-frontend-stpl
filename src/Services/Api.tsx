@@ -82,6 +82,21 @@ export const storePOUpdateDraft = (draftId: string) => `${baseUrl}/api/store_po/
 export const storePODeleteDraft = (draftId: string) => `${baseUrl}/api/store_po/deletePODraft/${draftId}`;
 export const storePOSubmitDraft = (draftId: string) => `${baseUrl}/api/store_po/submitPODraft/${draftId}`;
 
+// Purchase Team — PR processing, supplier quotation, PO creation
+export const purchaseTeamGetApprovedPRs = baseUrl + "/api/purchase_team/getApprovedPRs";
+export const purchaseTeamGetVendors = baseUrl + "/api/purchase_team/getApprovedVendors";
+export const purchaseTeamCreateQuotation = baseUrl + "/api/purchase_team/createSupplierQuotation";
+export const purchaseTeamGetQuotations = (prBasicSno: number) =>
+  `${baseUrl}/api/purchase_team/getSupplierQuotations/${prBasicSno}`;
+export const purchaseTeamSelectQuotation = (sqBasicSno: number) =>
+  `${baseUrl}/api/purchase_team/selectQuotation/${sqBasicSno}`;
+export const purchaseTeamCreatePO = baseUrl + "/api/purchase_team/createPOFromQuotation";
+export const purchaseTeamUpdateItemQty = baseUrl + "/api/purchase_team/updateItemQuantity";
+export const purchaseTeamSaveQuotationDraft = baseUrl + "/api/purchase_team/saveQuotationDraft";
+export const purchaseTeamGetQuotationDrafts = baseUrl + "/api/purchase_team/getQuotationDrafts";
+export const purchaseTeamDeleteQuotationDraft = (draftId: string) =>
+  `${baseUrl}/api/purchase_team/deleteQuotationDraft/${draftId}`;
+
 // Purchase Requisition — Dept-scoped shared drafts (Redis, dept-level visibility)
 export const prSaveDeptDraft = baseUrl + "/api/pr/saveDeptDraft";
 export const prGetDeptDrafts = baseUrl + "/api/pr/getDeptDrafts";

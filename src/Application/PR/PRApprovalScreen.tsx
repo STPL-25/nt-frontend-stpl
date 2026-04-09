@@ -7,6 +7,7 @@ import { getPrRecords, prApproveAction } from '@/Services/Api';
 import { useAppState } from '@/imports';
 import { usePrApprovalSideCardDatas } from '@/FieldDatas/PrApprovalData';
 import { socket, SOCKET_JOIN_PR_APPROVAL, SOCKET_LEAVE_PR_APPROVAL, SOCKET_PR_APPROVAL_UPDATED } from '@/Services/Socket';
+import { generatePOPdf } from '@/utils/generatePOPdf';
 
 interface APIResponse {
   success: boolean;
@@ -75,8 +76,11 @@ const PRApprovalScreen: React.FC = () => {
   };
   const handleSubmit = async () => {
     if (!selectedPR) return;
-
+    
     const rawStages = selectedPR.stage_order_json;
+
+
+
     console.log("handleSubmit called — selectedPR:", selectedPR.pr_no);
     console.log("Raw stages from DB:", rawStages);
 
@@ -92,6 +96,8 @@ const PRApprovalScreen: React.FC = () => {
     const payload = {
       pr_no: selectedPR.pr_no,
       ecno: userData[0]?.ecno,
+      action: actionType,
+
       comments: comments.trim(),
       approval_stages,
     };
@@ -100,6 +106,11 @@ const PRApprovalScreen: React.FC = () => {
     try {
       const result = await postData(prApproveAction, payload);
       console.log("Submit response:", result);
+
+      const approvalData = result?.decrypted?.data?.[0];
+      if (approvalData?.next_approver === 'FINAL_STAGE') {
+        generatePOPdf(selectedPR, approvalData);
+      }
 
       setPrList(prev => prev.filter(pr => pr.pr_no !== selectedPR.pr_no));
       setSelectedPR(null);

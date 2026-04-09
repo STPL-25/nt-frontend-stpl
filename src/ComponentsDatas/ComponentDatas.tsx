@@ -14,6 +14,7 @@ import { lazy, LazyExoticComponent, ComponentType } from "react";
  export const StoreIssuePage = lazy(() => import("../Application/Store/StoreIssuePage"));
  export const StorePOGeneratePage = lazy(() => import("../Application/Store/StorePOGeneratePage"));
  export const PurchaseOrder = lazy(() => import("../Application/PurchaseOrder/PurchaseOrder"));
+ export const PurchaseTeamPage = lazy(() => import("../Application/PurchaseOrder/PurchaseTeamPage"));
  export const PurchaseRequisitionReview = lazy(() => import("../Application/PR/PurchaseRequisitionReview"));
 // Interface for the component map
 export interface SectionComponentsMap {
@@ -34,5 +35,6 @@ export const sectionComponents: SectionComponentsMap = {
   StoreIssuePage,
   StorePOGeneratePage,
   PurchaseOrder,
+  PurchaseTeamPage,
   PurchaseRequisitionReview
 };

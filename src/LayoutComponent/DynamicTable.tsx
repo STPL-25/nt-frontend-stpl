@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, Search, Download, Plus,
   ChevronLeft, ChevronRight, Edit2, Trash2,
-  AlertTriangle, FileX, Upload, FileSpreadsheet,
+  AlertTriangle, FileX, Upload, FileSpreadsheet, LayoutGrid,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { downloadExcelTemplate, parseExcelFile } from "@/utils/excelUtils";
+import InlineSpreadsheetGrid from "@/LayoutComponent/InlineSpreadsheetGrid";
 
 /* ── Types ────────────────────────────────────────────────── */
 type RowData = Record<string, any>;
@@ -85,9 +86,10 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
   const itemsPerPage = 10;
 
   /* ── Modal state ── */
-  const [showAddModal,    setShowAddModal]    = useState(false);
-  const [showEditModal,   setShowEditModal]   = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showAddModal,      setShowAddModal]      = useState(false);
+  const [showEditModal,     setShowEditModal]      = useState(false);
+  const [showDeleteModal,   setShowDeleteModal]    = useState(false);
+  const [showSpreadsheet,   setShowSpreadsheet]    = useState(false);
   const [editingItem,  setEditingItem]  = useState<RowData | null>(null);
   const [itemToDelete, setItemToDelete] = useState<RowData | null>(null);
 
@@ -358,6 +360,18 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
                 </div>
               )}
 
+              {/* Inline spreadsheet bulk entry */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5 border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-950/30"
+                onClick={() => setShowSpreadsheet(true)}
+                title="Open inline spreadsheet for bulk entry"
+              >
+                <LayoutGrid className="h-4 w-4" />
+                <span className="hidden sm:inline">Bulk Entry</span>
+              </Button>
+
               {/* Excel template download */}
               <Button
                 variant="outline"
@@ -572,6 +586,19 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
           </div>
         )}
       </div>
+
+      {/* ── Inline Spreadsheet Grid ── */}
+      {showSpreadsheet && (
+        <InlineSpreadsheetGrid
+          fields={formHeaders}
+          master={master}
+          apiBase={API_BASE}
+          onClose={() => setShowSpreadsheet(false)}
+          onSaved={() => {
+            // Table refreshes automatically via the socket master:updated broadcast
+          }}
+        />
+      )}
 
       {/* ── Add Modal ── */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
