@@ -88,8 +88,7 @@ export const purchaseTeamGetVendors = baseUrl + "/api/purchase_team/getApprovedV
 export const purchaseTeamCreateQuotation = baseUrl + "/api/purchase_team/createSupplierQuotation";
 export const purchaseTeamGetQuotations = (prBasicSno: number) =>
   `${baseUrl}/api/purchase_team/getSupplierQuotations/${prBasicSno}`;
-export const purchaseTeamSelectQuotation = (sqBasicSno: number) =>
-  `${baseUrl}/api/purchase_team/selectQuotation/${sqBasicSno}`;
+export const purchaseTeamSelectQuotation = baseUrl + "/api/purchase_team/selectQuotation";
 export const purchaseTeamCreatePO = baseUrl + "/api/purchase_team/createPOFromQuotation";
 export const purchaseTeamUpdateItemQty = baseUrl + "/api/purchase_team/updateItemQuantity";
 export const purchaseTeamSaveQuotationDraft = baseUrl + "/api/purchase_team/saveQuotationDraft";

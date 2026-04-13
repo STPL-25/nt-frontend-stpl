@@ -249,9 +249,10 @@ const PurchaseTeamPage: React.FC = () => {
   };
 
   const handleSelectQuotation = async (q: Quotation) => {
+    console.log("quotation",q)
     if (!q.sq_basic_sno) return;
     try {
-      await axios.post(purchaseTeamSelectQuotation(q.sq_basic_sno), {}, { withCredentials: true });
+      await axios.post(purchaseTeamSelectQuotation, { selectedQuotation: q }, { withCredentials: true });
       toast.success('Quotation selected');
       if (selectedPR?.pr_basic_sno) fetchQuotations(selectedPR.pr_basic_sno);
     } catch (err: any) {
