@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -14,20 +14,21 @@ import {
   purchaseTeamGetQuotations,
   purchaseTeamSelectQuotation,
   purchaseTeamCreatePO,
-  purchaseTeamUpdateItemQty,
+  purchaseTeamSavePOConfirmation,
+  purchaseTeamGetPOConfirmation,
 } from '@/Services/Api';
 import { useAppState } from '@/globalState/hooks/useAppState';
 
 import type {
   PRRecord, PRItem, Vendor, Quotation, QuotationItem,
-  QuotationFormState, POFormState, POGroup,
+  QuotationFormState, POFormState, POGroup, POConfirmationData, POConfirmItem,
 } from './PurchaseTeam/types';
 import {
   normalisePRRows, extractQuotationItems, getPRDisplayNo,
 } from './PurchaseTeam/helpers';
 
 import PRListSidebar from './PurchaseTeam/PRListSidebar';
-import PRDetailsTab from './PurchaseTeam/PRDetailsTab';
+import POConfirmStep from './PurchaseTeam/POConfirmStep';
 import QuotationsTab from './PurchaseTeam/QuotationsTab';
 import SplitPRTab from './PurchaseTeam/SplitPRTab';
 import QuotationDialog from './PurchaseTeam/QuotationDialog';
@@ -37,7 +38,7 @@ import CreatePODialog from './PurchaseTeam/CreatePODialog';
 // ── Component ────────────────────────────────────────────────────────────────
 
 const PurchaseTeamPage: React.FC = () => {
-  useAppState(); // keep for auth context
+  useAppState(); // keep for auth context + hierarchy prefetch
 
   // ── State ──────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,11 @@ const PurchaseTeamPage: React.FC = () => {
   const [prList, setPrList] = useState<PRRecord[]>([]);
   const [loadingPR, setLoadingPR] = useState(false);
   const [selectedPR, setSelectedPR] = useState<PRRecord | null>(null);
+
+  // Step 1 — PO Confirmation
+  const [confirmedData, setConfirmedData] = useState<POConfirmationData | null>(null);
+  const [savingConfirm, setSavingConfirm] = useState(false);
+  const [editingConfirm, setEditingConfirm] = useState(false); // true = show edit form even if confirmed
 
   // Vendors
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -58,6 +64,7 @@ const PurchaseTeamPage: React.FC = () => {
   const [showQuotationDialog, setShowQuotationDialog] = useState(false);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [quotationItems, setQuotationItems] = useState<QuotationItem[]>([]);
+  const [quotationSplitGroup, setQuotationSplitGroup] = useState<number | undefined>(undefined);
 
   // Compare dialog
   const [showCompareDialog, setShowCompareDialog] = useState(false);
@@ -142,6 +149,7 @@ const PurchaseTeamPage: React.FC = () => {
           status: row.status ?? 'P',
           items: parsedItems,
           sq_quotation_file: row.sq_quotation_file,
+          split_group: row.split_group ?? undefined,
         } as Quotation;
       });
 
@@ -153,12 +161,34 @@ const PurchaseTeamPage: React.FC = () => {
     }
   }, []);
 
+  /** Fetch existing PO confirmation for a PR (if already saved) */
+  // const fetchPOConfirmation = useCallback(async (prBasicSno: number) => {
+  //   try {
+  //     const res = await axios.get(purchaseTeamGetPOConfirmation(prBasicSno), { withCredentials: true });
+  //     const data = res.data?.decrypted?.data ?? res.data?.data ?? null;
+  //     if (data && data.pr_basic_sno) {
+  //       setConfirmedData(data);
+  //       setEditingConfirm(false);
+  //     } else {
+  //       setConfirmedData(null);
+  //     }
+  //   } catch {
+  //     // Not found = no confirmation yet; that's fine
+  //     setConfirmedData(null);
+  //   }
+  // }, []);
+
   useEffect(() => { fetchPRs(); fetchVendors(); }, [fetchPRs, fetchVendors]);
 
-  useEffect(() => {
-    if (selectedPR?.pr_basic_sno) fetchQuotations(selectedPR.pr_basic_sno);
-    else setExistingQuotations([]);
-  }, [selectedPR?.pr_basic_sno, fetchQuotations]);
+  // useEffect(() => {
+  //   if (selectedPR?.pr_basic_sno) {
+  //     fetchQuotations(selectedPR.pr_basic_sno);
+  //     fetchPOConfirmation(selectedPR.pr_basic_sno);
+  //   } else {
+  //     setExistingQuotations([]);
+  //     setConfirmedData(null);
+  //   }
+  // }, [selectedPR?.pr_basic_sno, fetchQuotations, fetchPOConfirmation]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -166,7 +196,36 @@ const PurchaseTeamPage: React.FC = () => {
     setSelectedPR(pr);
     setPOGroups([]);
     setSplitOpen(false);
+    setConfirmedData(null);
+    setEditingConfirm(false);
   };
+
+  // ── Step 1: PO Confirmation ────────────────────────────────────────────────
+
+  const handlePOConfirmed = async (data: POConfirmationData) => {
+    setSavingConfirm(true);
+    try {
+      await axios.post(purchaseTeamSavePOConfirmation, data, { withCredentials: true });
+      setConfirmedData(data);
+      setEditingConfirm(false);
+      toast.success('PO details confirmed. You can now select a supplier and add quotations.');
+    } catch (err: any) {
+      console.log('Error saving PO confirmation', err);
+      const msg = err?.response?.data?.error ?? 'Failed to save PO confirmation';
+      if (msg.toLowerCase().includes('database error')) {
+        // SP not deployed yet — still let UX advance so team can continue
+        toast.warning('Confirmation recorded locally. SP may not be deployed yet.');
+        setConfirmedData(data);
+        setEditingConfirm(false);
+      } else {
+        toast.error(msg);
+      }
+    } finally {
+      setSavingConfirm(false);
+    }
+  };
+
+  // ── Split ──────────────────────────────────────────────────────────────────
 
   const handleSplitConfirmed = (groups: POGroup[]) => {
     setPOGroups(groups);
@@ -180,37 +239,56 @@ const PurchaseTeamPage: React.FC = () => {
     toast.info('Split cleared');
   };
 
+
   // ── Quotation handlers ────────────────────────────────────────────────────
 
-  const handleOpenQuotation = (vendor: Vendor) => {
+  // splitGroup: undefined = main/all items, 0 = ungrouped items only, N = specific group N
+  const handleOpenQuotation = (vendor: Vendor, splitGroup?: number) => {
     if (!selectedPR && poGroups.length === 0) { toast.error('Select a PR first'); return; }
     setSelectedVendor(vendor);
+    setQuotationSplitGroup(splitGroup);
 
-    if (poGroups.length > 0) {
+    const toQuotItem = (it: POConfirmItem): QuotationItem => ({
+      pr_item_sno: it.pr_item_sno,
+      prod_sno: it.prod_sno,
+      prod_name: it.prod_name,
+      specification: it.specification,
+      qty: it.qty,
+      unit: it.unit,
+      unit_name: it.unit_name,
+      unit_price: 0, discount_pct: 0, tax_pct: 0,
+      total_amount: 0, delivery_days: 0, remarks: '',
+    });
+
+    if (splitGroup !== undefined && confirmedData?.items?.length) {
+      // Filter items for this specific split group (0 = ungrouped / main PO)
+      const groupItems = splitGroup === 0
+        ? confirmedData.items.filter(it => !it.split_group)
+        : confirmedData.items.filter(it => it.split_group === splitGroup);
+      setQuotationItems(groupItems.map(toQuotItem));
+    } else if (poGroups.length > 0) {
       const targetGroup = poGroups.find(
         g => g.vendorSno === (vendor.kyc_basic_info_sno ?? vendor.vendor_sno)
       ) ?? poGroups[0];
       setQuotationItems(targetGroup.items.map(it => ({
-        pr_item_sno: it.pr_item_sno,
-        prod_sno: it.prod_sno,
-        prod_name: it.prod_name,
-        specification: it.specification,
-        qty: it.qty,
-        unit: it.unit,
-        unit_name: it.unit_name,
-        unit_price: 0,
-        discount_pct: 0,
-        tax_pct: 0,
-        total_amount: 0,
-        delivery_days: 0,
-        remarks: '',
+        pr_item_sno: it.pr_item_sno, prod_sno: it.prod_sno,
+        prod_name: it.prod_name, specification: it.specification,
+        qty: it.qty, unit: it.unit, unit_name: it.unit_name,
+        unit_price: 0, discount_pct: 0, tax_pct: 0,
+        total_amount: 0, delivery_days: 0, remarks: '',
       })));
     } else if (selectedPR) {
-      setQuotationItems(extractQuotationItems(selectedPR));
+      if (confirmedData?.items?.length) {
+        setQuotationItems(confirmedData.items.map(toQuotItem));
+      } else {
+        setQuotationItems(extractQuotationItems(selectedPR));
+      }
     }
 
     setShowQuotationDialog(true);
   };
+    console.log('render', selectedPR);
+
 
   const handleSubmitQuotation = async (form: QuotationFormState, items: QuotationItem[]) => {
     if (!selectedPR && poGroups.length === 0) return;
@@ -229,6 +307,7 @@ const PurchaseTeamPage: React.FC = () => {
         vendor_sno: selectedVendor.kyc_basic_info_sno ?? selectedVendor.vendor_sno,
         ...form,
         items,
+        ...(quotationSplitGroup !== undefined && { split_group: quotationSplitGroup }),
         ...(poGroups.length > 0 && {
           source_pr_basic_snos: poGroups.flatMap(g => g.sourcePRs),
           po_group_id: poGroups[0]?.id,
@@ -249,7 +328,6 @@ const PurchaseTeamPage: React.FC = () => {
   };
 
   const handleSelectQuotation = async (q: Quotation) => {
-    console.log("quotation",q)
     if (!q.sq_basic_sno) return;
     try {
       await axios.post(purchaseTeamSelectQuotation, { selectedQuotation: q }, { withCredentials: true });
@@ -274,6 +352,11 @@ const PurchaseTeamPage: React.FC = () => {
       : null);
     if (!basePR) { toast.error('No PR context found'); return; }
 
+    // Prefer confirmed billing org over PR org
+    const billingComSno = confirmedData?.billing_com_sno ?? basePR.com_sno;
+    const billingDivSno = confirmedData?.billing_div_sno ?? basePR.div_sno;
+    const billingBrnSno = confirmedData?.billing_brn_sno ?? basePR.brn_sno;
+
     try {
       if (poGroups.length > 1) {
         let splitIdx = 1;
@@ -283,9 +366,9 @@ const PurchaseTeamPage: React.FC = () => {
             pr_basic_sno: groupPR.pr_basic_sno,
             sq_basic_sno: selectedQuotation.sq_basic_sno,
             vendor_sno: group.vendorSno ?? selectedQuotation.vendor_sno,
-            com_sno: groupPR.com_sno,
-            div_sno: groupPR.div_sno,
-            brn_sno: groupPR.brn_sno,
+            com_sno: billingComSno,
+            div_sno: billingDivSno,
+            brn_sno: billingBrnSno,
             dept_sno: groupPR.dept_sno,
             budget_sno: groupPR.budget_sno,
             budget_code: groupPR.budget_code,
@@ -304,9 +387,9 @@ const PurchaseTeamPage: React.FC = () => {
           pr_basic_sno: basePR.pr_basic_sno,
           sq_basic_sno: selectedQuotation.sq_basic_sno,
           vendor_sno: selectedQuotation.vendor_sno,
-          com_sno: basePR.com_sno,
-          div_sno: basePR.div_sno,
-          brn_sno: basePR.brn_sno,
+          com_sno: billingComSno,
+          div_sno: billingDivSno,
+          brn_sno: billingBrnSno,
           dept_sno: basePR.dept_sno,
           budget_sno: basePR.budget_sno,
           budget_code: basePR.budget_code,
@@ -331,19 +414,23 @@ const PurchaseTeamPage: React.FC = () => {
     }
   };
 
-  const handleSaveQtyChange = async (item: PRItem, newQty: number) => {
-    if (!selectedPR || !item.pr_item_sno) return;
-    try {
-      await axios.post(purchaseTeamUpdateItemQty, {
-        pr_item_sno: item.pr_item_sno,
-        qty: newQty,
-      }, { withCredentials: true });
-      toast.success('Quantity updated');
-      fetchPRs();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error ?? 'Failed to update quantity');
-    }
-  };
+  // ── Confirmed split groups (derived from confirmedData items) ────────────
+  const confirmedSplitGroups = useMemo(() => {
+    if (!confirmedData?.items?.length) return [];
+    const map = new Map<number, POConfirmItem[]>();
+    confirmedData.items.forEach(item => {
+      if (item.split_group) {
+        if (!map.has(item.split_group)) map.set(item.split_group, []);
+        map.get(item.split_group)!.push(item);
+      }
+    });
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([groupNum, items]) => ({ groupNum, items }));
+  }, [confirmedData]);
+
+  // ── Whether Step 2 (supplier/quotation) is unlocked ───────────────────────
+  const isStep2Unlocked = !!confirmedData && !editingConfirm;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // RENDER
@@ -359,7 +446,7 @@ const PurchaseTeamPage: React.FC = () => {
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900">Purchase Team</h1>
-            <p className="text-sm text-gray-500">Split PRs, assign suppliers, manage quotations</p>
+            <p className="text-sm text-gray-500">Confirm PO details, split PRs, assign suppliers, manage quotations</p>
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={() => { fetchPRs(); fetchVendors(); }} disabled={loadingPR}>
@@ -393,98 +480,141 @@ const PurchaseTeamPage: React.FC = () => {
           ) : (
             <div className="px-6 py-4 space-y-4">
 
-              {/* ── Section 1: PR Details ────────────────────────────────── */}
-              <PRDetailsTab
+              {/* ── Step indicator ───────────────────────────────────────── */}
+              <div className="flex items-center gap-3 text-xs">
+                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border font-medium
+                  ${isStep2Unlocked
+                    ? 'bg-green-50 border-green-200 text-green-700'
+                    : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                  }`}>
+                  <span className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold
+                    ${isStep2Unlocked ? 'bg-green-500 text-white' : 'bg-indigo-600 text-white'}`}>
+                    {isStep2Unlocked ? '✓' : '1'}
+                  </span>
+                  Confirm PO Details
+                </div>
+                <div className="h-px w-6 bg-gray-300" />
+                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border font-medium
+                  ${isStep2Unlocked
+                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                    : 'bg-gray-50 border-gray-200 text-gray-400'
+                  }`}>
+                  <span className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold
+                    ${isStep2Unlocked ? 'bg-indigo-600 text-white' : 'bg-gray-300 text-gray-600'}`}>
+                    2
+                  </span>
+                  Supplier &amp; Quotation
+                </div>
+              </div>
+
+              {/* ── Section 1: PO Confirmation ───────────────────────────── */}
+              <POConfirmStep
+                key={selectedPR.pr_basic_sno}
                 selectedPR={selectedPR}
-                onSaveQtyChange={handleSaveQtyChange}
+                onConfirmed={handlePOConfirmed}
+                saving={savingConfirm}
+                confirmedData={editingConfirm ? null : confirmedData}
+                onEditConfirm={() => setEditingConfirm(true)}
               />
 
-              {/* ── Section 2: Split PR (collapsible) ───────────────────── */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <Scissors size={16} className="text-indigo-600" />
-                      Split PR
-                      <span className="text-xs font-normal text-gray-400">(optional)</span>
-                      {poGroups.length > 0 && (
-                        <Badge className="text-xs bg-green-100 text-green-700 border-green-200 ml-1">
-                          {poGroups.length} groups confirmed
-                        </Badge>
-                      )}
-                    </CardTitle>
-                    <div className="flex items-center gap-2">
-                      {poGroups.length > 0 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs text-red-500 h-7 px-2"
-                          onClick={handleClearSplit}
-                        >
-                          <X size={12} className="mr-1" /> Clear
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-xs h-7"
-                        onClick={() => setSplitOpen(v => !v)}
-                      >
-                        {splitOpen
-                          ? <><ChevronUp size={13} className="mr-1" /> Collapse</>
-                          : <><ChevronDown size={13} className="mr-1" />{poGroups.length > 0 ? 'Modify Split' : 'Split this PR'}</>
-                        }
-                      </Button>
-                    </div>
-                  </div>
+              {/* ── Sections below are locked until Step 1 is saved ──────── */}
+              {!isStep2Unlocked && (
+                <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/60 p-6 text-center text-sm text-gray-400">
+                  Complete Step 1 to unlock supplier selection and quotation management.
+                </div>
+              )}
 
-                  {/* Summary when collapsed and split confirmed */}
-                  {!splitOpen && poGroups.length > 0 && (
-                    <div className="space-y-1.5 mt-3">
-                      {poGroups.map((g, idx) => (
-                        <div key={g.id} className="flex items-center gap-2 text-xs bg-indigo-50 border border-indigo-100 rounded p-2">
-                          <Badge className="bg-indigo-600 text-white border-none shrink-0">
-                            {getPRDisplayNo(selectedPR)}/{idx + 1}
-                          </Badge>
-                          <span className="font-medium text-gray-800">
-                            {g.vendorName ?? <span className="text-amber-600 italic">No vendor assigned</span>}
-                          </span>
-                          <span className="text-gray-400 ml-auto">{g.items.length} item(s)</span>
+              {isStep2Unlocked && (
+                <>
+                  {/* ── Section 2: Split PR (collapsible) ─────────────────── */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                          <Scissors size={16} className="text-indigo-600" />
+                          Split PR
+                          <span className="text-xs font-normal text-gray-400">(optional)</span>
+                          {poGroups.length > 0 && (
+                            <Badge className="text-xs bg-green-100 text-green-700 border-green-200 ml-1">
+                              {poGroups.length} groups confirmed
+                            </Badge>
+                          )}
+                        </CardTitle>
+                        <div className="flex items-center gap-2">
+                          {poGroups.length > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs text-red-500 h-7 px-2"
+                              onClick={handleClearSplit}
+                            >
+                              <X size={12} className="mr-1" /> Clear
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs h-7"
+                            onClick={() => setSplitOpen(v => !v)}
+                          >
+                            {splitOpen
+                              ? <><ChevronUp size={13} className="mr-1" /> Collapse</>
+                              : <><ChevronDown size={13} className="mr-1" />{poGroups.length > 0 ? 'Modify Split' : 'Split this PR'}</>
+                            }
+                          </Button>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </CardHeader>
+                      </div>
 
-                {splitOpen && (
-                  <CardContent className="pt-0">
-                    <SplitPRTab
-                      selectedPR={selectedPR}
-                      vendors={vendors}
-                      loadingVendors={loadingVendors}
-                      onSplitConfirmed={handleSplitConfirmed}
-                    />
-                  </CardContent>
-                )}
-              </Card>
+                      {/* Summary when collapsed and split confirmed */}
+                      {!splitOpen && poGroups.length > 0 && (
+                        <div className="space-y-1.5 mt-3">
+                          {poGroups.map((g, idx) => (
+                            <div key={g.id} className="flex items-center gap-2 text-xs bg-indigo-50 border border-indigo-100 rounded p-2">
+                              <Badge className="bg-indigo-600 text-white border-none shrink-0">
+                                {getPRDisplayNo(selectedPR)}/{idx + 1}
+                              </Badge>
+                              <span className="font-medium text-gray-800">
+                                {g.vendorName ?? <span className="text-amber-600 italic">No vendor assigned</span>}
+                              </span>
+                              <span className="text-gray-400 ml-auto">{g.items.length} item(s)</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardHeader>
 
-              {/* ── Section 3: Supplier & Quotation ─────────────────────── */}
-              <QuotationsTab
-                selectedPR={selectedPR}
-                vendors={vendors}
-                loadingVendors={loadingVendors}
-                existingQuotations={existingQuotations}
-                loadingQuotations={loadingQuotations}
-                onOpenQuotation={handleOpenQuotation}
-                onSelectQuotation={handleSelectQuotation}
-                onCreatePO={handleOpenCreatePO}
-                onCompare={() => setShowCompareDialog(true)}
-                onRefreshQuotations={() => {
-                  const sno = selectedPR?.pr_basic_sno ?? poGroups[0]?.sourcePRs[0];
-                  if (sno) fetchQuotations(sno);
-                }}
-                poGroups={poGroups}
-              />
+                    {splitOpen && (
+                      <CardContent className="pt-0">
+                        <SplitPRTab
+                          selectedPR={selectedPR}
+                          vendors={vendors}
+                          loadingVendors={loadingVendors}
+                          onSplitConfirmed={handleSplitConfirmed}
+                        />
+                      </CardContent>
+                    )}
+                  </Card>
+
+                  {/* ── Section 3: Supplier & Quotation ───────────────────── */}
+                  <QuotationsTab
+                    selectedPR={selectedPR}
+                    vendors={vendors}
+                    loadingVendors={loadingVendors}
+                    existingQuotations={existingQuotations}
+                    loadingQuotations={loadingQuotations}
+                    onOpenQuotation={handleOpenQuotation}
+                    onSelectQuotation={handleSelectQuotation}
+                    onCreatePO={handleOpenCreatePO}
+                    onCompare={() => setShowCompareDialog(true)}
+                    onRefreshQuotations={() => {
+                      const sno = selectedPR?.pr_basic_sno ?? poGroups[0]?.sourcePRs[0];
+                      if (sno) fetchQuotations(sno);
+                    }}
+                    poGroups={poGroups}
+                    confirmedSplitGroups={confirmedSplitGroups}
+                  />
+                </>
+              )}
 
             </div>
           )}

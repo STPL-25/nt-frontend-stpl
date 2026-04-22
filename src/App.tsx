@@ -19,12 +19,6 @@ import {
 import { selectSessionExpired, setSessionExpired, clearUserData } from "./globalState/features/decodeSlice";
 import { clearSidebarData } from "./globalState/features/fetchSidebarDataSlice";
 
-interface UserDataItem {
-  ecno?: string;
-  ename?: string;
-  [key: string]: any;
-}
-
 function ThemeApplier() {
   const color  = useSelector(selectThemeColor);
   const radius = useSelector(selectThemeRadius);
@@ -74,12 +68,8 @@ function RootRoute() {
     );
   }
 
-  if (
-    userData &&
-    Object.keys(userData).length > 0 &&
-    (userData as UserDataItem[])[0]?.ecno &&
-    (userData as UserDataItem[])[0]?.ename
-  ) {
+  const firstUser = Array.isArray(userData) ? userData[0] : userData;
+  if (userData && Object.keys(userData).length > 0 && firstUser?.ecno && firstUser?.ename) {
     return <Dashboard />;
   }
   return <SignIn />;
@@ -97,10 +87,8 @@ function App() {
   const sessionExpired = useSelector(selectSessionExpired);
   const dispatch = useDispatch();
 
-  const isLoggedIn =
-    !!userData &&
-    Object.keys(userData).length > 0 &&
-    !!(userData as UserDataItem[])[0]?.ecno;
+  const firstUser = Array.isArray(userData) ? userData[0] : userData;
+  const isLoggedIn = !!userData && Object.keys(userData).length > 0 && !!firstUser?.ecno;
 
   // Auto-logout after 2 hrs of inactivity; shows warning popup before
   const { showWarning, countdown, stayLoggedIn, logoutNow } = useInactivityLogout(isLoggedIn);

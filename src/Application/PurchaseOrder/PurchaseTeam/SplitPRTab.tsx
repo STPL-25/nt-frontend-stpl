@@ -3,11 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Scissors, Plus, Trash2, Package, ArrowRight, Info, Search, Loader2 } from 'lucide-react';
+import { Scissors, Plus, Trash2, Package, ArrowRight, Info, Search, Loader2, CheckSquare } from 'lucide-react';
 import { useSplitItemFields, useVendorFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
 import type { PRRecord, Vendor, POGroup, POGroupItem } from './types';
 import { getPRDisplayNo, getPRItems, formatINR } from './helpers';
@@ -40,6 +41,10 @@ const SplitPRTab: React.FC<SplitPRTabProps> = ({
   const [itemAssignment, setItemAssignment] = useState<Record<number, { groupId: string; qty: number }>>({});
   const [searchVendor, setSearchVendor] = useState('');
   const [assigningVendorGroup, setAssigningVendorGroup] = useState<string | null>(null);
+
+  // Multi-select state
+  const [selectedIdxs, setSelectedIdxs] = useState<Set<number>>(new Set());
+  const [bulkGroupId, setBulkGroupId] = useState<string>('');
 
   const filteredVendors = useMemo(() => {
     const q = searchVendor.toLowerCase();
@@ -105,6 +110,39 @@ const SplitPRTab: React.FC<SplitPRTabProps> = ({
       if (!prev[itemIdx]) return prev;
       return { ...prev, [itemIdx]: { ...prev[itemIdx], qty } };
     });
+  };
+
+  // ── Multi-select helpers ───────────────────────────────────────────────────
+
+  const toggleSelectItem = (idx: number) => {
+    setSelectedIdxs(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIdxs.size === items.length) {
+      setSelectedIdxs(new Set());
+    } else {
+      setSelectedIdxs(new Set(items.map((_, i) => i)));
+    }
+  };
+
+  const bulkAssign = () => {
+    if (!bulkGroupId || selectedIdxs.size === 0) return;
+    setItemAssignment(prev => {
+      const next = { ...prev };
+      selectedIdxs.forEach(idx => {
+        const item = items[idx];
+        const originalQty = Number(item?.qty ?? item?.quantity ?? (item as any)?.req_qty ?? 0) || 1;
+        next[idx] = { groupId: bulkGroupId, qty: next[idx]?.qty ?? originalQty };
+      });
+      return next;
+    });
+    setSelectedIdxs(new Set());
+    setBulkGroupId('');
   };
 
   // ── Build final groups for confirmation ────────────────────────────────────
@@ -276,18 +314,65 @@ const SplitPRTab: React.FC<SplitPRTabProps> = ({
       {groups.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Package size={16} className="text-orange-600" />
-              Assign Items to Groups
-              {allItemsAssigned && (
-                <Badge className="text-xs bg-green-100 text-green-700 border-green-200 ml-2">All assigned</Badge>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Package size={16} className="text-orange-600" />
+                Assign Items to Groups
+                {allItemsAssigned && (
+                  <Badge className="text-xs bg-green-100 text-green-700 border-green-200 ml-2">All assigned</Badge>
+                )}
+              </CardTitle>
+
+              {/* Bulk-assign toolbar — visible when items are checked */}
+              {selectedIdxs.size > 0 && (
+                <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5">
+                  <CheckSquare size={14} className="text-indigo-600 shrink-0" />
+                  <span className="text-xs font-medium text-indigo-700">{selectedIdxs.size} item(s) selected</span>
+                  <span className="text-gray-300 mx-1">|</span>
+                  <Select value={bulkGroupId} onValueChange={setBulkGroupId}>
+                    <SelectTrigger className="h-7 text-xs w-44">
+                      <SelectValue placeholder="Select group…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groups.map((g, gIdx) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {prNo}/{gIdx + 1}{g.vendorName ? ` — ${g.vendorName}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700"
+                    disabled={!bulkGroupId}
+                    onClick={bulkAssign}
+                  >
+                    Assign
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs text-gray-500"
+                    onClick={() => setSelectedIdxs(new Set())}
+                  >
+                    Clear
+                  </Button>
+                </div>
               )}
-            </CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50">
+                  {/* Select-all checkbox */}
+                  <TableHead className="w-10 pl-3">
+                    <Checkbox
+                      checked={items.length > 0 && selectedIdxs.size === items.length}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Select all items"
+                    />
+                  </TableHead>
                   <TableHead className="text-xs w-8">#</TableHead>
                   {viewFields.map(f => (
                     <TableHead key={f.field} className={`text-xs ${f.field === 'qty' ? 'text-center w-28' : ''}`}>
@@ -300,9 +385,21 @@ const SplitPRTab: React.FC<SplitPRTabProps> = ({
                 {items.map((item, idx) => {
                   const assignment = itemAssignment[idx];
                   const originalQty = Number(item.qty ?? item.quantity ?? (item as any).req_qty ?? 0) || 1;
+                  const isChecked = selectedIdxs.has(idx);
 
                   return (
-                    <TableRow key={idx} className={assignment ? '' : 'bg-amber-50/40'}>
+                    <TableRow
+                      key={idx}
+                      className={`${assignment ? '' : 'bg-amber-50/40'} ${isChecked ? 'bg-indigo-50/60' : ''}`}
+                    >
+                      {/* Row checkbox */}
+                      <TableCell className="pl-3 py-2">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={() => toggleSelectItem(idx)}
+                          aria-label={`Select item ${idx + 1}`}
+                        />
+                      </TableCell>
                       <TableCell className="text-xs text-gray-400">{idx + 1}</TableCell>
                       {viewFields.map(f => {
                         if (f.field === 'prod_name') {

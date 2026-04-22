@@ -107,6 +107,7 @@ export interface Quotation {
   status?: string;
   items: QuotationItem[];
   sq_quotation_file?: string;
+  split_group?: number;       // which confirmed split group this quotation belongs to
 }
 
 export interface QuotationFormState {
@@ -152,4 +153,37 @@ export interface POGroupItem {
   unit: number;
   unit_name: string;
   est_cost?: number;
+}
+
+// ── PO Confirmation (Step 1 before quotation) ────────────────────────────────
+
+export interface POConfirmItem {
+  id: string;                 // client-side row id (for split rows)
+  pr_item_sno?: number;
+  prod_sno?: number;
+  prod_name: string;
+  specification: string;
+  originalQty: number;        // original qty from PR
+  qty: number;                // confirmed qty for this row
+  unit: number;
+  unit_name: string;
+  est_cost?: number;
+  com_sno?: number | string;
+  com_name?: string;
+  div_sno?: number | string;
+  div_name?: string;
+  brn_sno?: number | string;
+  brn_name?: string;
+  isSplit: boolean;
+  parentItemSno?: number;
+  split_group?: number;       // which split PO group (1, 2, 3…). undefined = main PO
+}
+
+export interface POConfirmationData {
+  pr_basic_sno: number;
+  required_date: string;
+  billing_com_sno?: number | string;
+  billing_div_sno?: number | string;
+  billing_brn_sno?: number | string;
+  items: POConfirmItem[];
 }

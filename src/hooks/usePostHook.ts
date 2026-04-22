@@ -75,9 +75,6 @@ const usePost = <T = any>(): UsePostReturn<T> => {
           (axios.isAxiosError(e) && e.code === "ERR_CANCELED");
 
         if (canceled) {
-          // Request was intentionally cancelled
-          // keep data as null and do not set an error
-          console.log("Request cancelled");
           return null;
         } else {
           const errorMessage =

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
 
 type Maybe<T> = T | null;
@@ -21,14 +21,12 @@ interface UseUpdateReturn<T> {
   reset: () => void;
 }
 
-/**
- * Generic useUpdate hook (PUT / PATCH)
- * Usage: const { updateData } = useUpdate<MyResponseType>();
- */
 const useUpdate = <T = any>(): UseUpdateReturn<T> => {
   const [data, setData] = useState<Maybe<T>>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Maybe<string>>(null);
+
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const updateData = async (
     url: string,
@@ -36,7 +34,8 @@ const useUpdate = <T = any>(): UseUpdateReturn<T> => {
     payload: any = null,
     config: AxiosRequestConfig = {}
   ): Promise<Maybe<T>> => {
-    const source = axios.CancelToken.source();
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    abortControllerRef.current = new AbortController();
 
     try {
       setLoading(true);
@@ -44,27 +43,29 @@ const useUpdate = <T = any>(): UseUpdateReturn<T> => {
       setData(null);
 
       const endpoint = query ? `${url}/${query}` : url;
-      console.log(endpoint);
 
       const response: AxiosResponse<T> = await axios.put(endpoint, payload, {
         ...config,
-        cancelToken: source.token,
+        signal: abortControllerRef.current.signal,
       });
 
       setData(response.data);
       return response.data;
     } catch (err: any) {
-      if (axios.isCancel(err)) {
-        console.log("Request cancelled");
-        return null;
-      } else {
-        const errorMessage =
-          err?.response?.data?.message || err?.message || "An error occurred";
-        setError(String(errorMessage));
-        throw err;
-      }
+      const canceled =
+        err?.name === "AbortError" ||
+        err?.code === "ERR_CANCELED" ||
+        (axios.isAxiosError(err) && err.code === "ERR_CANCELED");
+
+      if (canceled) return null;
+
+      const errorMessage =
+        err?.response?.data?.message || err?.message || "An error occurred";
+      setError(String(errorMessage));
+      throw err;
     } finally {
       setLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -73,8 +74,8 @@ const useUpdate = <T = any>(): UseUpdateReturn<T> => {
     payload: any = null,
     config: AxiosRequestConfig = {}
   ): Promise<Maybe<T>> => {
-    const source = axios.CancelToken.source();
-    console.log("Patching data at:", url, "with payload:", payload);
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    abortControllerRef.current = new AbortController();
 
     try {
       setLoading(true);
@@ -83,23 +84,26 @@ const useUpdate = <T = any>(): UseUpdateReturn<T> => {
 
       const response: AxiosResponse<T> = await axios.patch(url, payload, {
         ...config,
-        cancelToken: source.token,
+        signal: abortControllerRef.current.signal,
       });
 
       setData(response.data);
       return response.data;
     } catch (err: any) {
-      if (axios.isCancel(err)) {
-        console.log("Request cancelled");
-        return null;
-      } else {
-        const errorMessage =
-          err?.response?.data?.message || err?.message || "An error occurred";
-        setError(String(errorMessage));
-        throw err;
-      }
+      const canceled =
+        err?.name === "AbortError" ||
+        err?.code === "ERR_CANCELED" ||
+        (axios.isAxiosError(err) && err.code === "ERR_CANCELED");
+
+      if (canceled) return null;
+
+      const errorMessage =
+        err?.response?.data?.message || err?.message || "An error occurred";
+      setError(String(errorMessage));
+      throw err;
     } finally {
       setLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -107,6 +111,10 @@ const useUpdate = <T = any>(): UseUpdateReturn<T> => {
     setData(null);
     setError(null);
     setLoading(false);
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
   };
 
   return { data, loading, error, updateData, patchData, reset };

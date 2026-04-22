@@ -96,6 +96,11 @@ export const purchaseTeamGetQuotationDrafts = baseUrl + "/api/purchase_team/getQ
 export const purchaseTeamDeleteQuotationDraft = (draftId: string) =>
   `${baseUrl}/api/purchase_team/deleteQuotationDraft/${draftId}`;
 
+// PO Confirmation (Step 1 before quotation)
+export const purchaseTeamSavePOConfirmation = baseUrl + "/api/purchase_team/savePOConfirmation";
+export const purchaseTeamGetPOConfirmation = (prBasicSno: number) =>
+  `${baseUrl}/api/purchase_team/getPOConfirmation/${prBasicSno}`;
+
 // GRN — Goods Receipt Note
 export const grnGetPendingPOs = baseUrl + "/api/grn/getPendingPOs";
 export const grnGetGRNsByPO = (po_basic_sno: number) =>
@@ -116,3 +121,23 @@ export const prUpdateDeptDraft = (draftId: string) => `${baseUrl}/api/pr/updateD
 export const prDeleteDeptDraft = (draftId: string) => `${baseUrl}/api/pr/deleteDeptDraft/${draftId}`;
 export const prSubmitDeptDraft = (draftId: string) => `${baseUrl}/api/pr/submitDeptDraft/${draftId}`;
 export const prSubmitAllDeptDrafts = baseUrl + "/api/pr/submitAllDeptDrafts";
+
+// Inventory
+export const inventoryGetItems    = baseUrl + "/api/inventory/getItems";
+export const inventoryCreateItem  = baseUrl + "/api/inventory/createItem";
+export const inventoryUpdateItem  = (item_sno: number) => `${baseUrl}/api/inventory/updateItem/${item_sno}`;
+export const inventoryDeleteItem  = (item_sno: number) => `${baseUrl}/api/inventory/deleteItem/${item_sno}`;
+export const inventoryGetMovements = (item_sno: number) => `${baseUrl}/api/inventory/getMovements/${item_sno}`;
+export const inventoryAdjustStock = baseUrl + "/api/inventory/adjustStock";
+
+// A/C Double Entry — Journal Entries
+export const acGetEntries         = baseUrl + "/api/ac_entry/getEntries";
+export const acCreateEntry        = baseUrl + "/api/ac_entry/createEntry";
+export const acUpdateEntry        = (entry_sno: number) => `${baseUrl}/api/ac_entry/updateEntry/${entry_sno}`;
+export const acPostEntry          = (entry_sno: number) => `${baseUrl}/api/ac_entry/postEntry/${entry_sno}`;
+export const acReverseEntry       = (entry_sno: number) => `${baseUrl}/api/ac_entry/reverseEntry/${entry_sno}`;
+
+// A/C Double Entry — Chart of Accounts / Ledgers
+export const acGetLedgers         = baseUrl + "/api/ac_entry/getLedgers";
+export const acCreateLedger       = baseUrl + "/api/ac_entry/createLedger";
+export const acUpdateLedger       = (ledger_sno: number) => `${baseUrl}/api/ac_entry/updateLedger/${ledger_sno}`;
