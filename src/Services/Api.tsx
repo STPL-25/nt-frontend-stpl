@@ -1,5 +1,10 @@
 const baseUrl = import.meta.env.VITE_API_URL || "";
 
+// Auth / Sign-in / Sign-up
+export const apiLogUser  = baseUrl + "/api/secure/log_user";
+export const apiSignUp   = baseUrl + "/api/secure/sign_up";
+export const apiGetAllUsersSignUp = baseUrl + "/api/secure/get_all_users_sign_up";
+
 // Auth / Sidebar
 export const apiFetchSidebarData = baseUrl + "/api/user_approval/get_user_screens_and_permisssions/";
 export const apiFetchSidebarDataByEcno = (ecno: string) =>
@@ -9,16 +14,24 @@ export const apiFetchSidebarDataByEcno = (ecno: string) =>
 export const apiGetHierarchyDetails = baseUrl + "/api/user_approval/get_hierachy_com_details";
 
 // User Approval
-export const getUserPermissions = (userId: string) =>
-  `${baseUrl}/api/user_approval/get_user_permissions/${userId}`;
+export const apiGetScreensWithGroups  = baseUrl + "/api/user_approval/get_screens_with_groups";
+export const apiGetPermissionDetails  = baseUrl + "/api/user_approval/get_permission_details";
+export const apiSaveUserPermissions   = baseUrl + "/api/user_approval/save_user_permissions";
+export const getUserPermissions = (ecno: string) =>
+  `${baseUrl}/api/user_approval/get_user_permissions/${ecno}`;
 
 // KYC
 export const apiGetAllKycDatas = baseUrl + "/api/kyc/get_all_kycs";
 export const apiPostKycData = baseUrl + "/api/kyc/create_kyc_records";
+export const apiGetKycPendingApprovals = baseUrl + "/api/kyc/get_pending_approvals";
+export const apiKycApproveAction = baseUrl + "/api/kyc/approve_kyc";
 
 // Common Masters
 export const apiFetchCommonMaster = baseUrl + "/api/common_master/";
 export const getAllRequiredMasterForOptions = baseUrl + "/api/common_master/getRequiredMasterForOptions";
+export const apiPostCommonMaster   = (master: string) => `${baseUrl}/api/common_master/${master}`;
+export const apiUpdateCommonMaster = (master: string) => `${baseUrl}/api/${master}`;
+export const apiDeleteCommonMaster = (master: string) => `${baseUrl}/api/${master}`;
 
 // Common Basic Details (hierarchy + employee)
 export const apiCommonBasicDetails = baseUrl + "/api/common_basic_details";

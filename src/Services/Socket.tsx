@@ -29,6 +29,12 @@ export const SOCKET_LEAVE_PR_APPROVAL = "leave-pr-approval";
 // ── PR approval real-time events ─────────────────────────────────────────────
 export const SOCKET_PR_APPROVAL_UPDATED = "pr:approval:updated";
 
+// ── KYC room + real-time events ───────────────────────────────────────────────
+export const SOCKET_JOIN_KYC_APPROVAL    = "join-kyc-approval";
+export const SOCKET_LEAVE_KYC_APPROVAL   = "leave-kyc-approval";
+export const SOCKET_KYC_SUBMITTED        = "kyc:submitted";
+export const SOCKET_KYC_APPROVAL_UPDATED = "kyc:approval:updated";
+
 // ── PR draft real-time events ─────────────────────────────────────────────────
 export const SOCKET_PR_DRAFT_NEW = "pr:draft:new";
 export const SOCKET_PR_DRAFT_UPDATED = "pr:draft:updated";

@@ -28,9 +28,9 @@ interface QuotationsTabProps {
   loadingVendors: boolean;
   existingQuotations: Quotation[];
   loadingQuotations: boolean;
-  onOpenQuotation: (vendor: Vendor, splitGroup?: number) => void;
-  onSelectQuotation: (q: Quotation) => void;
-  onCreatePO: (q: Quotation) => void;
+  onOpenQuotation?: (vendor: Vendor, splitGroup?: number) => void;
+  onSelectQuotation?: (q: Quotation) => void;
+  onCreatePO?: (q: Quotation) => void;
   onCompare: () => void;
   onRefreshQuotations: () => void;
   poGroups?: POGroup[];
@@ -42,8 +42,8 @@ interface QuotationsTabProps {
 const QuotationCard: React.FC<{
   q: Quotation;
   viewQuotItemFields: any[];
-  onSelect: (q: Quotation) => void;
-  onCreatePO: (q: Quotation) => void;
+  onSelect?: (q: Quotation) => void;
+  onCreatePO?: (q: Quotation) => void;
 }> = ({ q, viewQuotItemFields, onSelect, onCreatePO }) => {
   const total = getQuotationTotal(q.items);
   const isSelected = q.is_selected === 'Y';
@@ -74,12 +74,12 @@ const QuotationCard: React.FC<{
             {q.payment_terms && <p className="text-xs text-gray-500 mt-1">Terms: {q.payment_terms}</p>}
           </div>
           <div className="flex flex-col gap-1">
-            {!isSelected && (
+            {!isSelected && onSelect && (
               <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => onSelect(q)}>
                 <CheckCircle2 size={12} className="mr-1" /> Select
               </Button>
             )}
-            {isSelected && (
+            {isSelected && onCreatePO && (
               <Button size="sm" className="text-xs h-7 bg-indigo-600 hover:bg-indigo-700" onClick={() => onCreatePO(q)}>
                 <Package size={12} className="mr-1" /> Create PO
               </Button>
@@ -140,9 +140,9 @@ const GroupPanel: React.FC<{
   splitGroup: number;         // 0 = main PO (ungrouped)
   viewVendorFields: any[];
   viewQuotItemFields: any[];
-  onAddQuotation: (vendor: Vendor, splitGroup: number) => void;
-  onSelectQuotation: (q: Quotation) => void;
-  onCreatePO: (q: Quotation) => void;
+  onAddQuotation?: (vendor: Vendor, splitGroup: number) => void;
+  onSelectQuotation?: (q: Quotation) => void;
+  onCreatePO?: (q: Quotation) => void;
 }> = ({
   label, badgeClass, borderClass, bgClass, textClass,
   items, vendors, loadingVendors, quotations, loadingQuotations, splitGroup,
@@ -239,14 +239,16 @@ const GroupPanel: React.FC<{
                         </TableCell>
                       ))}
                       <TableCell className="py-1.5">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 text-xs"
-                          onClick={() => onAddQuotation(v, splitGroup)}
-                        >
-                          <Plus size={11} className="mr-1" /> Quote
-                        </Button>
+                        {onAddQuotation && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-xs"
+                            onClick={() => onAddQuotation(v, splitGroup)}
+                          >
+                            <Plus size={11} className="mr-1" /> Quote
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -365,7 +367,7 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
               splitGroup={groupNum}
               viewVendorFields={viewVendorFields}
               viewQuotItemFields={viewQuotItemFields}
-              onAddQuotation={(vendor, sg) => onOpenQuotation(vendor, sg)}
+              onAddQuotation={onOpenQuotation ? (vendor, sg) => onOpenQuotation(vendor, sg) : undefined}
               onSelectQuotation={onSelectQuotation}
               onCreatePO={onCreatePO}
             />
@@ -388,7 +390,7 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
             splitGroup={0}
             viewVendorFields={viewVendorFields}
             viewQuotItemFields={viewQuotItemFields}
-            onAddQuotation={(vendor, sg) => onOpenQuotation(vendor, sg)}
+            onAddQuotation={onOpenQuotation ? (vendor, sg) => onOpenQuotation(vendor, sg) : undefined}
             onSelectQuotation={onSelectQuotation}
             onCreatePO={onCreatePO}
           />
@@ -433,7 +435,7 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
                     </span>
                     <span className="text-xs font-normal text-gray-400">• {group.items.length} item(s)</span>
                   </CardTitle>
-                  {groupVendor && (
+                  {groupVendor && onOpenQuotation && (
                     <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => onOpenQuotation(groupVendor)}>
                       <Plus size={12} className="mr-1" /> Add Quotation
                     </Button>
@@ -522,9 +524,11 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
                         </TableCell>
                       ))}
                       <TableCell>
-                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onOpenQuotation(v)}>
-                          <Plus size={12} className="mr-1" /> Quote
-                        </Button>
+                        {onOpenQuotation && (
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onOpenQuotation(v)}>
+                            <Plus size={12} className="mr-1" /> Quote
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

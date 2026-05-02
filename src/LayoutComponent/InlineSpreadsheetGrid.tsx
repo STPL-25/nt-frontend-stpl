@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import usePost from "@/hooks/usePostHook";
+import { apiPostCommonMaster } from "@/Services/Api";
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 type Option = { label: string; value: string | number };
@@ -34,7 +35,6 @@ type GridRow = {
 interface InlineSpreadsheetGridProps {
   fields: SpreadsheetField[];
   master: string;
-  apiBase?: string;
   onClose: () => void;
   onSaved?: () => void;
 }
@@ -59,7 +59,6 @@ const defaultColWidth = (f: SpreadsheetField) =>
 const InlineSpreadsheetGrid: React.FC<InlineSpreadsheetGridProps> = ({
   fields,
   master,
-  apiBase = "",
   onClose,
   onSaved,
 }) => {
@@ -309,10 +308,7 @@ const InlineSpreadsheetGrid: React.FC<InlineSpreadsheetGridProps> = ({
         )
       );
       try {
-        await postData(
-          `${apiBase}/api/common_master/${master}`,
-          row.data
-        );
+        await postData(apiPostCommonMaster(master), row.data);
         setRows((prev) =>
           prev.map((r) =>
             r.id === row.id ? { ...r, status: "saved" } : r

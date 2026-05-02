@@ -1,6 +1,9 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 import {
   Table,
   TableBody,
@@ -10,41 +13,28 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import {
-  Plus,
-  Trash2,
-  Edit2,
-  Check,
-  X,
-  Save,
-  Send,
-  FileText,
-  RefreshCw,
-  Building2,
-  Package,
-  Users,
-  FileSpreadsheet,
-  Upload,
-} from 'lucide-react';
+import {  Plus,  Trash2,  Edit2,  Check,  X,  Save,  Send,  FileText,  RefreshCw,  Building2,  Package,  Users,  FileSpreadsheet,  Upload,  Wrench,  Paperclip,} from 'lucide-react';
 import { downloadExcelTemplate, parseExcelFile } from '@/utils/excelUtils';
 import { FormSection } from '@/CustomComponent/PageComponents';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { usePRBasicInfoFields, usePRItemDetailsFields } from '@/FieldDatas/PRData';
-import usePost from '@/hooks/usePostHook';
 import axios from 'axios';
 import {
   createPrRecord,
   prSaveDraft,
   prUpdateDraft,
-  prSubmitDraft,
+  prDeleteDraft,
   prSaveDeptDraft,
   prUpdateDeptDraft,
 } from '@/Services/Api';
+
 import { SOCKET_JOIN_PR_SCOPE, SOCKET_LEAVE_PR_SCOPE } from '@/Services/Socket';
 import { toast } from 'sonner';
 import { useAppState } from '@/globalState/hooks/useAppState';
+import { usePermissions } from '@/globalState/hooks/usePermissions';
 import type { FieldType } from '@/FieldDatas/fieldType/fieldType';
 import PRDraftSidebar, { type DeptDraft } from './PRDraftSidebar';
+import { de } from 'date-fns/locale';
 
 interface FormErrors {
   [key: string]: string;
@@ -76,6 +66,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   onDraftSubmitted,
 }) => {
   const { data: hierarchyData, userData, socket } = useAppState();
+  const { canCreate, canEdit } = usePermissions();
 
   const currentUserEcno: string = useMemo(() => {
     const u = Array.isArray(userData) ? userData[0] : userData;
@@ -87,20 +78,23 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   const [selectedDivision, setSelectedDivision] = useState<string>('');
   const [selectedBranch, setSelectedBranch] = useState<string>('');
 
+  // currentItem must be declared before usePRItemDetailsFields so itemType can drive conditional fields
+  const [currentItem, setCurrentItem] = useState<Record<string, any>>({});
+  const currentItemType: string = currentItem.item_type ?? '';
+
   const basicInfoFields = usePRBasicInfoFields({
     hierarchyData,
     selectedCompany,
     selectedDivision,
     selectedBranch,
   });
-  const itemDetailsFields = usePRItemDetailsFields();
+  const itemDetailsFields = usePRItemDetailsFields({ itemType: currentItemType });
 
   // Scope key for shared drafts: "{com_sno}:{div_sno}:{brn_sno}"
   const [scopeKey, setScopeKey] = useState<string | null>(null);
 
   // Draft state
   const [basicFormData, setBasicFormData] = useState<Record<string, any>>({});
-  const [currentItem, setCurrentItem] = useState<Record<string, any>>({});
   const [savedItems, setSavedItems] = useState<Record<string, any>[]>([]);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -114,9 +108,9 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   // Sidebar: editing a dept draft
   const [sidebarEditDraft, setSidebarEditDraft] = useState<DeptDraft | null>(null);
 
-  const { postData } = usePost();
   const itemImportRef = useRef<HTMLInputElement>(null);
   const [importingItems, setImportingItems] = useState(false);
+
 
   // ── Excel helpers ─────────────────────────────────────────────────────────
 
@@ -142,14 +136,11 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
       }
 
       const newItems = rows.map((row) => {
-        const qty  = parseFloat(String(row.qty))  || 1;
-        const cost = parseFloat(String(row.est_cost)) || 0;
+        const qty = parseFloat(String(row.qty)) || 1;
         return {
           ...buildEmptyItem(),
           ...row,
           qty,
-          est_cost: cost,
-          total_cost: qty * cost,
           id: Date.now().toString() + Math.random().toString(36).slice(2),
         };
       });
@@ -183,14 +174,15 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   }, [basicInfoFields]);
 
   const buildEmptyItem = useCallback(() => {
-    const item: Record<string, any> = {};
+    const item: Record<string, any> = { item_type: '', item_attachment: null };
     itemDetailsFields.forEach((field: FieldType) => {
       if (!field.input || field.field === 'pr_item_sno' || field.field === 'pr_basic_sno') return;
+      if (field.field === 'item_type' || field.field === 'item_attachment') return; // already set above
       if (field.defaultValue !== undefined) item[field.field] = field.defaultValue;
       else if (field.field === 'qty') item[field.field] = 1;
-      else if (field.field === 'est_cost' || field.field === 'total_cost') item[field.field] = 0;
       else if (field.field === 'is_active') item[field.field] = true;
       else if (field.type === 'number') item[field.field] = 0;
+      else if (field.type === 'file') item[field.field] = null;
       else item[field.field] = '';
     });
     return item;
@@ -238,14 +230,14 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   // ── Scope key: update when hierarchy selection changes ───────────────────
 
   useEffect(() => {
-    const { com_sno, div_sno, brn_sno } = basicFormData;
-    if (com_sno && div_sno && brn_sno) {
-      const key = `${com_sno}:${div_sno}:${brn_sno}`;
+    const { com_sno, div_sno, brn_sno, dept_sno } = basicFormData;
+    if (com_sno && div_sno && brn_sno && dept_sno) {
+      const key = `${com_sno}:${div_sno}:${brn_sno}:${dept_sno}`;
       setScopeKey(key);
     } else {
       setScopeKey(null);
     }
-  }, [basicFormData.com_sno, basicFormData.div_sno, basicFormData.brn_sno]);
+  }, [basicFormData.com_sno, basicFormData.div_sno, basicFormData.brn_sno, basicFormData.dept_sno]);
 
   // ── Socket.IO: join/leave pr:scope room when scopeKey changes ────────────
 
@@ -314,15 +306,34 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
     setCurrentItem((prev) => {
       const updated = { ...prev, [fieldName]: value };
 
-      if (fieldName === 'qty' || fieldName === 'est_cost') {
-        const qty = fieldName === 'qty' ? parseFloat(value) || 0 : parseFloat(updated.qty) || 0;
-        const cost =
-          fieldName === 'est_cost' ? parseFloat(value) || 0 : parseFloat(updated.est_cost) || 0;
-        updated.total_cost = qty * cost;
+      // When product is selected, auto-fill UOM from product data (if available)
+      if (fieldName === 'prod_sno' && value) {
+        const prodField = itemDetailsFields.find((f) => f.field === 'prod_sno');
+        const selectedProduct = (prodField?.options as any[])?.find(
+          (opt) => String(opt.value) === String(value)
+        );
+        if (selectedProduct) {
+          updated.prod_name = selectedProduct.label;
+          if (selectedProduct.uom_sno) {
+            updated.unit_sno = String(selectedProduct.uom_sno);
+            updated.unit_name = selectedProduct.uom_name ?? '';
+          }
+        }
+      }
+
+      // When switching category, clear fields belonging to the other type
+      if (fieldName === 'item_type') {
+        if (value === 'service') {
+          updated.prod_sno = '';
+          updated.prod_name = '';
+          updated.item_attachment = null;
+        } else {
+          updated.service_desc = '';
+        }
       }
 
       const field = itemDetailsFields.find((f) => f.field === fieldName);
-      if (field?.options && Array.isArray(field.options)) {
+      if (field?.options && Array.isArray(field.options) && fieldName !== 'prod_sno' && fieldName !== 'item_type') {
         const selectedOption = (field.options as any[]).find(
           (opt) => String(opt.value) === String(value)
         );
@@ -358,7 +369,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   const excelItemFields = useMemo(
     () =>
       inputItemFields
-        .filter((f) => !['total_cost'].includes(f.field) && !['checkbox', 'switch', 'file'].includes(f.type ?? ''))
+        .filter((f) => !['item_type', 'item_attachment'].includes(f.field) && !['checkbox', 'switch', 'file', 'radio'].includes(f.type ?? ''))
         .map((f) => ({
           field: f.field,
           label: f.label,
@@ -371,7 +382,11 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
 
   const validateItem = (): boolean => {
     const errs: FormErrors = {};
+    if (!currentItem.item_type) {
+      errs.item_type = 'Please select Product or Service';
+    }
     inputItemFields.forEach((field) => {
+      if (['file', 'radio'].includes(field.type)) return;
       if (field.require && !currentItem[field.field]) {
         errs[field.field] = `${field.label} is required`;
       }
@@ -438,24 +453,60 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
     return Object.keys(errs).length === 0;
   };
 
-  // ── Totals ────────────────────────────────────────────────────────────────
+  // ── Required Days ─────────────────────────────────────────────────────────
 
-  const totalAmount = useMemo(
-    () => savedItems.reduce((sum, item) => sum + (parseFloat(item.total_cost) || 0), 0),
-    [savedItems]
-  );
+  const requiredDays = useMemo(() => {
+    const { req_date, required_date } = basicFormData;
+    if (!req_date || !required_date) return null;
+    const diff = Math.round(
+      (new Date(required_date).getTime() - new Date(req_date).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    return diff;
+  }, [basicFormData.req_date, basicFormData.required_date]);
 
   // ── Draft Actions ─────────────────────────────────────────────────────────
 
-  const buildPayload = () => ({
-    basicInfo: { ...basicFormData, is_active: true },
-    items: savedItems.map(({ id, ...item }) => ({ ...item, is_active: true })),
-    totalAmount,
-  });
+  // For final submission — sends files as binary via FormData so backend uploads to FTP
+  const buildFormData = (): FormData => {
+    const formData = new FormData();
+    const items = savedItems.map(({ id, ...item }) => {
+      const resolved = { ...item, is_active: true };
+      if (resolved.item_attachment instanceof File) {
+        resolved.item_attachment = null; // replaced by the indexed field below
+      }
+      return resolved;
+    });
+
+    formData.append('basicInfo', JSON.stringify({ ...basicFormData, is_active: true }));
+    formData.append('items', JSON.stringify(items));
+
+    savedItems.forEach(({ item_attachment }, idx) => {
+      if (item_attachment instanceof File) {
+        formData.append(`item_attachment_${idx}`, item_attachment);
+      }
+    });
+
+    return formData;
+  };
+
+  // For draft save/update — JSON only, File objects stripped (drafts are temporary, no FTP)
+  const buildDraftPayload = () => {
+    const items = savedItems.map(({ id, ...item }) => {
+      const resolved = { ...item, is_active: true };
+      if (resolved.item_attachment instanceof File) {
+        resolved.item_attachment = null;
+      }
+      return resolved;
+    });
+    return {
+      basicInfo: { ...basicFormData, is_active: true },
+      items,
+    };
+  };
 
   // Save as shared dept draft
   const saveToDeptDraft = async () => {
-    const payload = { ...buildPayload(), scopeKey };
+    const payload = { ...buildDraftPayload(), scopeKey };
     if (deptDraftId && deptDraftScopeKey) {
       const res = await axios.put(
         prUpdateDeptDraft(deptDraftId),
@@ -479,7 +530,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
     }
     setSavingDraft(true);
     try {
-      const payload = buildPayload();
+      const payload = buildDraftPayload();
       let res;
       if (draftId) {
         res = await axios.put(prUpdateDraft(draftId), payload);
@@ -521,12 +572,6 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // if (!validateBasicForm()) {
-    //   const first = document.querySelector('[data-error="true"]');
-    //   if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    //   return;
-    // }
-
     if (savedItems.length === 0) {
       toast.error('Please add at least one item to the requisition');
       return;
@@ -534,13 +579,16 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
 
     setSubmitting(true);
     try {
-      let res;
+      const formData = buildFormData();
+      const res = await axios.post(createPrRecord, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      // Clean up private draft if one was open
       if (draftId) {
-        await axios.put(prUpdateDraft(draftId), buildPayload());
-        res = await axios.post(prSubmitDraft(draftId), {});
-      } else {
-        res = await axios.post(createPrRecord, buildPayload());
+        try { await axios.delete(prDeleteDraft(draftId)); } catch { /* silent */ }
       }
+
       const msg = res?.data?.data?.[0]?.Message || 'Purchase Requisition submitted successfully!';
       toast.success(msg);
       handleReset();
@@ -591,8 +639,20 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
     [inputBasicFields]
   );
 
+  const itemTypeField = useMemo(
+    () => inputItemFields.find((f) => f.field === 'item_type') ?? null,
+    [inputItemFields]
+  );
+  const itemAttachmentField = useMemo(
+    () => inputItemFields.find((f) => f.field === 'item_attachment') ?? null,
+    [inputItemFields]
+  );
   const itemGridFields = useMemo(
-    () => inputItemFields.filter((f) => f.type !== 'textarea' && f.field !== 'total_cost'),
+    () => inputItemFields.filter((f) =>
+      f.type !== 'textarea' &&
+      f.field !== 'item_type' &&
+      f.field !== 'item_attachment'
+    ),
     [inputItemFields]
   );
   const itemTextareaFields = useMemo(
@@ -604,75 +664,105 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   const isPrivateDraftMode = !!draftId && !isDeptDraftMode;
 
   return (
-    <div className="relative">
-      {/* Main form — adds right padding when sidebar is potentially open */}
-      <div className="container mx-auto py-6 px-4 ">
-        <Card className="shadow-md">
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div className="flex items-center gap-3">
-                <div className="bg-primary/10 p-2 rounded-lg">
-                  <FileText className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <CardTitle className="text-xl">Purchase Requisition</CardTitle>
-                  <CardDescription className="text-xs mt-0.5">
-                    Non-trade purchase requisition form
-                  </CardDescription>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                {isDeptDraftMode && (
-                  <Badge className="text-xs bg-amber-100 text-amber-800 border-amber-300">
-                    <Users className="h-3 w-3 mr-1" />
-                    Editing Shared Draft
-                  </Badge>
-                )}
-                {isPrivateDraftMode && (
-                  <Badge variant="secondary" className="text-xs">
-                    <Save className="h-3 w-3 mr-1" />
-                    Private Draft
-                  </Badge>
-                )}
-                {scopeKey && (
-                  <Badge variant="outline" className="text-xs text-muted-foreground">
-                    Scope: {scopeKey.split(':').join(' › ')}
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </CardHeader>
+    <div className="flex flex-col h-full bg-muted/30 min-h-screen">
+      {/* Page Header */}
+      <div className="bg-background border-b px-6 py-4 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+            <FileText className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">Purchase Requisition</h1>
+            <p className="text-xs text-muted-foreground">Non-trade purchase requisition form</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {isDeptDraftMode && (
+            <Badge className="text-xs bg-amber-100 text-amber-800 border-amber-300">
+              <Users className="h-3 w-3 mr-1" />
+              Editing Shared Draft
+            </Badge>
+          )}
+          {isPrivateDraftMode && (
+            <Badge variant="secondary" className="text-xs">
+              <Save className="h-3 w-3 mr-1" />
+              Private Draft
+            </Badge>
+          )}
+          {scopeKey && (
+            <Badge variant="outline" className="text-xs text-muted-foreground">
+              Scope: {[basicFormData.com_sno, basicFormData.div_sno, basicFormData.brn_sno, basicFormData.dept_sno].filter(Boolean).join(' › ')}
+            </Badge>
+          )}
+        </div>
+      </div>
 
-          <CardContent>
+      {/* Main form */}
+      <div className="container mx-auto py-6 px-4">
+        <Card className="shadow-md">
+          <CardContent className="pt-6">
             <form onSubmit={handleSubmit} className="space-y-6">
 
               {/* ── Basic Information ─────────────────────────────────── */}
               <FormSection icon={Building2} title="Basic Information">
 
                 {/* Main grid fields (selects, dates, numbers) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-5">
                   {basicGridFields.map((field) => (
                     <div
                       key={field.field}
                       data-error={!!errors[field.field]}
                       className="flex flex-col"
                     >
-                      <CustomInputField
-                        field={field.field}
-                        label={field.label}
-                        require={field.require}
-                        type={field.type}
-                        options={field.options}
-                        value={basicFormData[field.field] ?? ''}
-                        onChange={(value) => handleBasicFieldChange(field.field, value)}
-                        error={errors[field.field]}
-                        placeholder={
-                          field.type === 'select'
-                            ? `Select ${field.label.toLowerCase()}`
-                            : undefined
-                        }
-                        className="h-10"
-                      />
+                      {field.field === 'required_date' ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-1.5">
+                            <Label
+                              htmlFor={field.field}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              {field.label}
+                              {field.require && <span className="text-red-500 ml-0.5">*</span>}
+                            </Label>
+                            {requiredDays !== null && (
+                              <span className={`text-xs font-semibold px-1.5 py-0.3 rounded-full ${requiredDays < 0 ? 'bg-destructive/10 text-destructive' : 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400'}`}>
+                                {requiredDays < 0 ? `${requiredDays}d` : `+${requiredDays}d`}
+                              </span>
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            <Input
+                              id={field.field}
+                              name={field.field}
+                              type="date"
+                              className={cn('h-10', errors[field.field] && 'border-red-500')}
+                              value={basicFormData[field.field] ?? ''}
+                              onChange={(e) => handleBasicFieldChange(field.field, e.target.value)}
+                              required={field.require}
+                            />
+                            {errors[field.field] && (
+                              <p className="text-sm text-red-600">{errors[field.field]}</p>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <CustomInputField
+                          field={field.field}
+                          label={field.label}
+                          require={field.require}
+                          type={field.type}
+                          options={field.options}
+                          value={basicFormData[field.field] ?? ''}
+                          onChange={(value) => handleBasicFieldChange(field.field, value)}
+                          error={errors[field.field]}
+                          placeholder={
+                            field.type === 'select'
+                              ? `Select ${field.label.toLowerCase()}`
+                              : undefined
+                          }
+                          className="h-10"
+                        />
+                      )}
                     </div>
                   ))}
                 </div>
@@ -755,8 +845,42 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
               >
 
                 <div className="rounded-xl border bg-muted/20 p-4 space-y-4">
-                  {/* Grid fields */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-5">
+
+                  {/* ── Category toggle (Product / Service) ── */}
+                  {itemTypeField && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">
+                        Category <span className="text-red-500">*</span>
+                      </p>
+                      <div className="flex gap-2">
+                        {[
+                          { value: 'product', label: 'Product', Icon: Package },
+                          { value: 'service', label: 'Service', Icon: Wrench },
+                        ].map(({ value, label, Icon }) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => handleItemFieldChange('item_type', value)}
+                            className={cn(
+                              'flex items-center gap-1.5 px-4 py-2 rounded-lg border text-sm font-medium transition-colors',
+                              currentItemType === value
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-background border-border text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                            )}
+                          >
+                            <Icon className="h-4 w-4" />
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {itemErrors.item_type && (
+                        <p className="text-sm text-red-600 mt-1">{itemErrors.item_type}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Grid fields ── */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-5">
                     {itemGridFields.map((field) => (
                       <div key={field.field} data-error={!!itemErrors[field.field]} className="flex flex-col">
                         <CustomInputField
@@ -775,17 +899,27 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
                         />
                       </div>
                     ))}
-
-                    {/* Total cost — computed display */}
-                    <div className="flex flex-col">
-                      <label className="text-sm font-medium mb-1.5 block">Total Cost</label>
-                      <div className="h-10 flex items-center px-3 bg-background rounded-md border font-semibold text-emerald-600">
-                        ₹{(parseFloat(currentItem.total_cost) || 0).toFixed(2)}
-                      </div>
+                      {itemAttachmentField && (
+                    <div className='w-60'>
+                      {/* <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
+                        <Paperclip className="h-3.5 w-3.5" />
+                        {itemAttachmentField.label}
+                        <span className="text-muted-foreground/60 font-normal">(optional)</span>
+                      </p> */}
+                      <CustomInputField
+                        field={itemAttachmentField.field}
+                        label={itemAttachmentField.label}
+                        type={itemAttachmentField.type}
+                        value={currentItem[itemAttachmentField.field] ?? null}
+                        onChange={(file) => handleItemFieldChange(itemAttachmentField.field, file)}
+                      />
                     </div>
+                  )}
+
                   </div>
 
-                  {/* Textarea fields (remarks) — full width */}
+                
+                  {/* ── Textarea fields (service description, remarks) ── */}
                   {itemTextareaFields.map((field) => (
                     <div key={field.field} data-error={!!itemErrors[field.field]}>
                       <CustomInputField
@@ -796,7 +930,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
                         value={currentItem[field.field] ?? ''}
                         onChange={(value) => handleItemFieldChange(field.field, value)}
                         error={itemErrors[field.field]}
-                        placeholder="Enter remarks..."
+                        placeholder={field.field === 'service_desc' ? 'Describe the service required...' : 'Enter remarks...'}
                         rows={2}
                         className="resize-none"
                       />
@@ -868,10 +1002,23 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
                             </TableCell>
                             {viewItemFields.map((field) => (
                               <TableCell key={field.field} className="text-xs">
-                                {field.field === 'total_cost' || field.field === 'est_cost' ? (
-                                  <span className="font-medium text-emerald-600">
-                                    ₹{(parseFloat(item[field.field]) || 0).toFixed(2)}
-                                  </span>
+                                {field.field === 'item_type' ? (
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      'text-xs capitalize',
+                                      item.item_type === 'product'
+                                        ? 'border-blue-300 text-blue-700 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-400'
+                                        : 'border-violet-300 text-violet-700 bg-violet-50 dark:bg-violet-950/30 dark:text-violet-400'
+                                    )}
+                                  >
+                                    {item.item_type === 'product' ? (
+                                      <Package className="h-3 w-3 mr-1" />
+                                    ) : (
+                                      <Wrench className="h-3 w-3 mr-1" />
+                                    )}
+                                    {item.item_type || '—'}
+                                  </Badge>
                                 ) : (
                                   <span>{item[field.field] ?? '—'}</span>
                                 )}
@@ -906,17 +1053,10 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
                     </Table>
                   </div>
 
-                  {/* Total */}
+                  {/* Item count */}
                   <div className="flex justify-end">
-                    <div className="bg-muted/30 rounded-xl p-4 min-w-[260px] border">
-                      <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-                        <span>Total Items:</span>
-                        <span className="font-medium text-foreground">{savedItems.length}</span>
-                      </div>
-                      <div className="flex justify-between text-sm font-semibold border-t pt-2">
-                        <span>Total Estimated Amount:</span>
-                        <span className="text-emerald-600">₹{totalAmount.toFixed(2)}</span>
-                      </div>
+                    <div className="bg-muted/30 rounded-xl px-4 py-2 border text-xs text-muted-foreground">
+                      Total Items: <span className="font-medium text-foreground">{savedItems.length}</span>
                     </div>
                   </div>
                 </section>
@@ -965,7 +1105,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
                     onClick={handleSaveAsSharedDraft}
                     disabled={submitting || savingDraft || !scopeKey}
                     className="h-9 border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/20"
-                    title={!scopeKey ? 'Select Company, Division, Branch first' : ''}
+                    title={!scopeKey ? 'Select Company, Division, Branch and Department first' : ''}
                   >
                     {savingDraft ? (
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -975,7 +1115,8 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
                     {isDeptDraftMode ? 'Update Shared' : 'Save as Shared'}
                   </Button>
 
-                  {/* Submit */}
+                  {/* Submit — only shown if user can create */}
+                  {(canCreate("PurchaseRequisitionPage") || canEdit("PurchaseRequisitionPage")) && (
                   <Button
                     type="submit"
                     className="bg-blue-600 hover:bg-blue-700 h-9"
@@ -988,6 +1129,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
                     )}
                     Submit Requisition
                   </Button>
+                  )}
                 </div>
               </div>
             </form>
@@ -996,12 +1138,12 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
       </div>
 
       {/* Real-time shared draft sidebar */}
-      <PRDraftSidebar
+      {/* <PRDraftSidebar
         scopeKey={scopeKey}
         socket={socket as any}
         onEditDraft={(draft) => setSidebarEditDraft(draft)}
         currentUserEcno={currentUserEcno}
-      />
+      /> */}
     </div>
   );
 };

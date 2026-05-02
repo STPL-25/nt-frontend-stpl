@@ -31,7 +31,6 @@ import {
   Loader2,
 } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge }  from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn }     from "@/lib/utils";
@@ -45,6 +44,14 @@ import {
   SOCKET_USER_NEW,
   SOCKET_ADMIN_PERMISSIONS_UPDATED,
 } from "@/Services/Socket";
+import {
+  apiGetAllUsersSignUp,
+  apiGetHierarchyDetails,
+  apiGetScreensWithGroups,
+  apiGetPermissionDetails,
+  apiSaveUserPermissions,
+  getUserPermissions,
+} from "@/Services/Api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -184,8 +191,6 @@ function StatChip({
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function PermissionManager() {
-  const API = import.meta.env.VITE_API_URL as string;
-
   // ── Selection state ────────────────────────────────────────────────────────
   const [selectedUser,      setSelectedUser]      = useState("");
   const [selectedUserEcno,  setSelectedUserEcno]  = useState("");
@@ -210,38 +215,39 @@ export default function PermissionManager() {
   const selectedUserRef = useRef(selectedUser);
   useEffect(() => { selectedUserRef.current = selectedUser; }, [selectedUser]);
 
+  // Prevents cascade effects from pruning valid divisions/branches during existing-data restore
+  const restoringFromExisting = useRef(false);
+
   // ── Fetches ────────────────────────────────────────────────────────────────
 
   // API: { success, data: User[] }
   const { data: usersRes, loading: usersLoading } = useFetch<{ data?: User[] }>(
-    `${API}/api/secure/get_all_users_sign_up`,
+    apiGetAllUsersSignUp,
     "", null, userListRefreshKey
   );
 
   // API: { success, data: { companies: [...] } }
   const { data: hierarchyRes } = useFetch<{ data?: { companies: Company[] } }>(
-    `${API}/api/user_approval/get_hierachy_com_details`
+    apiGetHierarchyDetails
   );
 
   // API: { success, data: ScreenGroup[] }
   const { data: screensRes } = useFetch<{ data?: ScreenGroup[] }>(
-    `${API}/api/user_approval/get_screens_with_groups`
+    apiGetScreensWithGroups
   );
 
   // API: { success, data: PermissionDetail[] }
   const { data: permDetailsRes } = useFetch<{ data?: PermissionDetail[] }>(
-    `${API}/api/user_approval/get_permission_details`
+    apiGetPermissionDetails
   );
 
   // API: { success, permissions, companies, divisions, branches }
-  // Null URL → skipped until a user is selected
+  // Null URL → skipped until ecno is set; re-fetches whenever selectedUserEcno changes
   const {
     data:    existingPermRes,
     loading: existingLoading,
   } = useFetch<ExistingPermData>(
-    selectedUser
-      ? `${API}/api/user_approval/get_user_permissions/${selectedUser}`
-      : null,
+    selectedUserEcno ? getUserPermissions(selectedUserEcno) : null,
     "", null, permRefreshKey
   );
 
@@ -313,7 +319,8 @@ export default function PermissionManager() {
     const base = buildFromScreens(allScreens).permissions;
     setPermissions(base);
     setOriginalPermissions(base);
-    const user = allUsers.find((u) => u.nt_sign_up_sno === selectedUser);
+    const user = allUsers.find((u) => u.nt_sign_up_sno == selectedUser);
+    console.log(user)
     setSelectedUserEcno(user?.ecno ?? "");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUser]);
@@ -340,24 +347,27 @@ export default function PermissionManager() {
     setPermissions(merged);
     setOriginalPermissions(JSON.parse(JSON.stringify(merged))); // deep-clone as baseline
 
-    if (existingPermRes.companies) setSelectedCompanies(existingPermRes.companies);
-    if (existingPermRes.divisions) setSelectedDivisions(existingPermRes.divisions);
-    if (existingPermRes.branches)  setSelectedBranches(existingPermRes.branches);
+    restoringFromExisting.current = true;
+    if (existingPermRes.companies) setSelectedCompanies(existingPermRes.companies.map(String));
+    if (existingPermRes.divisions) setSelectedDivisions(existingPermRes.divisions.map(String));
+    if (existingPermRes.branches)  setSelectedBranches(existingPermRes.branches.map(String));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingPermRes]);
 
   // ── Cascade: prune stale divisions / branches when parents deselected ──────
   useEffect(() => {
     if (!selectedCompanies.length) return;
-    const valid = new Set(availableDivisions().map((d) => d.div_sno));
-    setSelectedDivisions((p) => p.filter((id) => valid.has(id)));
+    if (restoringFromExisting.current) { restoringFromExisting.current = false; return; }
+    const valid = new Set(availableDivisions().map((d) => String(d.div_sno)));
+    setSelectedDivisions((p) => p.filter((id) => valid.has(String(id))));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCompanies]);
 
   useEffect(() => {
     if (!selectedDivisions.length) return;
-    const valid = new Set(availableBranches().map((b) => b.brn_sno));
-    setSelectedBranches((p) => p.filter((id) => valid.has(id)));
+    if (restoringFromExisting.current) return;
+    const valid = new Set(availableBranches().map((b) => String(b.brn_sno)));
+    setSelectedBranches((p) => p.filter((id) => valid.has(String(id))));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDivisions]);
 
@@ -373,7 +383,7 @@ export default function PermissionManager() {
   const availableDivisions = (): Division[] => {
     const coms = selectedCompanies.length ? selectedCompanies : existingPermRes?.companies ?? [];
     return coms.flatMap(
-      (id) => allCompanies.find((c) => c.com_sno === id)?.divisions ?? []
+      (id) => allCompanies.find((c) => String(c.com_sno) === String(id))?.divisions ?? []
     );
   };
 
@@ -381,7 +391,7 @@ export default function PermissionManager() {
     const divs = selectedDivisions.length ? selectedDivisions : existingPermRes?.divisions ?? [];
     const allDivs = allCompanies.flatMap((c) => c.divisions);
     return divs.flatMap(
-      (id) => allDivs.find((d) => d.div_sno === id)?.branches ?? []
+      (id) => allDivs.find((d) => String(d.div_sno) === String(id))?.branches ?? []
     );
   };
 
@@ -409,12 +419,12 @@ export default function PermissionManager() {
       hierarchy: [
         ...coms.map((id) => ({ com_sno: id, div_sno: null, brn_sno: null })),
         ...divs.map((id) => {
-          const com = allCompanies.find((c) => c.divisions.some((d) => d.div_sno === id));
+          const com = allCompanies.find((c) => c.divisions.some((d) => String(d.div_sno) === String(id)));
           return { com_sno: com?.com_sno ?? null, div_sno: id, brn_sno: null };
         }),
         ...brs.map((id) => {
-          const div = allDivs.find((d) => d.branches.some((b) => b.brn_sno === id));
-          const com = allCompanies.find((c) => c.divisions.some((d) => d.branches.some((b) => b.brn_sno === id)));
+          const div = allDivs.find((d) => d.branches.some((b) => String(b.brn_sno) === String(id)));
+          const com = allCompanies.find((c) => c.divisions.some((d) => d.branches.some((b) => String(b.brn_sno) === String(id))));
           return { com_sno: com?.com_sno ?? null, div_sno: div?.div_sno ?? null, brn_sno: id };
         }),
       ],
@@ -455,7 +465,7 @@ export default function PermissionManager() {
     setSaving(true);
     try {
       const res: any = await postData(
-        `${API}/api/user_approval/save_user_permissions`,
+        apiSaveUserPermissions,
         {
           user_id:   selectedUser,
           user_ecno: selectedUserEcno,
@@ -478,7 +488,7 @@ export default function PermissionManager() {
   }, [
     selectedUser, selectedUserEcno,
     buildHierarchyPayload, buildPermissionsPayload,
-    postData, permissions, API,
+    postData, permissions,
   ]);
 
   // ── Derived values ─────────────────────────────────────────────────────────
@@ -514,152 +524,192 @@ export default function PermissionManager() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="mx-auto max-w-7xl space-y-5">
+    <div className="flex flex-col h-full bg-muted/30 min-h-screen">
 
-        {/* ── Page header ──────────────────────────────────────────────────── */}
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-              <Shield className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight text-foreground">
-                Role & Permissions
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                Changes reflect on the user's screen instantly
-              </p>
-            </div>
+      {/* ── Page header ───────────────────────────────────────────────────── */}
+      <div className="bg-background border-b px-6 py-4 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+            <Shield className="h-5 w-5 text-primary" />
           </div>
-          <LiveBadge connected={isLive} />
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">Role & Permissions</h1>
+            <p className="text-xs text-muted-foreground">Changes reflect on the user's screen instantly</p>
+          </div>
+        </div>
+        <LiveBadge connected={isLive} />
+      </div>
+
+      {/* ── Body ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden flex-col lg:flex-row" style={{ minHeight: 0 }}>
+
+        {/* ── LEFT PANEL: selection ─────────────────────────────────────── */}
+        <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 bg-background border-b lg:border-b-0 lg:border-r overflow-y-auto">
+          <div className="p-5 space-y-5">
+
+            {/* User selector */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Select User</p>
+              <CustomInputField
+                field="user"
+                label="User"
+                type="select"
+                options={userOptions}
+                value={selectedUser}
+                onChange={setSelectedUser}
+                placeholder={usersLoading ? "Loading users…" : "Choose a user…"}
+              />
+            </div>
+
+            {/* Organisation scope */}
+            {selectedUser && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Organisation Scope</p>
+                <div className="space-y-3">
+                  <CustomInputField
+                    field="companies"
+                    label="Companies"
+                    type="multi-select"
+                    options={allCompanies.map((c) => ({ label: c.com_name, value: c.com_sno }))}
+                    value={selectedCompanies.length ? selectedCompanies : existingPermRes?.companies ?? []}
+                    onChange={setSelectedCompanies}
+                  />
+                  <CustomInputField
+                    field="divisions"
+                    label="Divisions"
+                    type="multi-select"
+                    options={availableDivisions().map((d) => ({ label: d.div_name, value: d.div_sno }))}
+                    value={selectedDivisions.length ? selectedDivisions : existingPermRes?.divisions ?? []}
+                    onChange={setSelectedDivisions}
+                  />
+                  <CustomInputField
+                    field="branches"
+                    label="Branches"
+                    type="multi-select"
+                    options={availableBranches().map((b) => ({ label: b.brn_name, value: b.brn_sno }))}
+                    value={selectedBranches.length ? selectedBranches : existingPermRes?.branches ?? []}
+                    onChange={setSelectedBranches}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Permission summary */}
+            {selectedUser && !existingLoading && (
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Current Roles</p>
+                <Badge
+                  variant={enabledCount > 0 ? "default" : "secondary"}
+                  className="gap-1.5 px-3 py-1.5 text-sm font-normal w-full justify-center"
+                >
+                  <Shield className="h-3.5 w-3.5" />
+                  {enabledCount} permission{enabledCount !== 1 ? "s" : ""} enabled
+                </Badge>
+                {companyNames.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Scope</p>
+                    <p className="text-xs font-medium text-foreground">{companyNames.join(", ")}</p>
+                  </div>
+                )}
+                {hasChanges && (
+                  <div className="flex gap-2 flex-wrap">
+                    {added   > 0 && <StatChip icon={<Plus  className="h-3 w-3" />} label="added"   value={added}   variant="add"    />}
+                    {removed > 0 && <StatChip icon={<Minus className="h-3 w-3" />} label="removed" value={removed} variant="remove" />}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {selectedUser && existingLoading && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading permissions…
+              </div>
+            )}
+
+            {/* Action buttons */}
+            {selectedUser && (
+              <div className="space-y-2 pt-1">
+                <Button
+                  className="w-full gap-2"
+                  onClick={handleSave}
+                  disabled={saving || !hasChanges}
+                >
+                  {saving
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <Save className="h-4 w-4" />
+                  }
+                  {saving
+                    ? "Saving…"
+                    : hasChanges
+                      ? `Save ${added + removed} Change${added + removed !== 1 ? "s" : ""}`
+                      : "No Changes"}
+                </Button>
+                {hasChanges && (
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2"
+                    onClick={handleDiscardChanges}
+                    disabled={saving}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Discard Changes
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  className="w-full text-muted-foreground text-sm"
+                  onClick={handleReset}
+                  disabled={saving}
+                >
+                  Clear Selection
+                </Button>
+              </div>
+            )}
+
+          </div>
         </div>
 
-        {/* ── User selector ─────────────────────────────────────────────────── */}
-        <Card className="border-border shadow-sm">
-          <CardHeader className="border-b border-border px-6 pb-4 pt-5">
-            <CardTitle className="text-sm font-semibold text-foreground">
-              Select User
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div className="md:col-span-2">
-                <CustomInputField
-                  field="user"
-                  label="User"
-                  type="select"
-                  options={userOptions}
-                  value={selectedUser}
-                  onChange={setSelectedUser}
-                  placeholder={usersLoading ? "Loading users…" : "Choose a user…"}
-                />
+        {/* ── RIGHT PANEL: permission matrix ───────────────────────────── */}
+        <div className="flex-1 overflow-y-auto">
+          {!selectedUser ? (
+            <div className="flex flex-col items-center justify-center h-full min-h-64 gap-4 text-muted-foreground">
+              <div className="bg-muted rounded-full p-6">
+                <Shield size={40} className="opacity-30" />
               </div>
-
-              {/* Existing permission summary chip */}
-              {selectedUser && !existingLoading && (
-                <div className="flex items-end gap-2">
-                  <Badge
-                    variant={enabledCount > 0 ? "default" : "secondary"}
-                    className="h-9 gap-1.5 px-3 text-sm font-normal"
-                  >
-                    <Shield className="h-3.5 w-3.5" />
-                    {enabledCount} permission{enabledCount !== 1 ? "s" : ""} enabled
-                  </Badge>
-                </div>
-              )}
-              {selectedUser && existingLoading && (
-                <div className="flex items-end">
-                  <div className="flex h-9 items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading existing permissions…
-                  </div>
-                </div>
-              )}
+              <div className="text-center">
+                <p className="text-base font-medium text-foreground/60">Select a User</p>
+                <p className="text-sm mt-1">Choose a user from the left panel to view and edit their permissions</p>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* ── Organisation scope ───────────────────────────────────────────── */}
-        {selectedUser && (
-          <Card className="border-border shadow-sm">
-            <CardHeader className="border-b border-border px-6 pb-4 pt-5">
-              <CardTitle className="text-sm font-semibold text-foreground">
-                Organisation Scope
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <CustomInputField
-                  field="companies"
-                  label="Companies"
-                  type="multi-select"
-                  options={allCompanies.map((c) => ({ label: c.com_name, value: c.com_sno }))}
-                  value={selectedCompanies.length ? selectedCompanies : existingPermRes?.companies ?? []}
-                  onChange={setSelectedCompanies}
-                />
-                <CustomInputField
-                  field="divisions"
-                  label="Divisions"
-                  type="multi-select"
-                  options={availableDivisions().map((d) => ({ label: d.div_name, value: d.div_sno }))}
-                  value={selectedDivisions.length ? selectedDivisions : existingPermRes?.divisions ?? []}
-                  onChange={setSelectedDivisions}
-                />
-                <CustomInputField
-                  field="branches"
-                  label="Branches"
-                  type="multi-select"
-                  options={availableBranches().map((b) => ({ label: b.brn_name, value: b.brn_sno }))}
-                  value={selectedBranches.length ? selectedBranches : existingPermRes?.branches ?? []}
-                  onChange={setSelectedBranches}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ── Permission matrix ─────────────────────────────────────────────── */}
-        {selectedUser && (
-          <Card className="border-border shadow-sm">
-            <CardHeader className="border-b border-border px-6 pb-4 pt-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+          ) : (
+            <div className="p-5">
+              {/* Section header */}
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div>
-                  <CardTitle className="text-sm font-semibold text-foreground">
+                  <h2 className="text-sm font-semibold text-foreground">
                     Screen Permissions
                     {selectedUserName && (
-                      <span className="ml-2 font-normal text-muted-foreground">
-                        — {selectedUserName}
-                      </span>
+                      <span className="ml-2 font-normal text-muted-foreground">— {selectedUserName}</span>
                     )}
-                  </CardTitle>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     Existing permissions are pre-checked. Uncheck to revoke.
                   </p>
                 </div>
-                {/* Live change diff */}
                 {hasChanges && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {added   > 0 && <StatChip icon={<Plus  className="h-3 w-3" />} label="added"   value={added}   variant="add"    />}
                     {removed > 0 && <StatChip icon={<Minus className="h-3 w-3" />} label="removed" value={removed} variant="remove" />}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
-                      onClick={handleDiscardChanges}
-                    >
-                      <RotateCcw className="h-3 w-3" />
-                      Discard
+                    <Button size="sm" variant="ghost" className="h-7 gap-1.5 px-2 text-xs" onClick={handleDiscardChanges}>
+                      <RotateCcw className="h-3 w-3" /> Discard
                     </Button>
                   </div>
                 )}
               </div>
-            </CardHeader>
 
-            <CardContent className="p-6">
               {existingLoading ? (
-                // Loading skeleton
-                <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
+                <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
                   <Loader2 className="h-8 w-8 animate-spin" />
                   <p className="text-sm">Loading existing permissions…</p>
                 </div>
@@ -674,73 +724,14 @@ export default function PermissionManager() {
                   handleSave={handleSave}
                 />
               ) : (
-                <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
+                <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
                   <Shield className="h-10 w-10 opacity-30" />
                   <p className="text-sm">No screens found or still loading…</p>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ── Sticky action bar ─────────────────────────────────────────────── */}
-        {selectedUser && (
-          <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/95 px-6 py-4 shadow-lg backdrop-blur">
-            {/* Left: scope summary */}
-            <div className="hidden flex-col md:flex">
-              <span className="text-xs text-muted-foreground">
-                {companyNames.length
-                  ? <>Scope: <span className="font-medium text-foreground">{companyNames.join(", ")}</span></>
-                  : <span className="italic">No company scope selected</span>}
-              </span>
-              {hasChanges && (
-                <span className="mt-0.5 text-xs text-muted-foreground">
-                  <span className="text-emerald-600 dark:text-emerald-400">{added > 0 ? `+${added}` : ""}</span>
-                  {added > 0 && removed > 0 && " "}
-                  <span className="text-rose-600 dark:text-rose-400">{removed > 0 ? `-${removed}` : ""}</span>
-                  {" "}unsaved change{added + removed !== 1 ? "s" : ""}
-                </span>
-              )}
             </div>
-
-            {/* Right: actions */}
-            <div className="flex gap-2">
-              {hasChanges && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleDiscardChanges}
-                  disabled={saving}
-                  className="gap-1.5"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  Discard
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleReset}
-                disabled={saving}
-              >
-                Clear
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleSave}
-                disabled={saving || !hasChanges}
-                className="gap-2 px-6"
-              >
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                {saving ? "Saving…" : hasChanges ? `Save ${added + removed} Change${added + removed !== 1 ? "s" : ""}` : "No Changes"}
-              </Button>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
 
       </div>
     </div>

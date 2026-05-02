@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Boxes } from 'lucide-react';
 import { useAppState } from '@/globalState/hooks/useAppState';
+import { usePermissions } from '@/globalState/hooks/usePermissions';
 
 import type { InventoryItem, StockMovement, InventoryFormState } from './Inventory/types';
 import { TEMP_INVENTORY } from './Inventory/helpers';
@@ -16,6 +17,7 @@ import InventoryStockView from './Inventory/InventoryStockView';
 
 const InventoryPage: React.FC = () => {
   useAppState(); // keep for auth context
+  const { canCreate, canEdit, canDelete } = usePermissions();
 
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
@@ -147,7 +149,7 @@ const InventoryPage: React.FC = () => {
           loading={loadingItems}
           selectedItem={selectedItem}
           onSelectItem={handleSelectItem}
-          onAddNew={handleAddNew}
+          onAddNew={canCreate("InventoryPage") ? handleAddNew : undefined}
         />
 
         {/* RIGHT: Main content */}
@@ -176,8 +178,8 @@ const InventoryPage: React.FC = () => {
               <InventoryForm
                 selectedItem={selectedItem}
                 isAddingNew={isAddingNew}
-                onSave={handleSave}
-                onDelete={handleDelete}
+                onSave={(canCreate("InventoryPage") || canEdit("InventoryPage")) ? handleSave : undefined}
+                onDelete={canDelete("InventoryPage") ? handleDelete : undefined}
                 onCancel={handleCancel}
                 saving={saving}
               />

@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, BookOpen } from 'lucide-react';
 import { useAppState } from '@/globalState/hooks/useAppState';
+import { usePermissions } from '@/globalState/hooks/usePermissions';
 
 import type { JournalEntry, EntryLine, DoubleEntryFormState } from './DoubleEntry/types';
 import { MOCK_ENTRIES, today, generateEntryNo } from './DoubleEntry/helpers';
@@ -16,6 +17,7 @@ import AccountSummaryCard from './DoubleEntry/AccountSummaryCard';
 
 const AccountEntryPage: React.FC = () => {
   useAppState(); // keep for auth context
+  const { canCreate, canEdit } = usePermissions();
 
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
@@ -157,7 +159,7 @@ const AccountEntryPage: React.FC = () => {
           loading={loadingEntries}
           selectedEntry={selectedEntry}
           onSelectEntry={handleSelectEntry}
-          onNewEntry={handleNewEntry}
+          onNewEntry={canCreate("AccountEntryPage") ? handleNewEntry : undefined}
         />
 
         {/* RIGHT: Main content */}
@@ -190,7 +192,7 @@ const AccountEntryPage: React.FC = () => {
                 <DoubleEntryForm
                   selectedEntry={selectedEntry}
                   isNewEntry={isNewEntry}
-                  onSave={handleSave}
+                  onSave={(canCreate("AccountEntryPage") || canEdit("AccountEntryPage")) ? handleSave : undefined}
                   onCancel={handleCancel}
                   saving={saving}
                 />

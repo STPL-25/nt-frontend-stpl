@@ -27,7 +27,7 @@ import {
 interface DoubleEntryFormProps {
   selectedEntry: JournalEntry | null;
   isNewEntry: boolean;
-  onSave: (form: DoubleEntryFormState, lines: EntryLine[], status: 'Draft' | 'Posted') => void;
+  onSave?: (form: DoubleEntryFormState, lines: EntryLine[], status: 'Draft' | 'Posted') => void;
   onCancel: () => void;
   saving: boolean;
 }
@@ -194,7 +194,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
   const canEdit = isEditing || isNewEntry;
 
   const handleSave = (status: 'Draft' | 'Posted') => {
-    onSave(form, lines, status);
+    onSave?.(form, lines, status);
   };
 
   const voucherBadgeColor: Record<string, string> = {
@@ -474,23 +474,27 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
                 <Button variant="outline" size="sm" className="text-xs" onClick={onCancel}>
                   <RotateCcw size={12} className="mr-1" /> Cancel
                 </Button>
-                <Button
-                  variant="outline" size="sm"
-                  className="text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
-                  disabled={saving || lines.every(l => !l.ledger_code) || !form.narration}
-                  onClick={() => handleSave('Draft')}
-                >
-                  Save as Draft
-                </Button>
-                <Button
-                  size="sm"
-                  className="bg-indigo-600 hover:bg-indigo-700 text-xs"
-                  disabled={saving || !balanced || !form.entry_date || !form.narration || totalDebit === 0}
-                  onClick={() => handleSave('Posted')}
-                >
-                  <Send size={12} className="mr-1" />
-                  {saving ? 'Posting…' : 'Post Entry'}
-                </Button>
+                {onSave && (
+                  <>
+                    <Button
+                      variant="outline" size="sm"
+                      className="text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
+                      disabled={saving || lines.every(l => !l.ledger_code) || !form.narration}
+                      onClick={() => handleSave('Draft')}
+                    >
+                      Save as Draft
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-xs"
+                      disabled={saving || !balanced || !form.entry_date || !form.narration || totalDebit === 0}
+                      onClick={() => handleSave('Posted')}
+                    >
+                      <Send size={12} className="mr-1" />
+                      {saving ? 'Posting…' : 'Post Entry'}
+                    </Button>
+                  </>
+                )}
               </div>
             )}
           </div>

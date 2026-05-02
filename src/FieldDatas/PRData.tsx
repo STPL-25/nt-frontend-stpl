@@ -118,15 +118,15 @@ export const usePRBasicInfoFields = (params?: PRBasicInfoFieldsParams): FieldTyp
         type: "text",
         input: false,
       },
-      // {
-      //   field: "dept_sno",
-      //   label: "Department",
-      //   require: true,
-      //   view: false,
-      //   type: "select",
-      //   options: deptOptions,
-      //   input: true,
-      // },
+      {
+        field: "dept_sno",
+        label: "Department",
+        require: true,
+        view: false,
+        type: "select",
+        options: deptOptions,
+        input: true,
+      },
       {
         field: "dept_name",
         label: "Department",
@@ -198,8 +198,16 @@ export const usePRBasicInfoFields = (params?: PRBasicInfoFieldsParams): FieldTyp
   );
 };
 
-export const usePRItemDetailsFields = (): FieldType[] => {
+interface PRItemFieldsParams {
+  itemType?: string;
+}
+
+export const usePRItemDetailsFields = (params?: PRItemFieldsParams): FieldType[] => {
+  const itemType = params?.itemType ?? '';
   const { options } = useMasterOptions(['ProductMaster', 'UomMaster']);
+
+  const isProduct = !itemType || itemType === 'product';
+  const isService = itemType === 'service';
 
   return useMemo<FieldType[]>(
     () => [
@@ -212,26 +220,46 @@ export const usePRItemDetailsFields = (): FieldType[] => {
         input: false,
       },
       {
+        field: "item_type",
+        label: "Category",
+        require: true,
+        view: true,
+        type: "radio",
+        options: [
+          { value: "product", label: "Product" },
+          { value: "service", label: "Service" },
+        ],
+        input: true,
+      },
+      {
         field: "prod_sno",
         label: "Product",
         require: false,
         view: false,
         type: "select",
         options: options?.ProductMaster,
-        input: true,
+        input: isProduct,
       },
       {
         field: "prod_name",
         label: "Product",
         require: false,
-        view: true,
+        view: isProduct,
         type: "text",
         input: false,
       },
       {
+        field: "service_desc",
+        label: "Service Description",
+        require: false,
+        view: isService,
+        type: "textarea",
+        input: isService,
+      },
+      {
         field: "qty",
         label: "Quantity",
-        require: false,
+        require: true,
         view: true,
         type: "number",
         input: true,
@@ -254,26 +282,18 @@ export const usePRItemDetailsFields = (): FieldType[] => {
         input: false,
       },
       {
-        field: "est_cost",
-        label: "Estimated Cost",
+        field: "item_attachment",
+        label: "Attachment (Image / PDF)",
         require: false,
-        view: true,
-        type: "number",
-        input: true,
-      },
-      {
-        field: "total_cost",
-        label: "Total Cost",
-        require: false,
-        view: true,
-        type: "number",
-        input: true,
+        view: false,
+        type: "file",
+        input: isProduct,
       },
       {
         field: "remarks",
         label: "Remarks",
         require: false,
-        view: true,
+        view: false,
         type: "textarea",
         input: true,
       },
@@ -287,6 +307,6 @@ export const usePRItemDetailsFields = (): FieldType[] => {
         defaultValue: true,
       },
     ],
-    [options]
+    [options, isProduct, isService]
   );
 };

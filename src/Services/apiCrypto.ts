@@ -55,10 +55,25 @@ export async function encryptPayload(data: unknown): Promise<{ d: string; iv: st
 
   const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
 
+  const encryptedBytes = new Uint8Array(encrypted);
+  let binary = '';
+  for (let i = 0; i < encryptedBytes.length; i++) {
+    binary += String.fromCharCode(encryptedBytes[i]);
+  }
+
   return {
-    d: btoa(String.fromCharCode(...new Uint8Array(encrypted))),
+    d: btoa(binary),
     iv: btoa(String.fromCharCode(...iv)),
   };
+}
+
+/**
+ * Encrypt metadata for a FormData upload.
+ * Returns a JSON string of { d, iv } to append as the `_ep` field in FormData.
+ * The backend decrypts it after multer parses the multipart body.
+ */
+export async function encryptFormMeta(data: unknown): Promise<string> {
+  return JSON.stringify(await encryptPayload(data));
 }
 
 /**

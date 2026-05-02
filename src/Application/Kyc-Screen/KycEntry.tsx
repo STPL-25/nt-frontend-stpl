@@ -13,8 +13,10 @@ import {
 import usePost from "@/hooks/usePostHook";
 import { toast } from "sonner";
 import { apiPostKycData } from "@/Services/Api";
+import { encryptFormMeta } from "@/Services/apiCrypto";
 import DynamicDialog from "@/CustomComponent/InputComponents/CustomModelComponent";
 import { useAppState } from "@/globalState/hooks/useAppState";
+import { usePermissions } from "@/globalState/hooks/usePermissions";
 import { useKycSections } from "@/hooks/useKycSections";
 import { SectionActionCard, FormSection } from "@/CustomComponent/PageComponents";
 import {
@@ -36,6 +38,7 @@ export default function KycEntryForm() {
   const contactFields  = useContactFields();
   const { postData, loading: submitting, error: submitError } = usePost();
   const { userData } = useAppState();
+  const { canCreate, canEdit } = usePermissions();
 
   const [basicInfo, setBasicInfo]               = useState<Record<string, any>>({});
   const [isModalOpen, setIsModalOpen]           = useState(false);
@@ -93,26 +96,29 @@ export default function KycEntryForm() {
   const handleSubmit = async () => {
     try {
       const formData = new FormData();
-      formData.append("companyIds",    JSON.stringify(selectedCompany));
-      formData.append("divisionIds",   JSON.stringify(selectedDivision));
-      formData.append("branchIds",     JSON.stringify(selectedBranch));
-      formData.append("departmentIds", JSON.stringify(selectedDepartment));
-      formData.append("created_by",    userData[0]?.ecno || "");
 
-      Object.entries(basicInfo).forEach(([k, v]) => {
-        if (v !== null && v !== undefined) formData.append(k, v);
-      });
-
-      formData.append("addresses",   JSON.stringify(kyc.addresses.map(({ id, ...a }) => ({ id, ...a }))));
-
-      const bankData = kyc.bankDetails.map(({ id, cancelChequeFile, ...b }) => ({ id, ...b, hasCancelCheque: !!cancelChequeFile }));
-      formData.append("bankDetails", JSON.stringify(bankData));
-      kyc.bankDetails.forEach((b, i) => { if (b.cancelChequeFile) formData.append(`bankCancelCheque_${i}`, b.cancelChequeFile); });
-
+      // Collect non-file metadata and encrypt as a single _ep field
+      const bankData    = kyc.bankDetails.map(({ id, cancelChequeFile, ...b }) => ({ id, ...b, hasCancelCheque: !!cancelChequeFile }));
       const contactData = kyc.contacts.map(({ id, document, ...c }) => ({ id, ...c, hasDocument: !!document }));
-      formData.append("contacts", JSON.stringify(contactData));
-      kyc.contacts.forEach((c, i) => { if (c.document) formData.append(`contactDocument_${i}`, c.document); });
+      const basicInfoScalars = Object.fromEntries(
+        Object.entries(basicInfo).filter(([, v]) => !(v instanceof File))
+      );
 
+      formData.append("_ep", await encryptFormMeta({
+        companyIds:    selectedCompany,
+        divisionIds:   selectedDivision,
+        branchIds:     selectedBranch,
+        departmentIds: selectedDepartment,
+        created_by:    userData[0]?.ecno || "",
+        addresses:     kyc.addresses.map(({ id, ...a }) => ({ id, ...a })),
+        bankDetails:   bankData,
+        contacts:      contactData,
+        ...basicInfoScalars,
+      }));
+
+      // Append binary files separately (cannot be encrypted)
+      kyc.bankDetails.forEach((b, i) => { if (b.cancelChequeFile) formData.append(`bankCancelCheque_${i}`, b.cancelChequeFile); });
+      kyc.contacts.forEach((c, i)    => { if (c.document) formData.append(`contactDocument_${i}`, c.document); });
       Object.entries(kyc.documentInfo).forEach(([k, v]) => { if (v instanceof File) formData.append(k, v); });
 
       const response = await postData(apiPostKycData, formData, { headers: { "Content-Type": "multipart/form-data" } });
@@ -200,9 +206,9 @@ export default function KycEntryForm() {
               <CardTitle className="text-base">Basic Information</CardTitle>
             </div>
           </CardHeader>
-          <CardContent className="pt-6 space-y-6">
+          <CardContent className="pt-2 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {hierarchyFields.map((field) => (
+              {hierarchyFields.filter((f) => f.input).map((field) => (
                 <CustomInputField
                   key={field.field}
                   field={field.field}
@@ -220,7 +226,7 @@ export default function KycEntryForm() {
 
             {basicInfoFields.some((f) => f.input) && (
               <>
-                <Separator />
+                {/* <Separator /> */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {basicInfoFields
                     .filter((f) => f.input)
@@ -270,17 +276,19 @@ export default function KycEntryForm() {
                 <Button variant="outline" onClick={handleReset} disabled={submitting}>
                   Reset Form
                 </Button>
-                <Button
-                  onClick={handleSubmit}
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting...</>
-                  ) : (
-                    <><CheckCircle2 className="mr-2 h-4 w-4" />Submit KYC</>
-                  )}
-                </Button>
+                {(canCreate("KYCEntry") || canEdit("KYCEntry")) && (
+                  <Button
+                    onClick={handleSubmit}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                    disabled={submitting}
+                  >
+                    {submitting ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting...</>
+                    ) : (
+                      <><CheckCircle2 className="mr-2 h-4 w-4" />Submit KYC</>
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>

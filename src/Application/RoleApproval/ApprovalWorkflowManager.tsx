@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import axios from "axios";
+import { cn } from "@/lib/utils";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,19 +16,43 @@ import {
   ArrowDown,
   Save,
   CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Layers,
+  RotateCcw,
+  Loader2,
 } from "lucide-react";
 import { useApprovalFlowHierarchy } from "@/FieldDatas/ApprovalWorkFlow";
 import { toast } from "sonner";
 import usePost from "@/hooks/usePostHook";
-import { apiSaveFullWorkflow, apiGetEmployee, apiGetSignEmployee } from "@/Services/Api";
+import useUpdate from "@/hooks/useUpdateHook";
+import useFetch from "@/hooks/useFetchHook";
+import {
+  apiSaveFullWorkflow,
+  apiGetSignEmployee,
+  apiGetWorkflows,
+  apiGetWorkflowTypes,
+  apiUpdateWorkflow,
+  apiUpdateWorkflowType,
+  apiUpdateWorkflowStage,
+  apiSaveWorkflowType,
+  apiSaveWorkflowStage,
+} from "@/Services/Api";
 import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
 import {
   WorkflowFormData,
   WorkflowType,
+  WorkflowTypeExtended,
+  WorkflowMasterRow,
   StageOrderItem,
 } from "./types/ApprovalWorkflowManagerTypes";
+import { usePermissions } from "@/globalState/hooks/usePermissions";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type PanelMode = "idle" | "loading" | "create" | "edit";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const emptyStage = (): StageOrderItem => ({
   approver_ecno: "",
@@ -42,697 +67,881 @@ const emptyStage = (): StageOrderItem => ({
   can_edit_data: "N",
 });
 
-const emptyType = (): WorkflowType => ({
+const emptyType = (): WorkflowTypeExtended => ({
   workflow_types_name: "",
-  com_sno: "",
-  div_sno: "",
-  brn_sno: "",
-  dept_sno: "",
+  com_snos: [],
+  div_snos: [],
+  brn_snos: [],
+  dept_snos: [],
   is_active: true,
   stages: [emptyStage()],
+  _typeIds: [],
+});
+
+const emptyWorkflow = (): WorkflowFormData => ({
+  workflow_name: "",
+  workflow_code: "",
+  entity_type: "",
+  description: "",
+  is_active: true,
 });
 
 const YN_OPTIONS = [
   { label: "Yes", value: "Y" },
-  { label: "No",  value: "N" },
+  { label: "No", value: "N" },
 ];
 
-// ─── Workflow Type Card (cascade: company → division → branch + static dept) ─
+// ─── WorkflowTypeCard ─────────────────────────────────────────────────────────
 
 const WorkflowTypeCard: React.FC<{
   type: WorkflowType;
   typeIndex: number;
   employeeOptions: { label: string; value: string }[];
   onChange: (i: number, field: keyof WorkflowType, value: any) => void;
-  onStageChange: (typeIdx: number, stageIdx: number, field: keyof StageOrderItem, value: string) => void;
-  onAddStage: (typeIdx: number) => void;
-  onRemoveStage: (typeIdx: number, stageIdx: number) => void;
-  onMoveStage: (typeIdx: number, stageIdx: number, dir: "up" | "down") => void;
+  onStageChange: (
+    ti: number,
+    si: number,
+    field: keyof StageOrderItem,
+    value: string
+  ) => void;
+  onAddStage: (ti: number) => void;
+  onRemoveStage: (ti: number, si: number) => void;
+  onMoveStage: (ti: number, si: number, dir: "up" | "down") => void;
   onRemove: (i: number) => void;
-  showStages: boolean;
-}> = React.memo(({ type, typeIndex, employeeOptions, onChange, onStageChange, onAddStage, onRemoveStage, onMoveStage, onRemove, showStages,}) => {
-  const { workflowTypeFields } = useApprovalFlowHierarchy(
-    type.com_sno ? [Number(type.com_sno)] : [],
-    type.div_sno ? [Number(type.div_sno)] : [],
-    type.brn_sno ? [Number(type.brn_sno)] : []
-  );
+  removable?: boolean;
+}> = React.memo(
+  ({
+    type,
+    typeIndex,
+    employeeOptions,
+    onChange,
+    onStageChange,
+    onAddStage,
+    onRemoveStage,
+    onMoveStage,
+    onRemove,
+    removable = true,
+  }) => {
+    const [stagesOpen, setStagesOpen] = useState(true);
+    const { workflowTypeFields } = useApprovalFlowHierarchy(
+      type.com_snos.map(Number),
+      type.div_snos.map(Number),
+      type.brn_snos.map(Number)
+    );
 
-  const handleTypeField = (field: string, v: string) => {
-    // Reset downstream cascade values when parent changes
-    if (field === "com_sno") {
-      onChange(typeIndex, "com_sno", v);
-      onChange(typeIndex, "div_sno", "");
-      onChange(typeIndex, "brn_sno", "");
-    } else if (field === "div_sno") {
-      onChange(typeIndex, "div_sno", v);
-      onChange(typeIndex, "brn_sno", "");
-    } else {
-      onChange(typeIndex, field as keyof WorkflowType, v);
-    }
-  };
+    const handleTypeField = useCallback(
+      (field: string, v: any) => {
+        if (field === "com_snos") {
+          onChange(typeIndex, "com_snos", v);
+          onChange(typeIndex, "div_snos", []);
+          onChange(typeIndex, "brn_snos", []);
+        } else if (field === "div_snos") {
+          onChange(typeIndex, "div_snos", v);
+          onChange(typeIndex, "brn_snos", []);
+        } else {
+          onChange(typeIndex, field as keyof WorkflowType, v);
+        }
+      },
+      [typeIndex, onChange]
+    );
 
-  return (
-    <Card className="border-2">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Badge variant="secondary">Type {typeIndex + 1}</Badge>
-            <span className="font-medium text-sm">
-              {type.workflow_types_name || "Unnamed Type"}
-            </span>
-            {type.brn_sno && (
-              <Badge variant="outline" className="text-xs">
-                Brn: {type.brn_sno}
+    return (
+      <Card className="border-2">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="secondary" className="text-xs">
+                Type {typeIndex + 1}
               </Badge>
-            )}
-            {type.dept_sno && (
+              <span className="font-medium text-sm">
+                {type.workflow_types_name || "Unnamed Type"}
+              </span>
+              {!type.is_active && (
+                <Badge variant="destructive" className="text-xs">
+                  Inactive
+                </Badge>
+              )}
+              {type.brn_snos.length > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  {type.brn_snos.length} Branch{type.brn_snos.length > 1 ? "es" : ""}
+                </Badge>
+              )}
+              {type.dept_snos.length > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  {type.dept_snos.length} Dept{type.dept_snos.length > 1 ? "s" : ""}
+                </Badge>
+              )}
               <Badge variant="outline" className="text-xs">
-                Dept: {type.dept_sno}
+                {type.stages.length} Stage{type.stages.length !== 1 ? "s" : ""}
               </Badge>
+            </div>
+            {removable && (
+              <Button
+                onClick={() => onRemove(typeIndex)}
+                variant="ghost"
+                size="icon"
+                className="text-red-500 hover:text-red-600 h-8 w-8 shrink-0"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
             )}
           </div>
-          <Button
-            onClick={() => onRemove(typeIndex)}
-            variant="ghost"
-            size="icon"
-            className="text-red-500 hover:text-red-600 h-8 w-8"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        </div>
-      </CardHeader>
+        </CardHeader>
 
-      <CardContent className="space-y-4">
-        {/* Type Name */}
-        <CustomInputField
-          {...workflowTypeFields[0]}
-          value={type.workflow_types_name}
-          onChange={(v) => onChange(typeIndex, "workflow_types_name", v)}
-        />
-
-        {/* Branch/Dept cascade */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {workflowTypeFields.slice(1, 5).map((fc) => (
-            <CustomInputField
-              key={fc.field}
-              {...fc}
-              value={type[fc.field as keyof WorkflowType] as string}
-              onChange={(v) => handleTypeField(fc.field, v)}
-            />
-          ))}
-        </div>
-
-        {/* is_active */}
-        <CustomInputField
-          {...workflowTypeFields[5]}
-          value={type.is_active}
-          onChange={(v) => onChange(typeIndex, "is_active", v)}
-        />
-
-        {/* ── Stage Configuration (shown in step 3) ── */}
-        {showStages && (
-          <div className="mt-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                Stages ({type.stages.length})
-              </h4>
-              <Button
-                onClick={() => onAddStage(typeIndex)}
-                size="sm"
-                variant="outline"
-              >
-                <Plus className="w-3 h-3 mr-1" />
-                Add Stage
-              </Button>
-            </div>
-
-            {type.stages.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No stages yet. Click "Add Stage" to begin.
-              </p>
-            )}
-
-            {type.stages.map((stage, stageIdx) => (
-              <Card key={stageIdx} className="border bg-muted/20">
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-start gap-3">
-                    {/* Reorder buttons */}
-                    <div className="flex flex-col gap-1 pt-1">
-                      <Button
-                        onClick={() => onMoveStage(typeIndex, stageIdx, "up")}
-                        disabled={stageIdx === 0}
-                        variant="outline"
-                        size="icon"
-                        className="h-6 w-6"
-                      >
-                        <ArrowUp className="w-3 h-3" />
-                      </Button>
-                      <Badge variant="secondary" className="justify-center text-xs px-1">
-                        {stageIdx + 1}
-                      </Badge>
-                      <Button
-                        onClick={() => onMoveStage(typeIndex, stageIdx, "down")}
-                        disabled={stageIdx === type.stages.length - 1}
-                        variant="outline"
-                        size="icon"
-                        className="h-6 w-6"
-                      >
-                        <ArrowDown className="w-3 h-3" />
-                      </Button>
-                    </div>
-
-                    <div className="flex-1 space-y-3">
-                      {/* Row 1: Stage name + Approver */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <CustomInputField
-                          field="stage"
-                          label="Stage Name"
-                          type="text"
-                          placeholder="e.g., Manager Review"
-                          require={true}
-                          input={true}
-                          view={true}
-                          value={stage.stage}
-                          onChange={(v) => onStageChange(typeIndex, stageIdx, "stage", v)}
-                        />
-                        <CustomInputField
-                          field="approver_ecno"
-                          label="Approver"
-                          type="select"
-                          placeholder="Select approver"
-                          require={true}
-                          input={true}
-                          view={true}
-                          options={employeeOptions}
-                          value={stage.approver_ecno}
-                          onChange={(v) => onStageChange(typeIndex, stageIdx, "approver_ecno", v)}
-                        />
-                      </div>
-
-                      {/* Row 2: Numeric fields */}
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        <CustomInputField
-                          field="required_approvals"
-                          label="Required Approvals"
-                          type="number"
-                          min="1"
-                          input={true}
-                          view={true}
-                          value={stage.required_approvals}
-                          onChange={(v) => onStageChange(typeIndex, stageIdx, "required_approvals", v)}
-                        />
-                        <CustomInputField
-                          field="is_mandatory"
-                          label="Is Mandatory"
-                          type="select"
-                          input={true}
-                          view={true}
-                          options={YN_OPTIONS}
-                          value={stage.is_mandatory}
-                          onChange={(v) => onStageChange(typeIndex, stageIdx, "is_mandatory", v)}
-                        />
-                        <CustomInputField
-                          field="escalation_hours"
-                          label="Escalation Hours"
-                          type="number"
-                          min="1"
-                          input={true}
-                          view={true}
-                          value={stage.escalation_hours}
-                          onChange={(v) => onStageChange(typeIndex, stageIdx, "escalation_hours", v)}
-                        />
-                        <CustomInputField
-                          field="next_approver_ecno"
-                          label="Next Approver"
-                          type="select"
-                          placeholder="Select (optional)"
-                          input={true}
-                          view={true}
-                          options={[{ label: "None", value: "0" }, ...employeeOptions]}
-                          value={stage.next_approver_ecno}
-                          onChange={(v) => onStageChange(typeIndex, stageIdx, "next_approver_ecno", v)}
-                        />
-                      </div>
-
-                      {/* Row 3: Condition + flags */}
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        <div className="sm:col-span-1">
-                          <CustomInputField
-                            field="approver_condition"
-                            label="Approver Condition"
-                            type="text"
-                            placeholder="e.g., amount > 50000"
-                            input={true}
-                            view={true}
-                            value={stage.approver_condition}
-                            onChange={(v) => onStageChange(typeIndex, stageIdx, "approver_condition", v)}
-                          />
-                        </div>
-                        <CustomInputField
-                          field="can_forward"
-                          label="Can Forward"
-                          type="select"
-                          input={true}
-                          view={true}
-                          options={YN_OPTIONS}
-                          value={stage.can_forward}
-                          onChange={(v) => onStageChange(typeIndex, stageIdx, "can_forward", v)}
-                        />
-                        <CustomInputField
-                          field="can_backward"
-                          label="Can Backward"
-                          type="select"
-                          input={true}
-                          view={true}
-                          options={YN_OPTIONS}
-                          value={stage.can_backward}
-                          onChange={(v) => onStageChange(typeIndex, stageIdx, "can_backward", v)}
-                        />
-                        <CustomInputField
-                          field="can_edit_data"
-                          label="Can Edit Data"
-                          type="select"
-                          input={true}
-                          view={true}
-                          options={YN_OPTIONS}
-                          value={stage.can_edit_data}
-                          onChange={(v) => onStageChange(typeIndex, stageIdx, "can_edit_data", v)}
-                        />
-                      </div>
-                    </div>
-
-                    <Button
-                      onClick={() => onRemoveStage(typeIndex, stageIdx)}
-                      variant="ghost"
-                      size="icon"
-                      className="text-red-500 hover:text-red-600 h-8 w-8"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+        <CardContent className="space-y-4">
+          <CustomInputField
+            {...workflowTypeFields[0]}
+            value={type.workflow_types_name}
+            onChange={(v) => onChange(typeIndex, "workflow_types_name", v)}
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {workflowTypeFields.slice(1, 5).map((fc) => (
+              <CustomInputField
+                key={fc.field}
+                {...fc}
+                value={type[fc.field as keyof WorkflowType] as string[]}
+                onChange={(v) => handleTypeField(fc.field, v)}
+              />
             ))}
           </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-});
+          <CustomInputField
+            {...workflowTypeFields[5]}
+            value={type.is_active}
+            onChange={(v) => onChange(typeIndex, "is_active", v)}
+          />
+
+          {/* Stages */}
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <button
+                type="button"
+                className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors"
+                onClick={() => setStagesOpen((o) => !o)}
+              >
+                {stagesOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                Stages ({type.stages.length})
+              </button>
+              {stagesOpen && (
+                <Button onClick={() => onAddStage(typeIndex)} size="sm" variant="outline">
+                  <Plus className="w-3 h-3 mr-1" /> Add Stage
+                </Button>
+              )}
+            </div>
+
+            {stagesOpen && (
+              <div className="space-y-3">
+                {type.stages.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No stages yet. Click "Add Stage" to begin.
+                  </p>
+                )}
+                {type.stages.map((stage, si) => (
+                  <Card key={si} className="border bg-muted/20">
+                    <CardContent className="pt-4 pb-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex flex-col gap-1 pt-1">
+                          <Button onClick={() => onMoveStage(typeIndex, si, "up")} disabled={si === 0} variant="outline" size="icon" className="h-6 w-6">
+                            <ArrowUp className="w-3 h-3" />
+                          </Button>
+                          <Badge variant="secondary" className="justify-center text-xs px-1">{si + 1}</Badge>
+                          <Button onClick={() => onMoveStage(typeIndex, si, "down")} disabled={si === type.stages.length - 1} variant="outline" size="icon" className="h-6 w-6">
+                            <ArrowDown className="w-3 h-3" />
+                          </Button>
+                        </div>
+
+                        <div className="flex-1 space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <CustomInputField field="stage" label="Stage Name" type="text" placeholder="e.g., Manager Review" require={true} input={true} view={true} value={stage.stage} onChange={(v) => onStageChange(typeIndex, si, "stage", v)} />
+                            <CustomInputField field="approver_ecno" label="Approver" type="select" placeholder="Select approver" require={true} input={true} view={true} options={employeeOptions} value={stage.approver_ecno} onChange={(v) => onStageChange(typeIndex, si, "approver_ecno", v)} />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            <CustomInputField field="required_approvals" label="Required Approvals" type="number" min="1" input={true} view={true} value={stage.required_approvals} onChange={(v) => onStageChange(typeIndex, si, "required_approvals", v)} />
+                            <CustomInputField field="is_mandatory" label="Is Mandatory" type="select" input={true} view={true} options={YN_OPTIONS} value={stage.is_mandatory} onChange={(v) => onStageChange(typeIndex, si, "is_mandatory", v)} />
+                            <CustomInputField field="escalation_hours" label="Escalation Hours" type="number" min="1" input={true} view={true} value={stage.escalation_hours} onChange={(v) => onStageChange(typeIndex, si, "escalation_hours", v)} />
+                            <CustomInputField field="next_approver_ecno" label="Next Approver" type="select" placeholder="Select (optional)" input={true} view={true} options={[{ label: "None", value: "0" }, ...employeeOptions]} value={stage.next_approver_ecno} onChange={(v) => onStageChange(typeIndex, si, "next_approver_ecno", v)} />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            <CustomInputField field="approver_condition" label="Approver Condition" type="text" placeholder="e.g., amount > 50000" input={true} view={true} value={stage.approver_condition} onChange={(v) => onStageChange(typeIndex, si, "approver_condition", v)} />
+                            <CustomInputField field="can_forward" label="Can Forward" type="select" input={true} view={true} options={YN_OPTIONS} value={stage.can_forward} onChange={(v) => onStageChange(typeIndex, si, "can_forward", v)} />
+                            <CustomInputField field="can_backward" label="Can Backward" type="select" input={true} view={true} options={YN_OPTIONS} value={stage.can_backward} onChange={(v) => onStageChange(typeIndex, si, "can_backward", v)} />
+                            <CustomInputField field="can_edit_data" label="Can Edit Data" type="select" input={true} view={true} options={YN_OPTIONS} value={stage.can_edit_data} onChange={(v) => onStageChange(typeIndex, si, "can_edit_data", v)} />
+                          </div>
+                        </div>
+
+                        <Button onClick={() => onRemoveStage(typeIndex, si)} variant="ghost" size="icon" className="text-red-500 hover:text-red-600 h-8 w-8">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+);
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-const ApprovalFlowDynamic: React.FC = () => {
-  const [currentStep, setCurrentStep] = useState<number>(1);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [savedWorkflowId, setSavedWorkflowId] = useState<number | null>(null);
+export default function ApprovalFlowDynamic() {
+  const { canCreate, canEdit } = usePermissions();
+  const canSave = canCreate("ApprovalWorkflowPage") || canEdit("ApprovalWorkflowPage");
+
+  // ── List ──────────────────────────────────────────────────────────────────
+  const [listRefreshKey, setListRefreshKey] = useState(0);
+  const { data: listData, loading: listLoading } = useFetch<{ data: WorkflowMasterRow[] }>(
+    apiGetWorkflows, "", null, listRefreshKey
+  );
+  const workflows: WorkflowMasterRow[] = Array.isArray(listData?.data) ? listData!.data : [];
+  console.log(listData?.data);
+  // ── Panel / selection state ───────────────────────────────────────────────
+  const [mode, setMode] = useState<PanelMode>("idle");
+  const [selectedId, setSelectedId] = useState<string>("");       // drives the select dropdown
+  const [selectedRow, setSelectedRow] = useState<WorkflowMasterRow | null>(null);
+
+  // ── Employees ─────────────────────────────────────────────────────────────
   const [employeeOptions, setEmployeeOptions] = useState<{ label: string; value: string }[]>([]);
 
-  const [workflow, setWorkflow] = useState<WorkflowFormData>({
-    workflow_name: "",
-    workflow_code: "",
-    entity_type: "",
-    description: "",
-    is_active: true,
-  });
+  // ── Create state ──────────────────────────────────────────────────────────
+  const [createWorkflow, setCreateWorkflow] = useState<WorkflowFormData>(emptyWorkflow);
+  const [createTypes, setCreateTypes] = useState<WorkflowTypeExtended[]>([emptyType()]);
+  const [createSaving, setCreateSaving] = useState(false);
+  const [savedWorkflowId, setSavedWorkflowId] = useState<number | null>(null);
 
-  const [workflowTypes, setWorkflowTypes] = useState<WorkflowType[]>([emptyType()]);
+  // ── Edit state ────────────────────────────────────────────────────────────
+  const [editWorkflow, setEditWorkflow] = useState<WorkflowFormData>(emptyWorkflow);
+  const [editTypes, setEditTypes] = useState<WorkflowTypeExtended[]>([]);
+  const [editSaving, setEditSaving] = useState(false);
 
   const { postData } = usePost<any>();
-  const { workflowFields, entityTypeCount } = useApprovalFlowHierarchy();
+  const { updateData } = useUpdate<any>();
+  const { workflowFields, entityTypeCount, hierarchyData } = useApprovalFlowHierarchy();
+  const isSaving = createSaving || editSaving;
 
-  // Fetch employee list once on mount
   useEffect(() => {
     postData(apiGetSignEmployee, {})
       .then((res: any) => {
         const list: any[] = Array.isArray(res?.data) ? res.data : [];
-        setEmployeeOptions(
-          list.map((e) => ({ label: `${e.ename} (${e.ecno})`, value: e.ecno }))
-        );
+        setEmployeeOptions(list.map((e) => ({ label: `${e.ename} (${e.ecno})`, value: e.ecno })));
       })
       .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Workflow master handlers ──
-  const handleWorkflowChange = useCallback(
-    (field: keyof WorkflowFormData, value: any) => {
-      setWorkflow((prev) => {
-        const updated: WorkflowFormData = { ...prev, [field]: value };
-        if (field === "entity_type" && value) {
-          const count = entityTypeCount[value] || 0;
-          updated.workflow_code = `WF_${value}_${String(count + 1).padStart(3, "0")}`;
-          if (!prev.workflow_name) {
-            updated.workflow_name = `${value} Approval Workflow`;
-          }
+  // ── Dropdown options ──────────────────────────────────────────────────────
+  const workflowOptions = useMemo(
+    () => workflows.map((wf) => ({
+      label: `${wf.workflow_name} (${wf.workflow_code})`,
+      value: String(wf.workflow_id),
+    })),
+    [workflows]
+  );
+
+  // ── Branch parent lookup ──────────────────────────────────────────────────
+  const buildBranchParent = useCallback((): Record<string, { div_sno: string; com_sno: string }> => {
+    const map: Record<string, { div_sno: string; com_sno: string }> = {};
+    for (const com of hierarchyData?.companies ?? []) {
+      for (const div of com.divisions ?? []) {
+        for (const brn of div.branches ?? []) {
+          map[String(brn.brn_sno)] = { div_sno: String(div.div_sno), com_sno: String(com.com_sno) };
         }
-        return updated;
-      });
+      }
+    }
+    return map;
+  }, [hierarchyData]);
+
+  // ── Type/stage handlers factory ───────────────────────────────────────────
+  const makeHandlers = (
+    setter: React.Dispatch<React.SetStateAction<WorkflowTypeExtended[]>>,
+    getTypes: () => WorkflowTypeExtended[]
+  ) => ({
+    updateType: (index: number, field: keyof WorkflowType, value: any) =>
+      setter((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t))),
+    removeType: (index: number) => {
+      const t = getTypes()[index];
+      if (t._typeIds.length > 0) {
+        setter((prev) => prev.map((wt, i) => (i === index ? { ...wt, is_active: false } : wt)));
+        toast.info(`"${t.workflow_types_name}" marked inactive. Save to apply.`);
+      } else {
+        setter((prev) => prev.filter((_, i) => i !== index));
+      }
     },
-    [entityTypeCount]
-  );
-
-  // ── WorkflowType handlers (all stable — functional setters only) ──
-  const addWorkflowType = useCallback(
-    () => setWorkflowTypes((prev) => [...prev, emptyType()]),
-    []
-  );
-
-  const updateWorkflowType = useCallback(
-    (index: number, field: keyof WorkflowType, value: any) =>
-      setWorkflowTypes((prev) =>
-        prev.map((t, i) => (i === index ? { ...t, [field]: value } : t))
-      ),
-    []
-  );
-
-  const removeWorkflowType = useCallback(
-    (index: number) =>
-      setWorkflowTypes((prev) => prev.filter((_, i) => i !== index)),
-    []
-  );
-
-  // ── Stage handlers (per workflow type, all stable) ──
-  const addStage = useCallback(
-    (typeIdx: number) =>
-      setWorkflowTypes((prev) =>
+    addStage: (ti: number) =>
+      setter((prev) => prev.map((t, i) => (i === ti ? { ...t, stages: [...t.stages, emptyStage()] } : t))),
+    updateStage: (ti: number, si: number, field: keyof StageOrderItem, value: string) =>
+      setter((prev) =>
         prev.map((t, i) =>
-          i === typeIdx ? { ...t, stages: [...t.stages, emptyStage()] } : t
+          i === ti ? { ...t, stages: t.stages.map((s, j) => (j === si ? { ...s, [field]: value } : s)) } : t
         )
       ),
-    []
-  );
-
-  const updateStage = useCallback(
-    (typeIdx: number, stageIdx: number, field: keyof StageOrderItem, value: string) =>
-      setWorkflowTypes((prev) =>
-        prev.map((t, i) =>
-          i === typeIdx
-            ? {
-                ...t,
-                stages: t.stages.map((s, si) =>
-                  si === stageIdx ? { ...s, [field]: value } : s
-                ),
-              }
-            : t
-        )
-      ),
-    []
-  );
-
-  const removeStage = useCallback(
-    (typeIdx: number, stageIdx: number) =>
-      setWorkflowTypes((prev) =>
-        prev.map((t, i) =>
-          i === typeIdx
-            ? { ...t, stages: t.stages.filter((_, si) => si !== stageIdx) }
-            : t
-        )
-      ),
-    []
-  );
-
-  const moveStage = useCallback(
-    (typeIdx: number, stageIdx: number, dir: "up" | "down") =>
-      setWorkflowTypes((prev) =>
+    removeStage: (ti: number, si: number) =>
+      setter((prev) => prev.map((t, i) => (i === ti ? { ...t, stages: t.stages.filter((_, j) => j !== si) } : t))),
+    moveStage: (ti: number, si: number, dir: "up" | "down") =>
+      setter((prev) =>
         prev.map((t, i) => {
-          if (i !== typeIdx) return t;
+          if (i !== ti) return t;
           const arr = [...t.stages];
-          const target = dir === "up" ? stageIdx - 1 : stageIdx + 1;
+          const target = dir === "up" ? si - 1 : si + 1;
           if (target < 0 || target >= arr.length) return t;
-          [arr[stageIdx], arr[target]] = [arr[target], arr[stageIdx]];
+          [arr[si], arr[target]] = [arr[target], arr[si]];
           return { ...t, stages: arr };
         })
       ),
-    []
-  );
+  });
 
-  // ── Validation ──
-  const validateStep = useCallback(
-    (step: number): boolean => {
-      if (step === 1) {
-        if (!workflow.workflow_name || !workflow.workflow_code || !workflow.entity_type) {
-          toast.error("Please fill all required workflow fields");
-          return false;
-        }
-      }
-      if (step === 2) {
-        if (workflowTypes.some((t) => !t.workflow_types_name || !t.brn_sno || !t.dept_sno)) {
-          toast.error("Each workflow type needs a name, branch, and department");
-          return false;
-        }
-      }
-      if (step === 3) {
-        for (const t of workflowTypes) {
-          if (t.stages.length === 0) {
-            toast.error(`Workflow type "${t.workflow_types_name}" has no stages`);
-            return false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const ch = useMemo(() => makeHandlers(setCreateTypes, () => createTypes), [createTypes]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const eh = useMemo(() => makeHandlers(setEditTypes, () => editTypes), [editTypes]);
+
+  // ── Select workflow from dropdown ─────────────────────────────────────────
+  const handleSelectById = useCallback(
+    async (id: string) => {
+      setSelectedId(id);
+      if (!id) { setMode("idle"); setSelectedRow(null); return; }
+
+      const wf = workflows.find((w) => String(w.workflow_id) === id);
+      if (!wf) return;
+
+      setSelectedRow(wf);
+      setMode("loading");
+      try {
+        const typesRes = await axios.get(apiGetWorkflowTypes(wf.workflow_id));
+
+        // Response shape: { decrypted: { data: [{ "JSON_F52E2B61-...": "<json string>" }] } }
+        const jsonKey = "JSON_F52E2B61-18A1-11d1-B105-00805F49916B";
+        const rawJson = typesRes.data?.decrypted?.data?.[0]?.[jsonKey];
+        const parsed = rawJson ? JSON.parse(rawJson) : null;
+        const workflowTypeRows: any[] = parsed?.workflows?.[0]?.workflow_types ?? [];
+
+        const bp = buildBranchParent();
+        const groups: Record<string, WorkflowTypeExtended> = {};
+
+        for (const row of workflowTypeRows) {
+          const name = row.workflow_types_name;
+
+          let stages: StageOrderItem[] = [];
+          if (row.stages?.length > 0 && row.stages[0].stage_order_json) {
+            try { stages = JSON.parse(row.stages[0].stage_order_json); } catch { stages = []; }
           }
-          if (t.stages.some((s) => !s.stage || !s.approver_ecno)) {
-            toast.error("Each stage must have a name and an approver");
-            return false;
+
+          if (!groups[name]) {
+            groups[name] = {
+              workflow_types_name: name,
+              com_snos: [], div_snos: [], brn_snos: [], dept_snos: [],
+              is_active: row.is_active === "Y",
+              stages,
+              _typeIds: [],
+            };
           }
+          const g = groups[name];
+          const brn = String(row.brn_sno);
+          if (!g.brn_snos.includes(brn)) g.brn_snos.push(brn);
+          if (!g.dept_snos.includes(String(row.dept_sno))) g.dept_snos.push(String(row.dept_sno));
+          if (bp[brn]) {
+            if (!g.com_snos.includes(bp[brn].com_sno)) g.com_snos.push(bp[brn].com_sno);
+            if (!g.div_snos.includes(bp[brn].div_sno)) g.div_snos.push(bp[brn].div_sno);
+          }
+          g._typeIds.push(row.workflow_types_id);
         }
+
+        setEditWorkflow({
+          workflow_name: wf.workflow_name,
+          workflow_code: wf.workflow_code,
+          entity_type: wf.entity_type,
+          description: wf.description ?? "",
+          is_active: wf.is_active === "Y",
+        });
+        setEditTypes(Object.values(groups));
+        setMode("edit");
+      } catch {
+        toast.error("Failed to load workflow details");
+        setMode("idle");
+        setSelectedRow(null);
+        setSelectedId("");
       }
-      return true;
     },
-    [workflow, workflowTypes]
+    [workflows, buildBranchParent]
   );
 
-  const handleNext = useCallback(
-    () => { if (validateStep(currentStep)) setCurrentStep((p) => Math.min(p + 1, 3)); },
-    [validateStep, currentStep]
-  );
-  const handlePrevious = useCallback(
-    () => setCurrentStep((p) => Math.max(p - 1, 1)),
-    []
-  );
+  const handleNewWorkflow = useCallback(() => {
+    setSelectedId("");
+    setSelectedRow(null);
+    setCreateWorkflow(emptyWorkflow());
+    setCreateTypes([emptyType()]);
+    setSavedWorkflowId(null);
+    setMode("create");
+  }, []);
 
-  // ── Submit ──
-  const handleSubmit = useCallback(async () => {
-    if (!validateStep(3)) return;
-    setLoading(true);
+  const handleReset = useCallback(() => {
+    setSelectedId("");
+    setSelectedRow(null);
+    setMode("idle");
+    setCreateWorkflow(emptyWorkflow());
+    setCreateTypes([emptyType()]);
+    setSavedWorkflowId(null);
+  }, []);
 
-    const payload = {
-      workflow_name: workflow.workflow_name,
-      workflow_code: workflow.workflow_code,
-      entity_type:   workflow.entity_type,
-      description:   workflow.description,
-      is_active:     workflow.is_active ? "Y" : "N",
-      workflow_types: workflowTypes.map((t) => ({
-        workflow_types_name: t.workflow_types_name,
-        brn_sno:             t.brn_sno,
-        dept_sno:            t.dept_sno,
-        is_active:           t.is_active ? "Y" : "N",
-        stage_order_json:    JSON.stringify(t.stages),
-      })),
-    };
+  const handleDiscard = useCallback(() => {
+    if (mode === "create") {
+      setCreateWorkflow(emptyWorkflow());
+      setCreateTypes([emptyType()]);
+      setSavedWorkflowId(null);
+    } else if (mode === "edit" && selectedId) {
+      handleSelectById(selectedId);
+    }
+  }, [mode, selectedId, handleSelectById]);
 
+  // ── Create submit ─────────────────────────────────────────────────────────
+  const validateCreate = useCallback((): boolean => {
+    if (!createWorkflow.workflow_name || !createWorkflow.entity_type) {
+      toast.error("Workflow name and entity type are required"); return false;
+    }
+    for (const t of createTypes) {
+      if (!t.workflow_types_name) { toast.error("Each type must have a name"); return false; }
+      if (!t.brn_snos.length || !t.dept_snos.length) {
+        toast.error(`"${t.workflow_types_name}" needs at least one branch and department`); return false;
+      }
+      if (!t.stages.length || t.stages.some((s) => !s.stage || !s.approver_ecno)) {
+        toast.error(`"${t.workflow_types_name}" — each stage needs a name and approver`); return false;
+      }
+    }
+    return true;
+  }, [createWorkflow, createTypes]);
+
+  const handleCreateSubmit = useCallback(async () => {
+    // if (!validateCreate()) return;
+    setCreateSaving(true);
+    const count = entityTypeCount[createWorkflow.entity_type] || 0;
+    const autoCode = `WF_${createWorkflow.entity_type}_${String(count + 1).padStart(3, "0")}`;
+    const bp = buildBranchParent();
+    const expandedTypes = createTypes.flatMap((t) =>
+      t.brn_snos.flatMap((brn) =>
+        t.dept_snos.map((dept) => ({
+          workflow_types_name: t.workflow_types_name,
+          com_sno: bp[String(brn)]?.com_sno ?? "",
+          div_sno: bp[String(brn)]?.div_sno ?? "",
+          brn_sno: brn, dept_sno: dept,
+          is_active: t.is_active ? "Y" : "N",
+          stage_order_json: JSON.stringify(t.stages),
+        }))
+      )
+    );
     try {
-      const data = await postData(apiSaveFullWorkflow, payload);
+      const data = await postData(apiSaveFullWorkflow, {
+        workflow_name: createWorkflow.workflow_name,
+        workflow_code: autoCode,
+        entity_type: createWorkflow.entity_type,
+        description: createWorkflow.description,
+        is_active: createWorkflow.is_active ? "Y" : "N",
+        workflow_types: expandedTypes,
+      });
       setSavedWorkflowId(data?.data?.[0]?.workflow_id ?? null);
-      toast.success("Workflow saved successfully!");
+      toast.success(`Workflow saved! Code: ${autoCode}`);
+      setListRefreshKey((k) => k + 1);
+      setCreateWorkflow(emptyWorkflow());
+      setCreateTypes([emptyType()]);
     } catch {
       toast.error("Failed to save workflow");
     } finally {
-      setLoading(false);
+      setCreateSaving(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [validateStep, workflow, workflowTypes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [validateCreate, createWorkflow, createTypes, entityTypeCount, buildBranchParent]);
 
-  const steps = ["Basic Info", "Workflow Types", "Stage Configuration"];
+  // ── Edit submit ───────────────────────────────────────────────────────────
+  const handleUpdateSubmit = useCallback(async () => {
+    if (!selectedRow) return;
+    if (!editWorkflow.workflow_name) { toast.error("Workflow name is required"); return; }
+    setEditSaving(true);
+    try {
+      await updateData(apiUpdateWorkflow, null, {
+        workflow_id: selectedRow.workflow_id,
+        workflow_name: editWorkflow.workflow_name,
+        description: editWorkflow.description,
+        is_active: editWorkflow.is_active ? "Y" : "N",
+      });
+      const bp = buildBranchParent();
+      for (const type of editTypes) {
+        if (type._typeIds.length > 0) {
+          for (const typeId of type._typeIds) {
+            await updateData(apiUpdateWorkflowType, null, {
+              workflow_types_id: typeId,
+              workflow_types_name: type.workflow_types_name,
+              is_active: type.is_active ? "Y" : "N",
+            });
+            await updateData(apiUpdateWorkflowStage, null, {
+              workflow_types_id: typeId,
+              stage_order_json: JSON.stringify(type.stages),
+            });
+          }
+        } else {
+          if (!type.workflow_types_name || !type.brn_snos.length || !type.dept_snos.length) continue;
+          for (const brn of type.brn_snos) {
+            for (const dept of type.dept_snos) {
+              const res = await postData(apiSaveWorkflowType, {
+                workflow_id: selectedRow.workflow_id,
+                workflow_types_name: type.workflow_types_name,
+                com_sno: bp[String(brn)]?.com_sno ?? "",
+                div_sno: bp[String(brn)]?.div_sno ?? "",
+                brn_sno: brn, dept_sno: dept,
+                is_active: type.is_active ? "Y" : "N",
+              });
+              const newTypeId = res?.data?.[0]?.workflow_types_id;
+              if (newTypeId) {
+                await postData(apiSaveWorkflowStage, {
+                  workflow_types_id: newTypeId,
+                  stage_order_json: JSON.stringify(type.stages),
+                });
+              }
+            }
+          }
+        }
+      }
+      toast.success("Workflow updated successfully!");
+      setListRefreshKey((k) => k + 1);
+      setSelectedRow((prev) => prev
+        ? { ...prev, workflow_name: editWorkflow.workflow_name, description: editWorkflow.description, is_active: editWorkflow.is_active ? "Y" : "N" }
+        : prev
+      );
+    } catch {
+      toast.error("Failed to update workflow");
+    } finally {
+      setEditSaving(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRow, editWorkflow, editTypes, buildBranchParent]);
 
+  const activeTypes  = (mode === "create" ? createTypes : editTypes);
+  const activeWf     = mode === "create" ? createWorkflow : editWorkflow;
+  const hasFormOpen  = mode === "create" || mode === "edit";
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="container mx-auto py-8 px-4 max-w-7xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Approval Workflow Configuration</h1>
-        <p className="text-muted-foreground">
-          Create approval workflows scoped to branch &amp; department
-        </p>
-      </div>
+    <div className="flex flex-col h-full bg-muted/30 min-h-screen">
 
-      {/* Progress Indicator */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          {steps.map((label, i) => (
-            <React.Fragment key={i}>
-              <div className="flex flex-col items-center">
-                <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all ${
-                    currentStep > i + 1
-                      ? "bg-green-500 text-white"
-                      : currentStep === i + 1
-                      ? "bg-primary text-white"
-                      : "bg-gray-200 text-gray-500"
-                  }`}
-                >
-                  {currentStep > i + 1 ? <CheckCircle className="w-5 h-5" /> : i + 1}
-                </div>
-                <span className="text-xs mt-2 text-center max-w-[110px]">{label}</span>
-              </div>
-              {i < steps.length - 1 && (
-                <div
-                  className={`flex-1 h-1 mx-2 transition-all ${
-                    currentStep > i + 1 ? "bg-green-500" : "bg-gray-200"
-                  }`}
-                />
-              )}
-            </React.Fragment>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Step 1: Basic Workflow Info ── */}
-      {currentStep === 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Basic Workflow Information</CardTitle>
-            <CardDescription>Define the core details of your workflow</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-2 gap-6">
-              {workflowFields.slice(0, 2).map((fc) => (
-                <CustomInputField
-                  key={fc.field}
-                  {...fc}
-                  value={workflow[fc.field as keyof WorkflowFormData]}
-                  onChange={(v) => handleWorkflowChange(fc.field as keyof WorkflowFormData, v)}
-                />
-              ))}
-            </div>
-            {workflowFields.slice(2, 4).map((fc) => (
-              <CustomInputField
-                key={fc.field}
-                {...fc}
-                value={workflow[fc.field as keyof WorkflowFormData]}
-                onChange={(v) => handleWorkflowChange(fc.field as keyof WorkflowFormData, v)}
-              />
-            ))}
-            <div className="flex items-center space-x-2">
-              {workflowFields.slice(4).map((fc) => (
-                <CustomInputField
-                  key={fc.field}
-                  {...fc}
-                  value={workflow[fc.field as keyof WorkflowFormData]}
-                  onChange={(v) => handleWorkflowChange(fc.field as keyof WorkflowFormData, v)}
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Step 2: Workflow Types (branch + dept selection) ── */}
-      {currentStep === 2 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Workflow Types</CardTitle>
-                <CardDescription>
-                  Each type is scoped to a specific branch and department
-                </CardDescription>
-              </div>
-              <Button onClick={addWorkflowType} size="sm">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Type
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {workflowTypes.map((type, index) => (
-              <WorkflowTypeCard
-                key={index}
-                type={type}
-                typeIndex={index}
-                employeeOptions={employeeOptions}
-                onChange={updateWorkflowType}
-                onStageChange={updateStage}
-                onAddStage={addStage}
-                onRemoveStage={removeStage}
-                onMoveStage={moveStage}
-                onRemove={removeWorkflowType}
-                showStages={false}
-              />
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Step 3: Stage Configuration per workflow type ── */}
-      {currentStep === 3 && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-semibold">Stage Configuration</h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Configure approval stages for each workflow type
-              </p>
-            </div>
+      {/* ── Page header ─────────────────────────────────────────────────── */}
+      <div className="bg-background border-b px-6 py-4 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+            <Layers className="h-5 w-5 text-primary" />
           </div>
-
-          {workflowTypes.map((type, index) => (
-            <WorkflowTypeCard
-              key={index}
-              type={type}
-              typeIndex={index}
-              employeeOptions={employeeOptions}
-              onChange={updateWorkflowType}
-              onStageChange={updateStage}
-              onAddStage={addStage}
-              onRemoveStage={removeStage}
-              onMoveStage={moveStage}
-              onRemove={removeWorkflowType}
-              showStages={true}
-            />
-          ))}
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">
+              Approval Workflows
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              Configure multi-stage approval chains per entity and branch
+            </p>
+          </div>
         </div>
-      )}
+      </div>
 
-      {/* Navigation */}
-      <div className="flex justify-between mt-8">
-        <Button
-          onClick={handlePrevious}
-          disabled={currentStep === 1}
-          variant="outline"
-          size="lg"
-        >
-          Previous
-        </Button>
-        <div className="flex gap-2">
-          {currentStep < 3 ? (
-            <Button onClick={handleNext} size="lg">
-              Next Step
-            </Button>
-          ) : (
-            <Button onClick={handleSubmit} disabled={loading} size="lg">
-              <Save className="w-4 h-4 mr-2" />
-              {loading ? "Saving..." : "Save Workflow"}
-            </Button>
+      {/* ── Body ────────────────────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden flex-col lg:flex-row" style={{ minHeight: 0 }}>
+
+        {/* ── LEFT PANEL ──────────────────────────────────────────────── */}
+        <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 bg-background border-b lg:border-b-0 lg:border-r overflow-y-auto">
+          <div className="p-5 space-y-5">
+
+            {/* Select Workflow */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                Select Workflow
+              </p>
+              <CustomInputField
+                field="workflow"
+                label="Workflow"
+                type="select"
+                options={workflowOptions}
+                value={selectedId}
+                onChange={handleSelectById}
+                placeholder={listLoading ? "Loading workflows…" : "Choose a workflow…"}
+              />
+            </div>
+
+            {/* Workflow summary card — shown when a workflow is selected */}
+            {selectedRow && mode !== "create" && (
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Workflow Details
+                </p>
+                <Badge
+                  variant={selectedRow.is_active === "Y" ? "default" : "secondary"}
+                  className="gap-1.5 px-3 py-1.5 text-sm font-normal w-full justify-center"
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  {selectedRow.is_active === "Y" ? "Active" : "Inactive"}
+                </Badge>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Entity Type</p>
+                  <p className="text-xs font-medium text-foreground">{selectedRow.entity_type}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Code</p>
+                  <p className="text-xs font-medium font-mono text-foreground">{selectedRow.workflow_code}</p>
+                </div>
+                {selectedRow.description && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Description</p>
+                    <p className="text-xs text-foreground line-clamp-2">{selectedRow.description}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* "Creating new" indicator */}
+            {mode === "create" && (
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  New Workflow
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Fill in the details on the right to create a new approval workflow.
+                </p>
+              </div>
+            )}
+
+            {/* Loading indicator */}
+            {mode === "loading" && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading workflow…
+              </div>
+            )}
+
+            {/* Action buttons — shown when form is open */}
+            {hasFormOpen && canSave && (
+              <div className="space-y-2 pt-1">
+                <Button
+                  className="w-full gap-2"
+                  // onClick={mode === "create" ? handleCreateSubmit : handleUpdateSubmit}
+                  onClick={handleCreateSubmit}
+                  disabled={isSaving}
+                >
+                  {isSaving
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <Save className="h-4 w-4" />}
+                  {isSaving ? "Saving…" : "Save Changes"}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full gap-2"
+                  onClick={handleDiscard}
+                  disabled={isSaving}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Discard Changes
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full text-muted-foreground text-sm"
+                  onClick={handleReset}
+                  disabled={isSaving}
+                >
+                  Clear Selection
+                </Button>
+              </div>
+            )}
+
+            {/* New Workflow button — shown when no form is open */}
+            {!hasFormOpen && canSave && (
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                onClick={handleNewWorkflow}
+              >
+                <Plus className="h-4 w-4" />
+                New Workflow
+              </Button>
+            )}
+
+          </div>
+        </div>
+
+        {/* ── RIGHT PANEL ─────────────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto">
+
+          {/* Idle state */}
+          {mode === "idle" && (
+            <div className="flex flex-col items-center justify-center h-full min-h-64 gap-4 text-muted-foreground">
+              <div className="bg-muted rounded-full p-6">
+                <Layers size={40} className="opacity-30" />
+              </div>
+              <div className="text-center">
+                <p className="text-base font-medium text-foreground/60">Select a Workflow</p>
+                <p className="text-sm mt-1">
+                  Choose a workflow from the left panel to view and edit its configuration
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Loading */}
+          {mode === "loading" && (
+            <div className="flex flex-col items-center justify-center h-full min-h-64 gap-4 text-muted-foreground">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm">Loading workflow details…</p>
+            </div>
+          )}
+
+          {/* Form (create or edit) */}
+          {hasFormOpen && (
+            <div className="p-5 space-y-5">
+
+              {/* Right panel section header — mirrors role approval's "Screen Permissions" header */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-foreground">
+                    {mode === "create"
+                      ? "New Workflow"
+                      : <>
+                          Workflow Configuration
+                          {selectedRow && (
+                            <span className="ml-2 font-normal text-muted-foreground">
+                              — {selectedRow.workflow_name}
+                            </span>
+                          )}
+                        </>}
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {mode === "create"
+                      ? "Workflow code is auto-generated on save"
+                      : "Edit settings, approval types, and stage configuration"}
+                  </p>
+                </div>
+                {mode === "edit" && selectedRow && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="font-mono text-xs">
+                      {selectedRow.workflow_code}
+                    </Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      {selectedRow.entity_type}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+
+              {/* Basic info */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Basic Information</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    {workflowFields.slice(0, 2).map((fc) => (
+                      <CustomInputField
+                        key={fc.field}
+                        {...fc}
+                        disabled={fc.disabled || (mode === "edit" && fc.field === "entity_type")}
+                        value={activeWf[fc.field as keyof WorkflowFormData]}
+                        onChange={(v) => {
+                          if (mode === "create") {
+                            setCreateWorkflow((prev) => {
+                              const next = { ...prev, [fc.field]: v };
+                              if (fc.field === "entity_type" && v && !prev.workflow_name)
+                                next.workflow_name = `${v} Approval Workflow`;
+                              return next;
+                            });
+                          } else {
+                            setEditWorkflow((prev) => ({ ...prev, [fc.field]: v }));
+                          }
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <CustomInputField
+                    {...workflowFields[2]}
+                    value={activeWf.description}
+                    onChange={(v) =>
+                      mode === "create"
+                        ? setCreateWorkflow((p) => ({ ...p, description: v }))
+                        : setEditWorkflow((p) => ({ ...p, description: v }))
+                    }
+                  />
+                  <CustomInputField
+                    {...workflowFields[3]}
+                    value={activeWf.is_active}
+                    onChange={(v) =>
+                      mode === "create"
+                        ? setCreateWorkflow((p) => ({ ...p, is_active: v }))
+                        : setEditWorkflow((p) => ({ ...p, is_active: v }))
+                    }
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Workflow Types */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Workflow Types</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Each type expands into one entry per branch × department
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      mode === "create"
+                        ? setCreateTypes((p) => [...p, emptyType()])
+                        : setEditTypes((p) => [...p, emptyType()])
+                    }
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Type
+                  </Button>
+                </div>
+
+                {activeTypes.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-10">
+                    No types yet. Click "Add Type" to begin.
+                  </p>
+                )}
+
+                {activeTypes.map((type, index) => (
+                  <WorkflowTypeCard
+                    key={index}
+                    type={type}
+                    typeIndex={index}
+                    employeeOptions={employeeOptions}
+                    onChange={mode === "create" ? ch.updateType : eh.updateType}
+                    onStageChange={mode === "create" ? ch.updateStage : eh.updateStage}
+                    onAddStage={mode === "create" ? ch.addStage : eh.addStage}
+                    onRemoveStage={mode === "create" ? ch.removeStage : eh.removeStage}
+                    onMoveStage={mode === "create" ? ch.moveStage : eh.moveStage}
+                    onRemove={mode === "create" ? ch.removeType : eh.removeType}
+                    removable={type._typeIds.length === 0}
+                  />
+                ))}
+              </div>
+
+              {/* Create success banner */}
+              {mode === "create" && savedWorkflowId && (
+                <Card className="border-green-500 bg-green-50 dark:bg-green-950">
+                  <CardContent className="pt-5 pb-5">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold text-green-900 dark:text-green-100">
+                          Workflow Created Successfully!
+                        </p>
+                        <p className="text-xs text-green-700 dark:text-green-300">
+                          Workflow ID: {savedWorkflowId}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+            </div>
           )}
         </div>
       </div>
-
-      {/* Success banner */}
-      {savedWorkflowId && (
-        <Card className="mt-6 border-green-500 bg-green-50 dark:bg-green-950">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <CheckCircle className="w-6 h-6 text-green-600" />
-              <div>
-                <p className="font-semibold text-green-900 dark:text-green-100">
-                  Workflow Created Successfully!
-                </p>
-                <p className="text-sm text-green-700 dark:text-green-300">
-                  Workflow ID: {savedWorkflowId}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
-};
-
-export default ApprovalFlowDynamic;
+}

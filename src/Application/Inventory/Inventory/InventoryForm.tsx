@@ -18,8 +18,8 @@ import {
 interface InventoryFormProps {
   selectedItem: InventoryItem | null;
   isAddingNew: boolean;
-  onSave: (form: InventoryFormState) => void;
-  onDelete: (item: InventoryItem) => void;
+  onSave?: (form: InventoryFormState) => void;
+  onDelete?: (item: InventoryItem) => void;
   onCancel: () => void;
   saving: boolean;
 }
@@ -61,7 +61,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
   const set = (field: keyof InventoryFormState, value: any) =>
     setForm(prev => ({ ...prev, [field]: value }));
 
-  const handleSubmit = () => onSave(form);
+  const handleSubmit = () => onSave?.(form);
 
   const canEdit = isEditing || isAddingNew;
   const { label, color } = selectedItem ? getStockStatus(selectedItem) : { label: 'New', color: 'green' as const };
@@ -88,16 +88,20 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
               )}
               {!isAddingNew && selectedItem && !isEditing && (
                 <>
-                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setIsEditing(true)}>
-                    <Pencil size={12} className="mr-1" /> Edit
-                  </Button>
-                  <Button
-                    variant="outline" size="sm"
-                    className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50"
-                    onClick={() => onDelete(selectedItem)}
-                  >
-                    <Trash2 size={12} className="mr-1" /> Delete
-                  </Button>
+                  {onSave && (
+                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setIsEditing(true)}>
+                      <Pencil size={12} className="mr-1" /> Edit
+                    </Button>
+                  )}
+                  {onDelete && (
+                    <Button
+                      variant="outline" size="sm"
+                      className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                      onClick={() => onDelete(selectedItem)}
+                    >
+                      <Trash2 size={12} className="mr-1" /> Delete
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -292,15 +296,17 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
               <Button variant="outline" size="sm" className="text-xs" onClick={onCancel}>
                 <RotateCcw size={13} className="mr-1" /> Cancel
               </Button>
-              <Button
-                size="sm"
-                className="bg-indigo-600 hover:bg-indigo-700 text-xs"
-                disabled={saving || !form.item_code || !form.item_name || !form.category || !form.uom || !form.warehouse}
-                onClick={handleSubmit}
-              >
-                <Save size={13} className="mr-1" />
-                {saving ? 'Saving…' : isAddingNew ? 'Create Item' : 'Save Changes'}
-              </Button>
+              {onSave && (
+                <Button
+                  size="sm"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-xs"
+                  disabled={saving || !form.item_code || !form.item_name || !form.category || !form.uom || !form.warehouse}
+                  onClick={handleSubmit}
+                >
+                  <Save size={13} className="mr-1" />
+                  {saving ? 'Saving…' : isAddingNew ? 'Create Item' : 'Save Changes'}
+                </Button>
+              )}
             </div>
           </CardContent>
         )}

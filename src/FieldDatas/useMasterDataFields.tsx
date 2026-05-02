@@ -1,5 +1,3 @@
-import { useSelector } from "react-redux";
-import type { RootState } from "@/globalState/store";
 import {
   useCompanyMasterFields,
   useDivisionMasterFields,
@@ -15,24 +13,11 @@ import {
   useProductCatagoryMaster,
   useProductFieldsMaster,
   useProductSubCatagoryMaster,
-    useWorkflowMasterFields,
-
+  useWorkflowMasterFields,
 } from "./Data";
-import type { FieldType
-} from "./Data";
-
-
-// Define expected shape of form data if needed
-// Adjust according to your actual form structure
-interface FormState {
-  [key: string]: any;
-}
+import type { FieldType } from "./Data";
 
 export const useMasterDataFields = () => {
-  // Typed selector
-  const formData: FormState = useSelector(
-    (state: RootState) => state.form
-  ) || {};
 
   const fields = {
     CompanyMaster: useCompanyMasterFields(),

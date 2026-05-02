@@ -11,7 +11,7 @@ interface JournalEntrySidebarProps {
   loading: boolean;
   selectedEntry: JournalEntry | null;
   onSelectEntry: (entry: JournalEntry) => void;
-  onNewEntry: () => void;
+  onNewEntry?: () => void;
 }
 
 const voucherColor: Record<string, string> = {
@@ -62,9 +62,11 @@ const JournalEntrySidebar: React.FC<JournalEntrySidebarProps> = ({
         <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
           Entries ({entries.length})
         </span>
-        <Button size="sm" className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700" onClick={onNewEntry}>
-          <Plus size={13} className="mr-1" /> New Entry
-        </Button>
+        {onNewEntry && (
+          <Button size="sm" className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700" onClick={onNewEntry}>
+            <Plus size={13} className="mr-1" /> New Entry
+          </Button>
+        )}
       </div>
 
       {/* Stats */}

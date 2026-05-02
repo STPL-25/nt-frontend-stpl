@@ -1,10 +1,11 @@
+import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import {
   CheckCircle2, XCircle, Clock,
-  FileText, AlertCircle, ChevronRight, Package, Menu, X,
+  FileText, AlertCircle, ChevronRight, Package,
   GitBranch, Layers, History,
 } from 'lucide-react';
 import type { FieldType } from '@/FieldDatas/fieldType/fieldType';
@@ -14,9 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { useMemo, useState } from 'react';
+import { usePermissions } from '@/globalState/hooks/usePermissions';
+import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
 
 // ─── SP response mapping ──────────────────────────────────────────────────────
 // pr_basic_sno | brn_sno | brn_name | brn_prefix | dept_name | div_prefix
@@ -46,6 +46,7 @@ interface ApprovalScreenLayoutProps {
   loading: boolean;
   actionType: 'approve' | 'reject';
   fieldDatas: FieldType[];
+  toast?: { message: string; type: 'success' | 'error' } | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -123,7 +124,6 @@ function PRListCard({ pr, isSelected, onClick }: { pr: any; isSelected: boolean;
       onClick={onClick}
     >
       <CardContent className="p-3 sm:p-4 space-y-2.5">
-        {/* PR no + requestor */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm text-slate-900 dark:text-slate-50 truncate">{pr.pr_no}</p>
@@ -134,7 +134,6 @@ function PRListCard({ pr, isSelected, onClick }: { pr: any; isSelected: boolean;
           <ChevronRight className={`h-4 w-4 flex-shrink-0 mt-0.5 ${isSelected ? 'text-blue-600' : 'text-slate-400'}`} />
         </div>
 
-        {/* Priority + status */}
         <div className="flex flex-wrap gap-1.5">
           <Badge variant="outline" className={`text-xs ${priorityCls(priorityLabel)}`}>
             {priorityLabel} Priority
@@ -146,7 +145,6 @@ function PRListCard({ pr, isSelected, onClick }: { pr: any; isSelected: boolean;
           )}
         </div>
 
-        {/* Branch / Dept */}
         <div className="space-y-1 text-xs">
           {pr.brn_name && (
             <div className="flex justify-between gap-2">
@@ -198,53 +196,6 @@ function PRListCard({ pr, isSelected, onClick }: { pr: any; isSelected: boolean;
         )}
       </CardContent>
     </Card>
-  );
-}
-
-// ─── Sidebar list ─────────────────────────────────────────────────────────────
-
-function PRListContent({
-  approvalName, prList, selectedPR, handlePRSelect, onClose,
-}: {
-  approvalName: string; prList: any[]; selectedPR: any;
-  handlePRSelect: (pr: any) => void; onClose?: () => void;
-}) {
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex-shrink-0 p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-50">{approvalName}</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {prList.length} pending request{prList.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-          {onClose && (
-            <Button variant="ghost" size="icon" onClick={onClose} className="lg:hidden ml-2">
-              <X className="h-5 w-5" />
-            </Button>
-          )}
-        </div>
-      </div>
-      <div className="flex-1 overflow-hidden">
-        <ScrollArea className="h-full">
-          {prList.length === 0 ? (
-            <p className="p-6 text-center text-sm text-slate-500">No pending requisitions</p>
-          ) : (
-            <div className="p-2 sm:p-3 space-y-2">
-              {prList.map((pr: any) => (
-                <PRListCard
-                  key={pr.pr_no}
-                  pr={pr}
-                  isSelected={selectedPR?.pr_no === pr.pr_no}
-                  onClick={() => { handlePRSelect(pr); onClose?.(); }}
-                />
-              ))}
-            </div>
-          )}
-        </ScrollArea>
-      </div>
-    </div>
   );
 }
 
@@ -321,7 +272,6 @@ function ApprovalStages({ stages, currentApproverId }: { stages: any[]; currentA
                     : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30'
                 }`}
               >
-                {/* Stage number */}
                 <div className={`flex-shrink-0 w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center mt-0.5 ${
                   isCurrent
                     ? 'bg-blue-600 text-white'
@@ -330,7 +280,6 @@ function ApprovalStages({ stages, currentApproverId }: { stages: any[]; currentA
                   {idx + 1}
                 </div>
                 <div className="flex-1 min-w-0 space-y-1">
-                  {/* Stage name + approver */}
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
                       {stage.stage ?? `Stage ${idx + 1}`}
@@ -344,7 +293,6 @@ function ApprovalStages({ stages, currentApproverId }: { stages: any[]; currentA
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     Approver: <span className="font-medium text-slate-700 dark:text-slate-300">{stage.approver_ecno}</span>
                   </p>
-                  {/* Stage meta */}
                   <div className="flex flex-wrap gap-1.5 pt-0.5">
                     {stage.is_mandatory && (
                       <span className={`text-xs px-1.5 py-0.5 rounded ${
@@ -366,7 +314,6 @@ function ApprovalStages({ stages, currentApproverId }: { stages: any[]; currentA
                       </span>
                     )}
                   </div>
-                  {/* Capabilities */}
                   <div className="flex flex-wrap gap-1 pt-0.5">
                     {yesNo(stage.can_forward) && (
                       <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800">
@@ -397,6 +344,7 @@ function ApprovalStages({ stages, currentApproverId }: { stages: any[]; currentA
 // ─── Detail panel ─────────────────────────────────────────────────────────────
 
 function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction: (a: string) => void; fieldDatas: FieldType[] }) {
+  const { canEdit } = usePermissions();
   const { parsedItems, totalCost } = useMemo(() => parsePrItems(pr), [pr]);
   const stages = useMemo(() => parseStages(pr), [pr]);
   const history = useMemo(() => parseHistory(pr), [pr]);
@@ -405,7 +353,6 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
 
   return (
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 space-y-4 sm:space-y-6">
-      {/* Page header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-50">
           Purchase Requisition
@@ -416,10 +363,7 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
-        {/* ── Left: basic details + items + stages ── */}
         <div className="xl:col-span-2 space-y-4 sm:space-y-6">
-
-          {/* Basic details */}
           <Card className="shadow-sm">
             <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 p-4 sm:p-6">
               <div className="flex flex-col gap-2">
@@ -429,7 +373,6 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                     <AlertCircle className="mr-1 h-3 w-3" />{priorityLabel} Priority
                   </Badge>
                 </div>
-                {/* Org breadcrumb */}
                 {(pr.com_name || pr.div_name || pr.brn_name) && (
                   <div className="flex items-center gap-1.5 flex-wrap text-xs text-slate-500 dark:text-slate-400">
                     <Layers className="h-3.5 w-3.5 flex-shrink-0" />
@@ -443,7 +386,6 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
             </CardHeader>
 
             <CardContent className="p-4 sm:p-6 space-y-4">
-              {/* Dynamic field grid driven by fieldDatas */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {fieldDatas.filter(f => f.view !== false).map(f => {
                   const rawVal = pr[f.field];
@@ -462,7 +404,6 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
             </CardContent>
           </Card>
 
-          {/* Items */}
           <Card className="shadow-sm">
             <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-3">
               <CardTitle className="text-base sm:text-lg flex items-center gap-2">
@@ -477,7 +418,6 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                 <p className="text-sm text-slate-500 text-center py-4">No items found</p>
               ) : (
                 <>
-                  {/* Desktop table */}
                   <div className="hidden sm:block overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
                     <table className="w-full text-sm">
                       <thead className="bg-slate-50 dark:bg-slate-900 text-xs font-semibold text-slate-600 dark:text-slate-400">
@@ -495,9 +435,7 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                           <tr key={item.pr_item_sno ?? idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors">
                             <td className="p-2 lg:p-3 text-slate-400 dark:text-slate-500 text-xs">{idx + 1}</td>
                             <td className="p-2 lg:p-3">
-                              <p className="font-medium text-slate-900 dark:text-slate-50">
-                                {item.prod_name}
-                              </p>
+                              <p className="font-medium text-slate-900 dark:text-slate-50">{item.prod_name}</p>
                               <p className="text-xs text-slate-500">{item.pr_no}</p>
                             </td>
                             <td className="p-2 lg:p-3 text-right whitespace-nowrap">
@@ -528,7 +466,6 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                     </table>
                   </div>
 
-                  {/* Mobile cards */}
                   <div className="sm:hidden space-y-3">
                     {parsedItems.map((item: any, idx: number) => (
                       <Card key={item.pr_item_sno ?? idx} className="border border-slate-200 dark:border-slate-800">
@@ -576,14 +513,10 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
             </CardContent>
           </Card>
 
-          {/* Approval workflow stages */}
           <ApprovalStages stages={stages} currentApproverId={pr.current_approver_id} />
-
-          {/* Approval history */}
           <PRHistorySection history={history} />
         </div>
 
-        {/* ── Right: action panel ── */}
         <div className="xl:col-span-1">
           <Card className="shadow-sm xl:sticky xl:top-6">
             <CardHeader className="p-4 sm:p-6 pb-3">
@@ -594,28 +527,35 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
             </CardHeader>
 
             <CardContent className="p-4 sm:p-6 pt-0 space-y-3 sm:space-y-4">
-              <Button
-                onClick={() => handleAction('approve')}
-                className="w-full h-10 sm:h-11 text-sm bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
-                size="lg"
-              >
-                <CheckCircle2 className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                Approve Request
-              </Button>
+              {canEdit("PRApprovalScreen") ? (
+                <>
+                  <Button
+                    onClick={() => handleAction('approve')}
+                    className="w-full h-10 sm:h-11 text-sm bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
+                    size="lg"
+                  >
+                    <CheckCircle2 className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                    Approve Request
+                  </Button>
 
-              <Button
-                onClick={() => handleAction('reject')}
-                variant="destructive"
-                className="w-full h-10 sm:h-11 text-sm"
-                size="lg"
-              >
-                <XCircle className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                Reject Request
-              </Button>
+                  <Button
+                    onClick={() => handleAction('reject')}
+                    variant="destructive"
+                    className="w-full h-10 sm:h-11 text-sm"
+                    size="lg"
+                  >
+                    <XCircle className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                    Reject Request
+                  </Button>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground text-center py-2">
+                  View only — no approval permission
+                </p>
+              )}
 
               <Separator />
 
-              {/* Summary */}
               <div className="space-y-2 text-xs sm:text-sm">
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500">Status</span>
@@ -641,12 +581,6 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                   <div className="flex justify-between items-center gap-2">
                     <span className="text-slate-500 shrink-0">Branch</span>
                     <span className="font-semibold truncate text-right">{pr.brn_name}</span>
-                  </div>
-                )}
-                {pr.div_name && (
-                  <div className="flex justify-between items-center gap-2">
-                    <span className="text-slate-500 shrink-0">Division</span>
-                    <span className="font-semibold truncate text-right">{pr.div_name}</span>
                   </div>
                 )}
                 {pr.com_name && (
@@ -677,15 +611,32 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
   );
 }
 
+// ─── Empty state ──────────────────────────────────────────────────────────────
+
+function PREmptyState({ count, onOpenList }: { count: number; onOpenList: () => void }) {
+  return (
+    <div className="flex items-center justify-center h-full p-4">
+      <div className="text-center space-y-3">
+        <FileText className="h-12 w-12 sm:h-16 sm:w-16 text-slate-300 dark:text-slate-700 mx-auto" />
+        <h3 className="text-lg sm:text-xl font-semibold text-slate-600 dark:text-slate-400">No PR Selected</h3>
+        <p className="text-xs sm:text-sm text-slate-500 max-w-xs mx-auto">
+          Select a purchase requisition from the list to view details and take action
+        </p>
+        <Button variant="outline" className="lg:hidden mt-2" onClick={onOpenList}>
+          <FileText className="h-4 w-4 mr-2" />View PR List
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Root layout ──────────────────────────────────────────────────────────────
 
 export default function ApprovalScreenLayout({
   approvalName, prList, selectedPR, handlePRSelect, handleAction,
   showApprovalDialog, setShowApprovalDialog, comments, setComments,
-  handleSubmit, loading, actionType, fieldDatas,
+  handleSubmit, loading, actionType, fieldDatas, toast,
 }: ApprovalScreenLayoutProps) {
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-
   const enrichedSelectedPR = useMemo(() => {
     if (!selectedPR) return null;
     const { parsedItems, totalCost } = parsePrItems(selectedPR);
@@ -693,54 +644,36 @@ export default function ApprovalScreenLayout({
   }, [selectedPR]);
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 overflow-hidden flex">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:flex w-80 xl:w-96 flex-shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex-col h-full">
-        <PRListContent approvalName={approvalName} prList={prList} selectedPR={selectedPR} handlePRSelect={handlePRSelect} />
-      </div>
-
-      {/* Mobile sidebar sheet */}
-      <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
-        <SheetContent side="left" className="w-[85vw] sm:w-96 p-0 flex flex-col">
-          <PRListContent
-            approvalName={approvalName} prList={prList} selectedPR={selectedPR}
-            handlePRSelect={handlePRSelect} onClose={() => setIsMobileSidebarOpen(false)}
-          />
-        </SheetContent>
-      </Sheet>
-
-      {/* Right content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Mobile top bar */}
-        <div className="lg:hidden flex-shrink-0 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => setIsMobileSidebarOpen(true)} className="flex items-center gap-1.5">
-            <Menu className="h-4 w-4" />PR List
-          </Button>
-          {selectedPR && <p className="font-semibold text-sm truncate flex-1">{selectedPR.pr_no}</p>}
-          <Badge variant="outline" className="text-xs shrink-0">{prList.length} pending</Badge>
-        </div>
-
-        <div className="flex-1 overflow-auto">
-          {!enrichedSelectedPR ? (
-            <div className="flex items-center justify-center h-full p-4">
-              <div className="text-center space-y-3">
-                <FileText className="h-12 w-12 sm:h-16 sm:w-16 text-slate-300 dark:text-slate-700 mx-auto" />
-                <h3 className="text-lg sm:text-xl font-semibold text-slate-600 dark:text-slate-400">No PR Selected</h3>
-                <p className="text-xs sm:text-sm text-slate-500 max-w-xs mx-auto">
-                  Select a purchase requisition from the list to view details and take action
-                </p>
-                <Button variant="outline" className="lg:hidden mt-2" onClick={() => setIsMobileSidebarOpen(true)}>
-                  <Menu className="h-4 w-4 mr-2" />View PR List
-                </Button>
-              </div>
-            </div>
+    <>
+      <SidebarDetailLayout
+        sidebarTitle={approvalName}
+        sidebarCount={prList.length}
+        toast={toast}
+        listItems={(closeSheet) =>
+          prList.length === 0 ? (
+            <p className="p-6 text-center text-sm text-slate-500">No pending requisitions</p>
           ) : (
-            <PRDetailPanel pr={enrichedSelectedPR} handleAction={handleAction} fieldDatas={fieldDatas} />
-          )}
-        </div>
-      </div>
+            prList.map((pr: any) => (
+              <PRListCard
+                key={pr.pr_no}
+                pr={pr}
+                isSelected={selectedPR?.pr_no === pr.pr_no}
+                onClick={() => { handlePRSelect(pr); closeSheet(); }}
+              />
+            ))
+          )
+        }
+        hasSelection={!!enrichedSelectedPR}
+        detailContent={
+          enrichedSelectedPR
+            ? <PRDetailPanel pr={enrichedSelectedPR} handleAction={handleAction} fieldDatas={fieldDatas} />
+            : null
+        }
+        emptyContent={<PREmptyState count={prList.length} onOpenList={() => {}} />}
+        mobileListLabel="PR List"
+        mobileSelectionTitle={selectedPR?.pr_no}
+      />
 
-      {/* Approve / Reject dialog */}
       <Dialog open={showApprovalDialog} onOpenChange={setShowApprovalDialog}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto mx-4">
           <DialogHeader>
@@ -767,11 +700,11 @@ export default function ApprovalScreenLayout({
             )}
 
             <div className="space-y-1.5">
-              <Label htmlFor="comments" className="text-xs sm:text-sm">
+              <Label htmlFor="pr-comments" className="text-xs sm:text-sm">
                 Comments {actionType === 'reject' && <span className="text-red-500">*</span>}
               </Label>
               <Textarea
-                id="comments"
+                id="pr-comments"
                 placeholder={actionType === 'approve' ? 'Any additional notes…' : 'Reason for rejection…'}
                 value={comments}
                 onChange={e => setComments(e.target.value)}
@@ -823,6 +756,6 @@ export default function ApprovalScreenLayout({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

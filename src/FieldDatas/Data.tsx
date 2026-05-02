@@ -11,7 +11,7 @@ export interface OptionType {
   label: string;
 }
 
-export type FieldInputType = "text" | "number" | "select"| "date" | "email" | "textarea"|"checkbox";
+export type FieldInputType = "text" | "number" | "select" | "date" | "email" | "textarea" | "checkbox" | "radio" | "file";
 
 export interface FieldType {
   field: string;
@@ -38,8 +38,7 @@ const masterItems: MasterItemType[] = [
   { icon: <Building className="w-5 h-5" />, name: "Company Master", category: "organization", color: "bg-blue-500", id: "CompanyMaster" },
   { icon: <Briefcase className="w-5 h-5" />, name: "Division Master", category: "organization", color: "bg-green-500", id: "DivisionMaster" },
   { icon: <MapPin className="w-5 h-5" />, name: "Branch Master", category: "organization", color: "bg-purple-500", id: "BranchMaster" },
-  { icon: <Hash className="w-5 h-5" />, name: "UOM", category: "inventory", color: "bg-green-600", id: "UomMaster" },
-  { icon: <Calendar className="w-5 h-5" />, name: "Acc Year", category: "finance", color: "bg-slate-500", id: "AcYearMaster" },
+  // { icon: <Calendar className="w-5 h-5" />, name: "Acc Year", category: "finance", color: "bg-slate-500", id: "AcYearMaster" },
   { icon: <Archive className="w-5 h-5" />, name: "Department Master", category: "organization", color: "bg-blue-600", id: "DeptMaster" },
   { icon: <Receipt className="w-5 h-5" />, name: "GST State Code", category: "finance", color: "bg-rose-500", id: "GSTStateCodeMaster" },
   { icon: <Hash className="w-5 h-5" />, name: "Prefix Master", category: "administration", color: "bg-stone-500", id: "PrefixMaster" },
@@ -52,6 +51,8 @@ const masterItems: MasterItemType[] = [
   { icon: <IndianRupee className="w-5 h-5" />, name: "Ledger Master", category: "finance", color: "bg-emerald-500", id: "ledger_master" },
   { icon: <FolderOpen className="w-5 h-5" />, name: "Product Category", category: "inventory", color: "bg-yellow-500", id: "ProductCategoryMaster" },
   { icon: <Package className="w-5 h-5" />, name: "Product", category: "inventory", color: "bg-indigo-500", id: "ProductMaster" },
+   { icon: <Hash className="w-5 h-5" />, name: "UOM", category: "inventory", color: "bg-green-600", id: "UomMaster" },
+
   { icon: <FileText className="w-5 h-5" />, name: "KYC", category: "compliance", color: "bg-teal-500", id: "kyc_master" },
   { icon: <Tag className="w-5 h-5" />, name: "Product Rate and Discount", category: "inventory", color: "bg-cyan-500", id: "product_rate_discount" },
   { icon: <UserPlus className="w-5 h-5" />, name: "User Creation", category: "administration", color: "bg-violet-500", id: "user_creation" },
@@ -213,9 +214,9 @@ const useDeptMasterFields = (formData?: any): FieldType[] => {
 const usePrefixFieldsMaster = (formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
-      { field: "prefix_sno ", label: "S.No", require: false, view: false, type: "text", input: false },
-      { field: "prefix_name ", label: "Prefix", require: true, view: true, type: "text", input: true },
-      { field: "prefix_desc ", label: "Prefix Description", require: true, view: true, type: "text", input: true },
+      { field: "prefix_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "prefix_name", label: "Prefix", require: true, view: true, type: "text", input: true },
+      { field: "prefix_desc", label: "Prefix Description", require: true, view: true, type: "text", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
     []
@@ -234,17 +235,18 @@ const usePriorityFieldsMaster = (formData?: any): FieldType[] => {
   );
 };
 const useScreensFieldsMaster = (formData?: any): FieldType[] => {
+  const { options, loading } = useMasterOptions(['ScreenMaster']);
   return useMemo<FieldType[]>(
     () => [
       { field: "screen_id", label: "Screen ID", require: false, view: false, type: "text", input: false },
       { field: "screen_name", label: "Screen Name", require: true, view: true, type: "text", input: true },
       { field: "screen_code", label: "Screen Code", require: true, view: true, type: "text", input: false },
-      { field: "parent_screen_id", label: "Parent Screen", require: false, view: true, type: "select", input: true },
+      { field: "parent_screen_id", label: "Parent Screen", require: false, view: true, type: "select", options: options?.ScreenMaster || [], input: true },
       { field: "display_order", label: "Display Order", require: false, view: true, type: "number", input: true },
       { field: "created_date", label: "Created Date", require: false, view: false, type: "date", input: false },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
-    []
+    [options, loading]
   );
 };
 
@@ -291,7 +293,13 @@ const useWorkflowMasterFields = (): FieldType[] => {
       { field: "workflow_id", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "workflow_name", label: "Workflow Name", require: true, view: true, type: "text", input: true },
       { field: "workflow_code", label: "Workflow Code", require: true, view: true, type: "text", input: true },
-      { field: "entity_type", label: "Entity Type", require: true, view: true, type: "text", input: true },
+      { field: "entity_type", label: "Entity Type", require: true, view: true, type: "select", options: [
+          { value: "PurchaseRequisition", label: "Purchase Requisition" },
+          { value: "PurchaseOrder", label: "Purchase Order" },
+          { value: "GRN", label: "GRN" },
+          { value: "Payment", label: "Payment" },
+          { value: "KYC", label: "KYC" },
+        ], input: true },
       { field: "description", label: "Description", require: false, view: true, type: "textarea", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
       { field: "created_by", label: "Created By", require: false, view: false, type: "text", input: false },

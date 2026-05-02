@@ -11,7 +11,7 @@ interface InventoryListSidebarProps {
   loading: boolean;
   selectedItem: InventoryItem | null;
   onSelectItem: (item: InventoryItem) => void;
-  onAddNew: () => void;
+  onAddNew?: () => void;
 }
 
 const statusBadge: Record<string, string> = {
@@ -51,9 +51,11 @@ const InventoryListSidebar: React.FC<InventoryListSidebarProps> = ({
       {/* Header */}
       <div className="px-3 py-2.5 border-b flex items-center justify-between">
         <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Items ({items.length})</span>
-        <Button size="sm" className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700" onClick={onAddNew}>
-          <Plus size={13} className="mr-1" /> Add Item
-        </Button>
+        {onAddNew && (
+          <Button size="sm" className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700" onClick={onAddNew}>
+            <Plus size={13} className="mr-1" /> Add Item
+          </Button>
+        )}
       </div>
 
       {/* Stats */}

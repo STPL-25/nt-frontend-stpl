@@ -394,7 +394,7 @@ export function CustomInputField({
         return (
           <Input
             name={field}
-            type="text"
+            type={inputType}
             placeholder={placeholder}
             className={cn(className, error && "border-red-500")}
             disabled={disabled}

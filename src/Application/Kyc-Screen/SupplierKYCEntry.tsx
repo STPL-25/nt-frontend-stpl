@@ -12,6 +12,7 @@ import {
 import usePost from "@/hooks/usePostHook";
 import { toast } from "sonner";
 import { apiPostKycData } from "@/Services/Api";
+import { encryptFormMeta } from "@/Services/apiCrypto";
 import DynamicDialog from "@/CustomComponent/InputComponents/CustomModelComponent";
 import { useKycSections } from "@/hooks/useKycSections";
 import { SectionActionCard, FormSection, PageHeader } from "@/CustomComponent/PageComponents";
@@ -55,27 +56,30 @@ export default function SupplierKYCEntry() {
   const handleSubmit = async () => {
     try {
       const formData = new FormData();
+
+      // Collect non-file metadata and encrypt as a single _ep field
       // Supplier flow: org assignment done later by staff
-      formData.append("companyIds",    JSON.stringify([]));
-      formData.append("divisionIds",   JSON.stringify([]));
-      formData.append("branchIds",     JSON.stringify([]));
-      formData.append("departmentIds", JSON.stringify([]));
-      formData.append("created_by",    "");
-
-      Object.entries(basicInfo).forEach(([k, v]) => {
-        if (v !== null && v !== undefined) formData.append(k, v);
-      });
-
-      formData.append("addresses", JSON.stringify(kyc.addresses.map(({ id, ...a }) => ({ id, ...a }))));
-
-      const bankData = kyc.bankDetails.map(({ id, cancelChequeFile, ...b }) => ({ id, ...b, hasCancelCheque: !!cancelChequeFile }));
-      formData.append("bankDetails", JSON.stringify(bankData));
-      kyc.bankDetails.forEach((b, i) => { if (b.cancelChequeFile) formData.append(`bankCancelCheque_${i}`, b.cancelChequeFile); });
-
+      const bankData    = kyc.bankDetails.map(({ id, cancelChequeFile, ...b }) => ({ id, ...b, hasCancelCheque: !!cancelChequeFile }));
       const contactData = kyc.contacts.map(({ id, document, ...c }) => ({ id, ...c, hasDocument: !!document }));
-      formData.append("contacts", JSON.stringify(contactData));
-      kyc.contacts.forEach((c, i) => { if (c.document) formData.append(`contactDocument_${i}`, c.document); });
+      const basicInfoScalars = Object.fromEntries(
+        Object.entries(basicInfo).filter(([, v]) => !(v instanceof File))
+      );
 
+      formData.append("_ep", await encryptFormMeta({
+        companyIds:    [],
+        divisionIds:   [],
+        branchIds:     [],
+        departmentIds: [],
+        created_by:    "",
+        addresses:     kyc.addresses.map(({ id, ...a }) => ({ id, ...a })),
+        bankDetails:   bankData,
+        contacts:      contactData,
+        ...basicInfoScalars,
+      }));
+
+      // Append binary files separately (cannot be encrypted)
+      kyc.bankDetails.forEach((b, i) => { if (b.cancelChequeFile) formData.append(`bankCancelCheque_${i}`, b.cancelChequeFile); });
+      kyc.contacts.forEach((c, i)    => { if (c.document) formData.append(`contactDocument_${i}`, c.document); });
       Object.entries(kyc.documentInfo).forEach(([k, v]) => { if (v instanceof File) formData.append(k, v); });
 
       const response = await postData(apiPostKycData, formData, { headers: { "Content-Type": "multipart/form-data" } });

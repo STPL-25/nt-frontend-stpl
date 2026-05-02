@@ -1,14 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   ArrowLeft, Search, Download, Plus,
   ChevronLeft, ChevronRight, Edit2, Trash2,
-  AlertTriangle, FileX, Upload, FileSpreadsheet, LayoutGrid,
+  AlertTriangle, FileX, Upload, FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
 import { useAppState } from "@/globalState/hooks/useAppState";
+import { apiPostCommonMaster, apiUpdateCommonMaster, apiDeleteCommonMaster } from "@/Services/Api";
 import usePost from "@/hooks/usePostHook";
 import useUpdate from "@/hooks/useUpdateHook";
 import useDelete from "@/hooks/useDeleteHook";
@@ -21,7 +22,6 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { downloadExcelTemplate, parseExcelFile } from "@/utils/excelUtils";
-import InlineSpreadsheetGrid from "@/LayoutComponent/InlineSpreadsheetGrid";
 
 /* ── Types ────────────────────────────────────────────────── */
 type RowData = Record<string, any>;
@@ -48,10 +48,12 @@ type DynamicTableProps = {
   hoverable?: boolean;
   className?: string;
   exportEnabled?: boolean;
-  settingsEnabled?: boolean;
   onAddNew?: (() => void) | null;
   master?: string;
   setCurrentScreen?: (screen: string) => void;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 };
 
 /* ── Component ────────────────────────────────────────────── */
@@ -68,10 +70,11 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
   onAddNew = null,
   master = "",
   setCurrentScreen = () => {},
+  canCreate = true,
+  canEdit = true,
+  canDelete = true,
 }) => {
   const { userData, setFormData } = useAppState();
-  const API_BASE = import.meta.env.VITE_API_URL || "";
-  console.log("master:", master);
   const { postData, loading: isAdding } = usePost();
   const { updateData, loading: isUpdating } = useUpdate();
   const { deleteData, loading: isDeleting } = useDelete();
@@ -89,7 +92,9 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
   const [showAddModal,      setShowAddModal]      = useState(false);
   const [showEditModal,     setShowEditModal]      = useState(false);
   const [showDeleteModal,   setShowDeleteModal]    = useState(false);
-  const [showSpreadsheet,   setShowSpreadsheet]    = useState(false);
+  const [showImportPreview, setShowImportPreview]  = useState(false);
+  const [importPreviewRows, setImportPreviewRows]  = useState<RowData[]>([]);
+  const [isSavingImport,    setIsSavingImport]     = useState(false);
   const [editingItem,  setEditingItem]  = useState<RowData | null>(null);
   const [itemToDelete, setItemToDelete] = useState<RowData | null>(null);
 
@@ -111,13 +116,15 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
     }
   }, [showAddModal, showEditModal, editingItem]);
 
-  const formHeaders = headers.filter((h) => h.input !== false);
+  const formHeaders = useMemo(() => headers.filter((h) => h.input !== false), [headers]);
 
-  const handleFieldChange = (field: string, value: any) => {
-    const next = { ...formState, [field]: value };
-    setFormState(next);
-    setFormData(next);
-  };
+  const handleFieldChange = useCallback((field: string, value: any) => {
+    setFormState((prev) => {
+      const next = { ...prev, [field]: value };
+      setFormData(next);
+      return next;
+    });
+  }, [setFormData]);
 
   /* ── Sorting ── */
   const handleSort = (key: string) => {
@@ -168,7 +175,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
     try {
       if (master) {
         // fd.created_by = userData[0]?.ecno || "";
-        const resp = await postData(`${API_BASE}/api/common_master/${master}`,fd);
+        const resp = await postData(apiPostCommonMaster(master), fd);
         if (resp?.data && Array.isArray(resp.data)) setTableData(resp.data);
         else if (resp?.data) setTableData((p) => [...p, resp.data]);
         toast.success(resp?.data?.[0]?.Message || resp?.message || "Item added");
@@ -187,7 +194,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
     if (!editingItem) return;
     try {
       if (master) {
-        const resp = await updateData(`${API_BASE}/api/${master}`, null, { ...editingItem, ...fd });
+        const resp = await updateData(apiUpdateCommonMaster(master), null, { ...editingItem, ...fd });
         setTableData((prev) =>
           prev.map((it) => (it.id ?? it.Sno) === (editingItem.id ?? editingItem.Sno) ? { ...it, ...fd } : it)
         );
@@ -207,7 +214,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
     if (!itemToDelete) return;
     try {
       if (master) {
-        const resp = await deleteData(`${API_BASE}/api/${master}`, itemToDelete);
+        const resp = await deleteData(apiDeleteCommonMaster(master), itemToDelete);
         if (resp?.data && Array.isArray(resp.data)) {
           setTableData(resp.data);
         } else {
@@ -256,11 +263,11 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
     toast.success(`Template downloaded — fill it and import back`);
   };
 
-  /* ── Excel import ── */
+  /* ── Excel import — parse only, show preview ── */
   const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    e.target.value = ""; // reset so same file can be re-selected
+    e.target.value = "";
 
     setImporting(true);
     try {
@@ -283,24 +290,37 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
         return;
       }
 
-      // Save each row via the same handler as manual Add
-      let successCount = 0;
-      for (const row of rows) {
-        try {
-          await handleAddSave({ ...row });
-          successCount++;
-        } catch {
-          // individual failure already toasted inside handleAddSave
-        }
-      }
-
-      if (successCount > 0) {
-        toast.success(`${successCount} record${successCount > 1 ? "s" : ""} imported successfully`);
-      }
+      setImportPreviewRows(rows);
+      setShowImportPreview(true);
     } catch (err: any) {
       toast.error(`Import failed: ${err.message}`);
     } finally {
       setImporting(false);
+    }
+  };
+
+  /* ── Save previewed import rows to DB ── */
+  const handleImportSave = async () => {
+    setIsSavingImport(true);
+    try {
+      if (master) {
+        // Send all rows as a single array — SP handles bulk insert
+        console.log(importPreviewRows)
+        const resp = await postData(apiPostCommonMaster(master), importPreviewRows);
+        if (resp?.data && Array.isArray(resp.data)) setTableData(resp.data);
+        const results: any[] = Array.isArray(resp?.data) ? resp.data : [];
+        const successCount = results.filter((r: any) => r?.Status === "Success").length || importPreviewRows.length;
+        toast.success(`${successCount} record${successCount !== 1 ? "s" : ""} imported successfully`);
+      } else {
+        setTableData((p) => [...p, ...importPreviewRows.map((r, i) => ({ ...r, id: Date.now() + i }))]);
+        toast.success(`${importPreviewRows.length} records imported successfully`);
+      }
+    } catch {
+      toast.error("Import failed. Please try again.");
+    } finally {
+      setIsSavingImport(false);
+      setShowImportPreview(false);
+      setImportPreviewRows([]);
     }
   };
 
@@ -319,7 +339,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
     return pages;
   };
 
-  const viewHeaders = headers.filter((h) => h.view !== false);
+  const viewHeaders = useMemo(() => headers.filter((h) => h.view !== false), [headers]);
 
   /* ── Render ── */
   return (
@@ -359,18 +379,6 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
                   />
                 </div>
               )}
-
-              {/* Inline spreadsheet bulk entry */}
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 gap-1.5 border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-950/30"
-                onClick={() => setShowSpreadsheet(true)}
-                title="Open inline spreadsheet for bulk entry"
-              >
-                <LayoutGrid className="h-4 w-4" />
-                <span className="hidden sm:inline">Bulk Entry</span>
-              </Button>
 
               {/* Excel template download */}
               <Button
@@ -415,14 +423,16 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
                 </Button>
               )}
 
-              <Button
-                size="sm"
-                className="h-9 gap-1.5"
-                onClick={() => (onAddNew ? onAddNew() : setShowAddModal(true))}
-              >
-                <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">Add New</span>
-              </Button>
+              {canCreate && (
+                <Button
+                  size="sm"
+                  className="h-9 gap-1.5"
+                  onClick={() => (onAddNew ? onAddNew() : setShowAddModal(true))}
+                >
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Add New</span>
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -451,10 +461,12 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
                     Clear search
                   </Button>
                 )}
-                <Button size="sm" onClick={() => setShowAddModal(true)}>
-                  <Plus className="h-4 w-4 mr-1.5" />
-                  Add New
-                </Button>
+                {canCreate && (
+                  <Button size="sm" onClick={() => setShowAddModal(true)}>
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Add New
+                  </Button>
+                )}
               </div>
             </div>
           ) : (
@@ -505,22 +517,29 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
                     ))}
                     <TableCell className="text-right py-2.5">
                       <div className="flex justify-end gap-0.5">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                          onClick={() => { setEditingItem(row); setShowEditModal(true); }}
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => { setItemToDelete(row); setShowDeleteModal(true); }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        {canEdit && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                            onClick={() => { setEditingItem(row); setShowEditModal(true); }}
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => { setItemToDelete(row); setShowDeleteModal(true); }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {!canEdit && !canDelete && (
+                          <span className="text-xs text-muted-foreground px-2">View only</span>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -587,18 +606,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
         )}
       </div>
 
-      {/* ── Inline Spreadsheet Grid ── */}
-      {showSpreadsheet && (
-        <InlineSpreadsheetGrid
-          fields={formHeaders}
-          master={master}
-          apiBase={API_BASE}
-          onClose={() => setShowSpreadsheet(false)}
-          onSaved={() => {
-            // Table refreshes automatically via the socket master:updated broadcast
-          }}
-        />
-      )}
+
 
       {/* ── Add Modal ── */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
@@ -663,6 +671,50 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
             </Button>
             <Button onClick={() => handleEditSave(formState)} disabled={isUpdating}>
               {isUpdating ? "Updating…" : "Update"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Import Preview Modal ── */}
+      <Dialog open={showImportPreview} onOpenChange={(open) => { if (!open) { setShowImportPreview(false); setImportPreviewRows([]); } }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import Preview — {title}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground mb-2">
+            {importPreviewRows.length} row{importPreviewRows.length !== 1 ? "s" : ""} ready to import. Review and click <strong>Save</strong> to save to database.
+          </p>
+          <div className="overflow-x-auto rounded border">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="w-10 text-center text-xs">#</TableHead>
+                  {formHeaders.map((h) => (
+                    <TableHead key={h.field} className="text-xs font-semibold whitespace-nowrap">{h.label}</TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {importPreviewRows.map((row, idx) => (
+                  <TableRow key={idx} className={idx % 2 !== 0 ? "bg-muted/20" : ""}>
+                    <TableCell className="text-center text-xs text-muted-foreground">{idx + 1}</TableCell>
+                    {formHeaders.map((h) => (
+                      <TableCell key={h.field} className="text-sm whitespace-nowrap">
+                        {row[h.field] ?? <span className="text-muted-foreground/50">—</span>}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => { setShowImportPreview(false); setImportPreviewRows([]); }}>
+              Cancel
+            </Button>
+            <Button onClick={handleImportSave} disabled={isSavingImport}>
+              {isSavingImport ? "Saving…" : `Save ${importPreviewRows.length} Record${importPreviewRows.length !== 1 ? "s" : ""}`}
             </Button>
           </DialogFooter>
         </DialogContent>

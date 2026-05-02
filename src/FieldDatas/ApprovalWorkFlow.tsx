@@ -7,6 +7,8 @@ import {
 } from "@/globalState/features/hierarchyCompanyDetailsSlice";
 import useFetch from "@/hooks/useFetchHook";
 import { apiGetWorkflows } from "@/Services/Api";
+import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
+
 interface Option {
   label: string;
   value: string | number;
@@ -29,6 +31,12 @@ interface Branch {
   brn_name: string;
 }
 
+interface CascadeOption {
+  value: string | number;
+  label: string;
+  brn_sno?: string | number | null;
+}
+
 interface FieldType {
   field: string;
   label: string;
@@ -44,25 +52,30 @@ interface FieldType {
   min?: string | number;
 }
 
-// Static department list (matches KycFieldDatas)
-const DEPT_OPTIONS: Option[] = [
-  { value: "1", label: "Procurement" },
-  { value: "2", label: "Finance" },
-  { value: "3", label: "Operations" },
-  { value: "4", label: "HR" },
-  { value: "5", label: "Administration" },
-];
-
 export const useApprovalFlowHierarchy = (
   selectedCompany: number[] = [],
   selectedDivision: number[] = [],
   selectedBranch: number[] = []
 ) => {
-  // Use dedicated selectors to avoid the useAppState() spread-overwrite bug
   const hierarchyData = useAppSelector(selectCompanyHierarchy);
   const hierarchyLoading = useAppSelector(selectCompanyHierarchyLoading);
   const hierarchyError = useAppSelector(selectCompanyHierarchyError);
   const { data: workflowsData, loading: workflowsLoading } = useFetch<any>(apiGetWorkflows);
+  const { options: masterOptions } = useMasterOptions(['DeptMaster']);
+
+  // Filter departments to only those belonging to the selected branches, deduped by dept_sno
+  const deptOptions: Option[] = useMemo(() => {
+    const all = (masterOptions?.DeptMaster ?? []) as CascadeOption[];
+    if (selectedBranch.length === 0) return all;
+    const seen = new Set<string>();
+    return all.filter((d) => {
+      if (d.brn_sno == null || !selectedBranch.includes(Number(d.brn_sno))) return false;
+      const key = String(d.value);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [masterOptions?.DeptMaster, selectedBranch]);
 
   const entityTypeOptions: Option[] = useMemo(() => {
     const list: any[] = Array.isArray(workflowsData?.data) ? workflowsData.data : [];
@@ -83,6 +96,7 @@ export const useApprovalFlowHierarchy = (
       return acc;
     }, {});
   }, [workflowsData]);
+
   const companyOptions: Option[] = useMemo(() => {
     if (!hierarchyData?.companies) return [];
     return hierarchyData.companies.map((c: Company) => ({
@@ -110,7 +124,7 @@ export const useApprovalFlowHierarchy = (
       );
   }, [hierarchyData, selectedDivision]);
 
-  // Step 1 — Basic workflow info fields
+  // Step 1 — Basic workflow info fields (workflow_code excluded — auto-generated on save)
   const workflowFields: FieldType[] = useMemo(
     () => [
       {
@@ -133,16 +147,6 @@ export const useApprovalFlowHierarchy = (
         view: true,
       },
       {
-        field: "workflow_code",
-        label: "Workflow Code",
-        require: true,
-        type: "text",
-        placeholder: "e.g., WF_KYC_001",
-        input: true,
-        view: true,
-      },
-      
-      {
         field: "description",
         label: "Description",
         require: false,
@@ -164,7 +168,7 @@ export const useApprovalFlowHierarchy = (
     [entityTypeOptions]
   );
 
-  // Step 2 — Workflow type fields (cascade company→division→branch + static dept)
+  // Workflow type fields — multi-select for all hierarchy levels + department
   const workflowTypeFields: FieldType[] = useMemo(
     () => [
       {
@@ -177,46 +181,46 @@ export const useApprovalFlowHierarchy = (
         view: true,
       },
       {
-        field: "com_sno",
+        field: "com_snos",
         label: "Company",
         require: true,
-        type: "select",
-        placeholder: "Select company",
+        type: "multi-select",
+        placeholder: "Select companies",
         input: true,
         options: companyOptions,
         view: true,
         disabled: hierarchyLoading || !!hierarchyError,
       },
       {
-        field: "div_sno",
+        field: "div_snos",
         label: "Division",
         require: true,
-        type: "select",
-        placeholder: "Select division",
+        type: "multi-select",
+        placeholder: "Select divisions",
         input: true,
         options: divisionOptions,
         view: true,
         disabled: divisionOptions.length === 0,
       },
       {
-        field: "brn_sno",
+        field: "brn_snos",
         label: "Branch",
         require: true,
-        type: "select",
-        placeholder: "Select branch",
+        type: "multi-select",
+        placeholder: "Select branches",
         input: true,
         options: branchOptions,
         view: true,
         disabled: branchOptions.length === 0,
       },
       {
-        field: "dept_sno",
+        field: "dept_snos",
         label: "Department",
         require: true,
-        type: "select",
-        placeholder: "Select department",
+        type: "multi-select",
+        placeholder: "Select departments",
         input: true,
-        options: DEPT_OPTIONS,
+        options: deptOptions,
         view: true,
       },
       {
@@ -228,19 +232,20 @@ export const useApprovalFlowHierarchy = (
         view: true,
       },
     ],
-    [companyOptions, divisionOptions, branchOptions, hierarchyLoading, hierarchyError]
+    [companyOptions, divisionOptions, branchOptions, deptOptions, hierarchyLoading, hierarchyError]
   );
 
   return {
     companyOptions,
     divisionOptions,
     branchOptions,
-    departmentOptions: DEPT_OPTIONS,
+    departmentOptions: deptOptions,
     entityTypeCount,
     workflowsLoading,
     workflowFields,
     workflowTypeFields,
     hierarchyLoading,
     hierarchyError,
+    hierarchyData,
   };
 };

@@ -69,7 +69,7 @@ function RootRoute() {
   }
 
   const firstUser = Array.isArray(userData) ? userData[0] : userData;
-  if (userData && Object.keys(userData).length > 0 && firstUser?.ecno && firstUser?.ename) {
+  if (userData && Object.keys(userData).length > 0 && firstUser?.ecno ) {
     return <Dashboard />;
   }
   return <SignIn />;

@@ -3,7 +3,7 @@ export interface OptionType {
   label: string;
 }
 
-export type FieldInputType = "text" | "number" | "select"| "date" | "email" | "textarea"|"checkbox";
+export type FieldInputType = "text" | "number" | "select" | "date" | "email" | "textarea" | "checkbox" | "radio" | "file";
 
 export interface FieldType {
   field: string;

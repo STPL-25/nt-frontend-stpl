@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import DynamicTable from "@/LayoutComponent/DynamicTable";
 import ViewMode from "@/CustomComponent/ViewModes/ViewMode";
 import CategoryCard from "@/CustomComponent/MasterComponents/CatagoryCard";
@@ -7,16 +7,10 @@ import { useAppState } from "@/globalState/hooks/useAppState";
 import { useMasterDataFields } from "@/FieldDatas/useMasterDataFields";
 import useFetch from "@/hooks/useFetchHook";
 import { apiFetchCommonMaster } from "@/Services/Api";
-import { masterItems } from "@/FieldDatas/Data";
+import { masterItems, type MasterItemType } from "@/FieldDatas/Data";
 import { socket, SOCKET_MASTER_UPDATED } from "@/Services/Socket";
 import { LoadingState, ErrorState } from "@/CustomComponent/PageComponents";
-
-interface MasterItem {
-  id: string;
-  name?: string;
-  category?: string;
-  [key: string]: any;
-}
+import { usePermissions } from "@/globalState/hooks/usePermissions";
 
 interface Category {
   id: string;
@@ -26,11 +20,19 @@ interface Category {
 
 const MasterScreen: React.FC = () => {
   const { selectedMaster, setCurrentScreen, setSelectedMaster } = useAppState() as any;
+  const { canCreate, canEdit, canDelete } = usePermissions();
   const [refreshKey, setRefreshKey] = useState(0);
 
   const masterDataResult = useMasterDataFields() as any;
   const fields: Record<string, any[]> = masterDataResult?.fields || {};
   const headerData = selectedMaster ? (fields[selectedMaster] || []) : [];
+
+  const masterTitle = useMemo(
+    () =>
+      masterItems.find((item) => item.id === selectedMaster)?.name ??
+      (selectedMaster?.replace(/([a-z])([A-Z])/g, "$1 $2") || ""),
+    [selectedMaster]
+  );
 
   useEffect(() => {
     const handleMasterUpdated = ({ masterField }: { masterField: string }) => {
@@ -66,17 +68,21 @@ const MasterScreen: React.FC = () => {
       />
     );
   }
+
   return (
     <div className="min-h-screen bg-muted/20">
       <DynamicTable
         headers={headerData}
         data={datas?.data || []}
-        title={selectedMaster?.replace(/([a-z])([A-Z])/g, "$1 $2")}
+        title={masterTitle}
         master={selectedMaster}
         searchable={true}
         sortable={true}
         className="mb-8"
         setCurrentScreen={setCurrentScreen}
+        canCreate={canCreate("masters")}
+        canEdit={canEdit("masters")}
+        canDelete={canDelete("masters")}
       />
     </div>
   );
@@ -96,66 +102,38 @@ const MasterItemsGrid: React.FC = () => {
     setSelectedMaster,
   } = useAppState() as any;
 
-  const categories: Category[] = [
-    { id: "all", name: "All Items", count: masterItems.length },
-    {
-      id: "organization",
-      name: "Organization",
-      count: masterItems.filter((item: MasterItem) => item.category === "organization").length,
-    },
-    {
-      id: "finance",
-      name: "Finance",
-      count: masterItems.filter((item: MasterItem) => item.category === "finance").length,
-    },
-    {
-      id: "inventory",
-      name: "Inventory",
-      count: masterItems.filter((item: MasterItem) => item.category === "inventory").length,
-    },
-    {
-      id: "administration",
-      name: "Administration",
-      count: masterItems.filter((item: MasterItem) => item.category === "administration").length,
-    },
-    {
-      id: "approvals",
-      name: "Approvals",
-      count: masterItems.filter((item: MasterItem) => item.category === "approvals").length,
-    },
-    {
-      id: "compliance",
-      name: "Compliance",
-      count: masterItems.filter((item: MasterItem) => item.category === "compliance").length,
-    },
-    {
-      id: "customer",
-      name: "Customer",
-      count: masterItems.filter((item: MasterItem) => item.category === "customer").length,
-    },
-    {
-      id: "logistics",
-      name: "Logistics",
-      count: masterItems.filter((item: MasterItem) => item.category === "logistics").length,
-    },
-  ];
+  const categories = useMemo<Category[]>(() => {
+    const counts = new Map<string, number>();
+    masterItems.forEach((item: MasterItemType) => {
+      counts.set(item.category, (counts.get(item.category) ?? 0) + 1);
+    });
+    const categoryOrder = ["organization", "finance", "inventory", "administration", "approvals", "compliance", "customer", "logistics"];
+    const sorted = categoryOrder
+      .filter((id) => counts.has(id))
+      .map((id) => ({
+        id,
+        name: id.charAt(0).toUpperCase() + id.slice(1),
+        count: counts.get(id)!,
+      }));
+    const extra = Array.from(counts.keys())
+      .filter((id) => !categoryOrder.includes(id))
+      .map((id) => ({ id, name: id.charAt(0).toUpperCase() + id.slice(1), count: counts.get(id)! }));
+    return [{ id: "all", name: "All Items", count: masterItems.length }, ...sorted, ...extra];
+  }, []);
 
-  const filteredItems = (masterItems as MasterItem[]).filter((item) => {
-    const matchesSearch = String(item.name || "")
-      .toLowerCase()
-      .includes(String(searchTerm || "").toLowerCase());
-    const matchesCategory = selectedCategory === "all" || item.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredItems = useMemo(
+    () =>
+      masterItems.filter((item: MasterItemType) => {
+        const matchesSearch = item.name.toLowerCase().includes((searchTerm ?? "").toLowerCase());
+        const matchesCategory = selectedCategory === "all" || item.category === selectedCategory;
+        return matchesSearch && matchesCategory;
+      }),
+    [searchTerm, selectedCategory]
+  );
 
-  const handleItemClick = (item: MasterItem) => {
+  const handleItemClick = (item: MasterItemType) => {
     setSelectedMaster(item.id);
     setCurrentScreen("master");
-  };
-
-  const handleBackToMain = () => {
-    setCurrentScreen("main");
-    setSelectedMaster(null);
   };
 
   const MainGrid: React.FC = () => (

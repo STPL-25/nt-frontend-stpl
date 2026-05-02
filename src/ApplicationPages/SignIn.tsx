@@ -42,9 +42,10 @@ export default function SignIn(): JSX.Element {
         // User data comes directly from the server — no token in the browser.
         // The session cookie (HttpOnly) is set automatically by the server.
         setUserData(response.data);
+      } else if (response) {
+        toast.error(response?.error || response?.message || "Invalid credentials");
       }
     } catch (error: any) {
-      setFormData({});
       toast.error(error?.response?.data?.error || "Failed to sign in");
     } finally {
       setIsSigningIn(false);

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { RefreshCw, PackageCheck, FileText, Building2, CalendarDays, Truck } from 'lucide-react';
 import { useAppState } from '@/globalState/hooks/useAppState';
+import { usePermissions } from '@/globalState/hooks/usePermissions';
 
 import type { PORecord, GRNRecord, GRNFormState, GRNItemEntry } from './GRN/types';
 import { getPODisplayNo, formatDate, formatINR, getGRNStatus } from './GRN/helpers';
@@ -74,6 +75,7 @@ const POSummaryCard: React.FC<{ po: PORecord }> = ({ po }) => {
 
 const GRNPage: React.FC = () => {
   useAppState(); // keep for auth context
+  const { canCreate, canEdit } = usePermissions();
 
   const [poList, setPOList] = useState<PORecord[]>([]);
   const [loadingPO, setLoadingPO] = useState(false);
@@ -218,12 +220,14 @@ const GRNPage: React.FC = () => {
               {/* Section 1: PO Summary */}
               <POSummaryCard po={selectedPO} />
 
-              {/* Section 2: New GRN Entry */}
-              <GRNEntryForm
-                po={selectedPO}
-                onSubmit={handleSubmitGRN}
-                submitting={submitting}
-              />
+              {/* Section 2: New GRN Entry — only shown if create/edit permission */}
+              {(canCreate("GRNPage") || canEdit("GRNPage")) && (
+                <GRNEntryForm
+                  po={selectedPO}
+                  onSubmit={handleSubmitGRN}
+                  submitting={submitting}
+                />
+              )}
 
               {/* Section 3: GRN History */}
               <GRNListView

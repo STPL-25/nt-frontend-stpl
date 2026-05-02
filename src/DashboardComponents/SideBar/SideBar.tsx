@@ -57,7 +57,7 @@ const Sidebar: React.FC = () => {
     setActiveGroupId,
   } = useAppState() as any;
 
-  const ecno = (userData?.[0]?.ecno as string) ?? "";
+  const ecno = (Array.isArray(userData) ? userData[0]?.ecno : userData?.ecno) as string ?? "";
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [isResizing, setIsResizing] = useState(false);
 

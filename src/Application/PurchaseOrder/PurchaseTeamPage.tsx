@@ -18,6 +18,7 @@ import {
   purchaseTeamGetPOConfirmation,
 } from '@/Services/Api';
 import { useAppState } from '@/globalState/hooks/useAppState';
+import { usePermissions } from '@/globalState/hooks/usePermissions';
 
 import type {
   PRRecord, PRItem, Vendor, Quotation, QuotationItem,
@@ -39,6 +40,7 @@ import CreatePODialog from './PurchaseTeam/CreatePODialog';
 
 const PurchaseTeamPage: React.FC = () => {
   useAppState(); // keep for auth context + hierarchy prefetch
+  const { canCreate, canEdit } = usePermissions();
 
   // ── State ──────────────────────────────────────────────────────────────────
 
@@ -162,33 +164,32 @@ const PurchaseTeamPage: React.FC = () => {
   }, []);
 
   /** Fetch existing PO confirmation for a PR (if already saved) */
-  // const fetchPOConfirmation = useCallback(async (prBasicSno: number) => {
-  //   try {
-  //     const res = await axios.get(purchaseTeamGetPOConfirmation(prBasicSno), { withCredentials: true });
-  //     const data = res.data?.decrypted?.data ?? res.data?.data ?? null;
-  //     if (data && data.pr_basic_sno) {
-  //       setConfirmedData(data);
-  //       setEditingConfirm(false);
-  //     } else {
-  //       setConfirmedData(null);
-  //     }
-  //   } catch {
-  //     // Not found = no confirmation yet; that's fine
-  //     setConfirmedData(null);
-  //   }
-  // }, []);
+  const fetchPOConfirmation = useCallback(async (prBasicSno: number) => {
+    try {
+      const res = await axios.get(purchaseTeamGetPOConfirmation(prBasicSno), { withCredentials: true });
+      const data = res.data?.decrypted?.data ?? res.data?.data ?? null;
+      if (data && data.pr_basic_sno) {
+        setConfirmedData(data);
+        setEditingConfirm(false);
+      } else {
+        setConfirmedData(null);
+      }
+    } catch {
+      setConfirmedData(null);
+    }
+  }, []);
 
   useEffect(() => { fetchPRs(); fetchVendors(); }, [fetchPRs, fetchVendors]);
 
-  // useEffect(() => {
-  //   if (selectedPR?.pr_basic_sno) {
-  //     fetchQuotations(selectedPR.pr_basic_sno);
-  //     fetchPOConfirmation(selectedPR.pr_basic_sno);
-  //   } else {
-  //     setExistingQuotations([]);
-  //     setConfirmedData(null);
-  //   }
-  // }, [selectedPR?.pr_basic_sno, fetchQuotations, fetchPOConfirmation]);
+  useEffect(() => {
+    if (selectedPR?.pr_basic_sno) {
+      fetchQuotations(selectedPR.pr_basic_sno);
+      fetchPOConfirmation(selectedPR.pr_basic_sno);
+    } else {
+      setExistingQuotations([]);
+      setConfirmedData(null);
+    }
+  }, [selectedPR?.pr_basic_sno, fetchQuotations, fetchPOConfirmation]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -287,7 +288,6 @@ const PurchaseTeamPage: React.FC = () => {
 
     setShowQuotationDialog(true);
   };
-    console.log('render', selectedPR);
 
 
   const handleSubmitQuotation = async (form: QuotationFormState, items: QuotationItem[]) => {
@@ -437,16 +437,16 @@ const PurchaseTeamPage: React.FC = () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 min-h-screen">
+    <div className="flex flex-col h-full bg-muted/30 min-h-screen">
       {/* Page Header */}
-      <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
+      <div className="bg-background border-b px-6 py-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="bg-indigo-600 p-2 rounded-lg">
-            <ClipboardCheck className="text-white" size={20} />
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+            <ClipboardCheck className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Purchase Team</h1>
-            <p className="text-sm text-gray-500">Confirm PO details, split PRs, assign suppliers, manage quotations</p>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">Purchase Team</h1>
+            <p className="text-xs text-muted-foreground">Confirm PO details, split PRs, assign suppliers, manage quotations</p>
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={() => { fetchPRs(); fetchVendors(); }} disabled={loadingPR}>
@@ -468,12 +468,12 @@ const PurchaseTeamPage: React.FC = () => {
         {/* RIGHT: Single scrollable flow */}
         <div className="flex-1 overflow-y-auto">
           {!selectedPR ? (
-            <div className="flex flex-col items-center justify-center h-96 gap-4 text-gray-400">
-              <div className="bg-gray-100 p-6 rounded-full">
-                <ClipboardCheck size={40} />
+            <div className="flex flex-col items-center justify-center h-full min-h-64 gap-4 text-muted-foreground">
+              <div className="bg-muted rounded-full p-6">
+                <ClipboardCheck size={40} className="opacity-30" />
               </div>
               <div className="text-center">
-                <p className="text-base font-medium text-gray-500">Select a Purchase Requisition</p>
+                <p className="text-base font-medium text-foreground/60">Select a Purchase Requisition</p>
                 <p className="text-sm mt-1">Choose a PR from the left panel to get started</p>
               </div>
             </div>
@@ -602,9 +602,9 @@ const PurchaseTeamPage: React.FC = () => {
                     loadingVendors={loadingVendors}
                     existingQuotations={existingQuotations}
                     loadingQuotations={loadingQuotations}
-                    onOpenQuotation={handleOpenQuotation}
+                    onOpenQuotation={canCreate("PurchaseTeamPage") ? handleOpenQuotation : undefined}
                     onSelectQuotation={handleSelectQuotation}
-                    onCreatePO={handleOpenCreatePO}
+                    onCreatePO={canCreate("PurchaseTeamPage") || canEdit("PurchaseTeamPage") ? handleOpenCreatePO : undefined}
                     onCompare={() => setShowCompareDialog(true)}
                     onRefreshQuotations={() => {
                       const sno = selectedPR?.pr_basic_sno ?? poGroups[0]?.sourcePRs[0];
