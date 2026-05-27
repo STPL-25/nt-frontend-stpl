@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
-import { Users, Send, Loader2 } from 'lucide-react';
+import { Users, Send, Loader2, CreditCard, RefreshCcw } from 'lucide-react';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { useQuotationHeaderFields, useQuotationItemFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
 import type { QuotationItem, QuotationFormState } from './types';
@@ -26,6 +27,8 @@ const INITIAL_FORM: QuotationFormState = {
   payment_terms: 'Net 30',
   delivery_days: 0,
   remarks: '',
+  advance_payment_required: false,
+  advance_payment_pct: 0,
 };
 
 const QuotationDialog: React.FC<QuotationDialogProps> = ({
@@ -64,12 +67,21 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
     );
   };
 
-  const totals = useMemo(() => calcQuotationTotals(items.filter((_, i) => itemSelection.has(i))), [items, itemSelection]);
+  const updateBuyback = (idx: number, value: number) => {
+    setItems(prev => prev.map((item, i) => i === idx ? { ...item, buyback_value: Math.max(0, value) } : item));
+  };
+
+  const selectedItems = useMemo(() => items.filter((_, i) => itemSelection.has(i)), [items, itemSelection]);
+  const totals = useMemo(() => calcQuotationTotals(selectedItems), [selectedItems]);
+  const totalBuyback = useMemo(() => selectedItems.reduce((s, it) => s + (it.buyback_value ?? 0), 0), [selectedItems]);
+  const netAfterBuyback = totals.grandTotal - totalBuyback;
+  const advanceAmount = form.advance_payment_required
+    ? (netAfterBuyback * (form.advance_payment_pct / 100))
+    : 0;
 
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const selectedItems = items.filter((_, i) => itemSelection.has(i));
       await onSubmit(form, selectedItems);
       onOpenChange(false);
     } finally {
@@ -117,6 +129,48 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
           />
         ))}
 
+        {/* Advance Payment */}
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <CreditCard size={14} className="text-amber-600" />
+              <span className="text-xs font-semibold text-amber-700">Advance Payment</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={form.advance_payment_required}
+                onCheckedChange={v => setForm(f => ({
+                  ...f,
+                  advance_payment_required: v,
+                  advance_payment_pct: v ? f.advance_payment_pct : 0,
+                }))}
+              />
+              <span className="text-xs text-gray-500">
+                {form.advance_payment_required ? 'Required' : 'Not Required'}
+              </span>
+            </div>
+          </div>
+          {form.advance_payment_required && (
+            <div className="mt-2 flex items-center gap-3 flex-wrap">
+              <label className="text-xs text-gray-500">Advance %</label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={form.advance_payment_pct || ''}
+                onChange={e => setForm(f => ({ ...f, advance_payment_pct: Math.min(100, Math.max(0, Number(e.target.value))) }))}
+                placeholder="0"
+                className="h-7 w-20 text-xs text-right"
+              />
+              <span className="text-xs text-gray-500">%</span>
+              <span className="text-xs font-medium text-amber-700 ml-1">
+                = {formatINR(advanceAmount)}
+              </span>
+            </div>
+          )}
+        </div>
+
         {/* Quotation items - dynamic columns */}
         <div className="border rounded overflow-x-auto">
           <Table>
@@ -136,6 +190,11 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
                     {f.label} {f.require && <span className="text-red-500">*</span>}
                   </TableHead>
                 ))}
+                <TableHead className="text-xs text-right text-emerald-700 whitespace-nowrap">
+                  <RefreshCcw size={11} className="inline mr-1" />
+                  Buyback
+                </TableHead>
+                <TableHead className="text-xs text-right">Net Amount</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -182,6 +241,28 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
                         </TableCell>
                       );
                     })}
+                    {/* Buyback value */}
+                    <TableCell>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={item.buyback_value || ''}
+                        onChange={e => updateBuyback(idx, Number(e.target.value))}
+                        placeholder="0"
+                        className="h-7 text-xs text-right w-24 border-emerald-300 focus:border-emerald-500"
+                      />
+                    </TableCell>
+                    {/* Net amount after buyback */}
+                    <TableCell className="text-xs text-right font-medium">
+                      {(() => {
+                        const net = item.total_amount - (item.buyback_value ?? 0);
+                        return (
+                          <span className={net < item.total_amount ? 'text-emerald-700' : ''}>
+                            {formatINR(net)}
+                          </span>
+                        );
+                      })()}
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -191,7 +272,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
 
         {/* Totals */}
         <div className="flex justify-end">
-          <div className="space-y-1 text-sm w-64">
+          <div className="space-y-1 text-sm w-72">
             <div className="flex justify-between text-gray-600">
               <span>Subtotal</span>
               <span className="font-medium">{formatINR(totals.subtotal)}</span>
@@ -208,6 +289,26 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
               <span>Grand Total</span>
               <span className="text-indigo-700">{formatINR(totals.grandTotal)}</span>
             </div>
+            {totalBuyback > 0 && (
+              <>
+                <div className="flex justify-between text-emerald-700">
+                  <span className="flex items-center gap-1">
+                    <RefreshCcw size={11} /> Buyback Credit
+                  </span>
+                  <span className="font-medium">-{formatINR(totalBuyback)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-1 font-bold text-emerald-800">
+                  <span>Net Payable</span>
+                  <span>{formatINR(netAfterBuyback)}</span>
+                </div>
+              </>
+            )}
+            {form.advance_payment_required && form.advance_payment_pct > 0 && (
+              <div className="flex justify-between text-amber-700 border-t pt-1">
+                <span>Advance ({form.advance_payment_pct}%)</span>
+                <span className="font-medium">{formatINR(advanceAmount)}</span>
+              </div>
+            )}
           </div>
         </div>
 

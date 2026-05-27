@@ -56,8 +56,8 @@ axios.interceptors.response.use(
     // /api/secure/* = login, signup, logout, /me — never trigger session-expired on these
     const isAuthRoute = requestUrl.includes("/api/secure");
     if (status === 401 && !isAuthRoute) {
-      store.dispatch(clearSidebarData());
-      store.dispatch(setSessionExpired(true));
+      // store.dispatch(clearSidebarData());
+      // store.dispatch(setSessionExpired(true));
     }
     return Promise.reject(error);
   }

@@ -425,9 +425,9 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                           <th className="text-left p-2 lg:p-3">#</th>
                           <th className="text-left p-2 lg:p-3">Item (Prod #)</th>
                           <th className="text-right p-2 lg:p-3">Qty</th>
-                          <th className="text-right p-2 lg:p-3">Est. Cost</th>
-                          <th className="text-right p-2 lg:p-3">Total</th>
-                          <th className="text-left p-2 lg:p-3">Remarks</th>
+                          {/* <th className="text-right p-2 lg:p-3">Est. Cost</th>
+                          <th className="text-right p-2 lg:p-3">Total</th> */}
+                          {/* <th className="text-left p-2 lg:p-3">Remarks</th> */}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -435,25 +435,29 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                           <tr key={item.pr_item_sno ?? idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors">
                             <td className="p-2 lg:p-3 text-slate-400 dark:text-slate-500 text-xs">{idx + 1}</td>
                             <td className="p-2 lg:p-3">
+                              
                               <p className="font-medium text-slate-900 dark:text-slate-50">{item.prod_name}</p>
-                              <p className="text-xs text-slate-500">{item.pr_no}</p>
+                              <p className="text-xs text-slate-500">{item.remarks || '—'}</p>
+
+                               {/* <td className="p-2 lg:p-3 text-xs text-slate-500 dark:text-slate-400 max-w-[140px] truncate">
+                              {item.remarks || '—'}
+                            </td> */}
+                              {/* <p className="text-xs text-slate-500">{item.pr_no}</p> */}
                             </td>
                             <td className="p-2 lg:p-3 text-right whitespace-nowrap">
                               <span className="font-medium">{parseFloat(item.qty || 0).toLocaleString('en-IN')}</span>
                               <span className="text-xs text-slate-500 ml-1">{item.uom_name}</span>
                             </td>
-                            <td className="p-2 lg:p-3 text-right text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                            {/* <td className="p-2 lg:p-3 text-right text-slate-700 dark:text-slate-300 whitespace-nowrap">
                               ₹{parseFloat(item.est_cost || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                             </td>
                             <td className="p-2 lg:p-3 text-right font-semibold whitespace-nowrap">
                               ₹{parseFloat(item.total_cost || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="p-2 lg:p-3 text-xs text-slate-500 dark:text-slate-400 max-w-[140px] truncate">
-                              {item.remarks || '—'}
-                            </td>
+                            </td> */}
+                           
                           </tr>
                         ))}
-                        <tr className="bg-slate-50 dark:bg-slate-900 font-semibold border-t-2 border-slate-300 dark:border-slate-700">
+                        {/* <tr className="bg-slate-50 dark:bg-slate-900 font-semibold border-t-2 border-slate-300 dark:border-slate-700">
                           <td colSpan={4} className="p-2 lg:p-3 text-right text-sm text-slate-600 dark:text-slate-400">
                             Grand Total
                           </td>
@@ -461,7 +465,7 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                             ₹{totalCost.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                           </td>
                           <td />
-                        </tr>
+                        </tr> */}
                       </tbody>
                     </table>
                   </div>
@@ -571,7 +575,7 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                   <span className="text-slate-500">Items</span>
                   <span className="font-semibold">{parsedItems.length}</span>
                 </div>
-                {pr.dept_name && (
+                {/* {pr.dept_name && (
                   <div className="flex justify-between items-center gap-2">
                     <span className="text-slate-500 shrink-0">Dept</span>
                     <span className="font-semibold truncate text-right">{pr.dept_name}</span>
@@ -588,7 +592,7 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                     <span className="text-slate-500 shrink-0">Company</span>
                     <span className="font-semibold truncate text-right">{pr.com_name}</span>
                   </div>
-                )}
+                )} */}
                 {pr.current_approver_id && (
                   <div className="flex justify-between items-center gap-2">
                     <span className="text-slate-500 shrink-0">Approver</span>
@@ -596,12 +600,12 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                   </div>
                 )}
                 <Separator />
-                <div className="flex justify-between items-center pt-1">
+                {/* <div className="flex justify-between items-center pt-1">
                   <span className="text-slate-500 font-medium">Total Amount</span>
                   <span className="font-bold text-base sm:text-lg text-green-600 dark:text-green-400">
                     ₹{totalCost.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                   </span>
-                </div>
+                </div> */}
               </div>
             </CardContent>
           </Card>

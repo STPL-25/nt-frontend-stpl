@@ -79,9 +79,9 @@ const QuotationCard: React.FC<{
                 <CheckCircle2 size={12} className="mr-1" /> Select
               </Button>
             )}
-            {isSelected && onCreatePO && (
+            {onCreatePO && (
               <Button size="sm" className="text-xs h-7 bg-indigo-600 hover:bg-indigo-700" onClick={() => onCreatePO(q)}>
-                <Package size={12} className="mr-1" /> Create PO
+                <Package size={12} className="mr-1" /> Generate PO
               </Button>
             )}
           </div>

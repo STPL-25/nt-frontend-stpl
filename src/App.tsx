@@ -109,7 +109,7 @@ function App() {
       <ThemeApplier />
       <Toaster position="top-right" richColors />
       <RouterProvider router={router} />
-      <SessionTimeoutModal
+      {/* <SessionTimeoutModal
         isOpen={showWarning}
         countdown={countdown}
         onStayLoggedIn={stayLoggedIn}
@@ -118,7 +118,7 @@ function App() {
       <SessionExpiredModal
         isOpen={sessionExpired}
         onLoginAgain={handleSessionExpiredLogin}
-      />
+      /> */}
     </ThemeProvider>
   );
 }

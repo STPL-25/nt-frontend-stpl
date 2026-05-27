@@ -24,12 +24,7 @@ import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { getAuthFileUrl } from '@/Services/authUrl';
 import { EmptyState } from '@/CustomComponent/PageComponents';
 import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
-import {
-  socket,
-  SOCKET_JOIN_KYC_APPROVAL,
-  SOCKET_LEAVE_KYC_APPROVAL,
-  SOCKET_KYC_APPROVAL_UPDATED,
-} from '@/Services/Socket';
+import {socket,  SOCKET_JOIN_KYC_APPROVAL, SOCKET_LEAVE_KYC_APPROVAL, SOCKET_KYC_APPROVAL_UPDATED,} from '@/Services/Socket';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,7 +72,7 @@ const formatDate = (d: string | null | undefined) =>
   d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 const getInitials = (name: string) =>
-  name.split(' ').slice(0, 2).map((n) => n[0]?.toUpperCase() || '').join('');
+  name?.split(' ').slice(0, 2).map((n) => n[0]?.toUpperCase() || '').join('');
 
 const isImageUrl = (url: string) => /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i.test(url);
 const isPdfUrl   = (url: string) => /\.pdf(\?.*)?$/i.test(url);
@@ -117,7 +112,7 @@ function KYCListCard({ kyc, isSelected, onClick }: { kyc: KYCApprovalRecord; isS
             <div className="min-w-0">
               <p className="font-semibold text-sm truncate capitalize">{kyc.company_name}</p>
               {kyc.supp_code && (
-                <p className="text-xs text-slate-500 truncate">#{kyc.supp_code}</p>
+                <p className="text-xs text-slate-500 truncate">{kyc.supp_code}</p>
               )}
             </div>
           </div>
@@ -566,7 +561,7 @@ function KYCDetailPanel({
 
               <Separator />
 
-              <div className="space-y-2 text-xs sm:text-sm">
+              {/* <div className="space-y-2 text-xs sm:text-sm">
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500">Status</span>
                   <Badge variant="outline" className={`text-xs border ${statusCls}`}>{statusLabel}</Badge>
@@ -604,7 +599,7 @@ function KYCDetailPanel({
                     </div>
                   </>
                 )}
-              </div>
+              </div> */}
             </CardContent>
           </Card>
         </div>
@@ -687,7 +682,7 @@ const KYCApprovalScreen: React.FC = () => {
   const { data, loading: fetchLoading, error } = useFetch<APIResponse>(
     apiGetKycPendingApprovals,
     '',
-    '',
+    null,
     refreshKey,
   );
 

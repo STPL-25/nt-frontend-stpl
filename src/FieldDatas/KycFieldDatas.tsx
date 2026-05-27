@@ -6,7 +6,8 @@ import {
   selectCompanyHierarchyError,
 } from "@/globalState/features/hierarchyCompanyDetailsSlice";
 import { Option, Company, Division, Branch } from "@/Application/Kyc-Screen/types/KycEntryType";
-
+import {useMasterOptions} from "@/hooks/ReUsableHook/useMasterOptions";
+import axios from "axios";
 export type FieldInputType =
   | "text"
   | "number"
@@ -82,16 +83,16 @@ export const useComDivBranchDeptFields = (
       );
   }, [hierarchyData, selectedDivision]);
 
-  const departmentOptions: Option[] = useMemo(
-    () => [
-      { value: "1", label: "Procurement" },
-      { value: "2", label: "Finance" },
-      { value: "3", label: "Operations" },
-      { value: "4", label: "HR" },
-      { value: "5", label: "Administration" },
-    ],
-    []
-  );
+  // const departmentOptions: Option[] = useMemo(
+  //   () => [
+  //     { value: "1", label: "Procurement" },
+  //     { value: "2", label: "Finance" },
+  //     { value: "3", label: "Operations" },
+  //     { value: "4", label: "HR" },
+  //     { value: "5", label: "Administration" },
+  //   ],
+  //   []
+  // );
 
   const fields: FieldType[] = useMemo(
     () => [
@@ -128,19 +129,19 @@ export const useComDivBranchDeptFields = (
         view: false,
         disabled: selectedDivision.length === 0 || branchOptions.length === 0,
       },
-      {
-        field: "dept_sno",
-        label: "Department",
-        require: false,
-        type: "multi-select",
-        placeholder: "Select departments",
-        input: false,
-        options: departmentOptions,
-        view: false,
-        disabled: false,
-      },
+      // {
+      //   field: "dept_sno",
+      //   label: "Department",
+      //   require: false,
+      //   type: "multi-select",
+      //   placeholder: "Select departments",
+      //   input: false,
+      //   options: departmentOptions,
+      //   view: false,
+      //   disabled: false,
+      // },
     ],
-    [companyOptions, divisionOptions, branchOptions, departmentOptions]
+    [companyOptions, divisionOptions, branchOptions]
   );
 
   return {
@@ -148,16 +149,17 @@ export const useComDivBranchDeptFields = (
     companyOptions,
     divisionOptions,
     branchOptions,
-    departmentOptions,
+    // departmentOptions,
     loading: hierarchyLoading,
     error: hierarchyError,
   };
 };
 
-export const useBasicInfoFields = (basicInfo: any): FieldType[] => {
+export const useBasicInfoFields = (basicInfo: any) => {
   const isGstAvail = basicInfo?.is_gst_avail === "true";
   const isMsmeAvail = basicInfo?.is_msme_avail === "true";
-
+  const { options } = useMasterOptions(['SupplierCatagoryMaster','BusinessDetailsMatster']);
+console.log(options)
   return useMemo<FieldType[]>(
     () => [
       {
@@ -183,6 +185,34 @@ export const useBasicInfoFields = (basicInfo: any): FieldType[] => {
           { label: "No", value: "false" },
         ],
         placeholder: "MSME availability",
+        input: true,
+        view: true,
+      },
+       {
+        field: "supplier_cat_code",
+        label: "Supplier Category",
+        require: true,
+        type: "select",
+        placeholder: "Select supplier category",
+        options: options?.SupplierCatagoryMaster,
+        input: true,
+        view: true,
+      },
+       {
+        field: "gst_no",
+        label: "GST Number",
+        require: isGstAvail,
+        type: "text",
+        placeholder: "22AAAAA0000A1Z5",
+        input: !!isGstAvail,
+        view: true,
+      },
+       {
+        field: "pan_no",
+        label: "PAN Number",
+        require: true,
+        type: "text",
+        placeholder: "ABCDE1234F",
         input: true,
         view: true,
       },
@@ -226,29 +256,14 @@ export const useBasicInfoFields = (basicInfo: any): FieldType[] => {
         field: "business_type",
         label: "Business Type",
         require: true,
-        type: "text",
-        placeholder: "E.g. MSME, Sole Proprietor, Pvt Ltd",
+        type: "select",
+        placeholder: "Select company type",
+        options: options?.BusinessDetailsMatster,
         input: true,
         view: true,
       },
-      {
-        field: "gst_no",
-        label: "GST Number",
-        require: isGstAvail,
-        type: "text",
-        placeholder: "22AAAAA0000A1Z5",
-        input: !!isGstAvail,
-        view: true,
-      },
-      {
-        field: "pan_no",
-        label: "PAN Number",
-        require: true,
-        type: "text",
-        placeholder: "ABCDE1234F",
-        input: true,
-        view: true,
-      },
+    
+     
       {
         field: "msme_no",
         label: "MSME Number",

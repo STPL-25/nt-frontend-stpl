@@ -7,6 +7,7 @@ export interface PRBasicInfo {
   div_sno?: number | string;
   brn_sno?: number | string;
   dept_sno?: number | string;
+  requisition_type?: string;
   pr_date?: string;
   required_date?: string;
   priority?: string;

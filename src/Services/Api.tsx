@@ -25,6 +25,7 @@ export const apiGetAllKycDatas = baseUrl + "/api/kyc/get_all_kycs";
 export const apiPostKycData = baseUrl + "/api/kyc/create_kyc_records";
 export const apiGetKycPendingApprovals = baseUrl + "/api/kyc/get_pending_approvals";
 export const apiKycApproveAction = baseUrl + "/api/kyc/approve_kyc";
+export const apiGetGSTNDetails = baseUrl + "/api/kyc/Get_GSTN_Details";
 
 // Common Masters
 export const apiFetchCommonMaster = baseUrl + "/api/common_master/";

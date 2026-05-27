@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
-import { cn } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -52,6 +51,32 @@ import { usePermissions } from "@/globalState/hooks/usePermissions";
 
 type PanelMode = "idle" | "loading" | "create" | "edit";
 
+type WorkflowApiStageRow = {
+  stage_order_json?: StageOrderItem[] | string;
+};
+
+type WorkflowApiTypeRow = {
+  workflow_types_id?: number;
+  workflow_types_name?: string;
+  com_sno?: string | number;
+  div_sno?: string | number;
+  brn_sno?: string | number;
+  dept_sno?: string | number;
+  is_active?: string;
+  stage_order_json?: StageOrderItem[] | string;
+  stages?: WorkflowApiStageRow[];
+};
+
+type WorkflowApiRow = {
+  workflow_id?: number;
+  workflow_name?: string;
+  workflow_code?: string;
+  entity_type?: string;
+  description?: string;
+  is_active?: string;
+  workflow_types?: WorkflowApiTypeRow[];
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const emptyStage = (): StageOrderItem => ({
@@ -90,6 +115,95 @@ const YN_OPTIONS = [
   { label: "Yes", value: "Y" },
   { label: "No", value: "N" },
 ];
+
+const JSON_RESULT_KEY = "JSON_F52E2B61-18A1-11d1-B105-00805F49916B";
+
+const parseJsonSafely = <T,>(value: unknown, fallback: T): T => {
+  if (typeof value !== "string") return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+const normalizeStage = (stage: Partial<StageOrderItem> | null | undefined): StageOrderItem => ({
+  ...emptyStage(),
+  ...stage,
+  approver_ecno: String(stage?.approver_ecno ?? ""),
+  stage: String(stage?.stage ?? ""),
+  required_approvals: String(stage?.required_approvals ?? "1"),
+  is_mandatory: stage?.is_mandatory === "N" ? "N" : "Y",
+  escalation_hours: String(stage?.escalation_hours ?? "24"),
+  approver_condition: String(stage?.approver_condition ?? ""),
+  next_approver_ecno: String(stage?.next_approver_ecno ?? ""),
+  can_forward: stage?.can_forward === "N" ? "N" : "Y",
+  can_backward: stage?.can_backward === "Y" ? "Y" : "N",
+  can_edit_data: stage?.can_edit_data === "Y" ? "Y" : "N",
+});
+
+const parseStageOrder = (value: unknown): StageOrderItem[] => {
+  const rawStages = Array.isArray(value)
+    ? value
+    : parseJsonSafely<Partial<StageOrderItem>[]>(value, []);
+
+  if (!Array.isArray(rawStages)) return [];
+
+  return rawStages.map((stage) => normalizeStage(stage));
+};
+
+const extractWorkflowPayload = (
+  responseData: any,
+  workflowId: number
+): { workflow: WorkflowApiRow | null; workflowTypes: WorkflowApiTypeRow[] } => {
+  const dataRows = Array.isArray(responseData?.decrypted?.data)
+    ? responseData.decrypted.data
+    : Array.isArray(responseData?.data)
+      ? responseData.data
+      : ([] as Array<Record<string, any>>);
+
+  const jsonPayload = dataRows
+    .map((row: Record<string, any>) => row?.[JSON_RESULT_KEY])
+    .find((value: unknown) => typeof value === "string");
+
+  const parsedPayload = jsonPayload
+    ? parseJsonSafely<{ workflows?: WorkflowApiRow[] }>(jsonPayload, {})
+    : responseData?.workflows
+      ? responseData
+      : null;
+
+  const payloadWorkflows = Array.isArray(parsedPayload?.workflows)
+    ? parsedPayload.workflows
+    : Array.isArray(dataRows?.[0]?.workflows)
+      ? dataRows[0].workflows
+      : [];
+
+  const payloadWorkflow =
+    payloadWorkflows.find((row: WorkflowApiRow) => String(row.workflow_id) === String(workflowId)) ??
+    payloadWorkflows[0] ??
+    null;
+
+  if (payloadWorkflow) {
+    return {
+      workflow: payloadWorkflow,
+      workflowTypes: Array.isArray(payloadWorkflow.workflow_types)
+        ? payloadWorkflow.workflow_types
+        : [],
+    };
+  }
+
+  const directTypeRows = dataRows.filter(
+    (row: Record<string, any>): row is WorkflowApiTypeRow =>
+      row &&
+      typeof row === "object" &&
+      (row.workflow_types_id != null || row.workflow_types_name != null)
+  );
+
+  return {
+    workflow: null,
+    workflowTypes: directTypeRows,
+  };
+};
 
 // ─── WorkflowTypeCard ─────────────────────────────────────────────────────────
 
@@ -296,7 +410,6 @@ export default function ApprovalFlowDynamic() {
     apiGetWorkflows, "", null, listRefreshKey
   );
   const workflows: WorkflowMasterRow[] = Array.isArray(listData?.data) ? listData!.data : [];
-  console.log(listData?.data);
   // ── Panel / selection state ───────────────────────────────────────────────
   const [mode, setMode] = useState<PanelMode>("idle");
   const [selectedId, setSelectedId] = useState<string>("");       // drives the select dropdown
@@ -410,50 +523,51 @@ export default function ApprovalFlowDynamic() {
       setMode("loading");
       try {
         const typesRes = await axios.get(apiGetWorkflowTypes(wf.workflow_id));
-
-        // Response shape: { decrypted: { data: [{ "JSON_F52E2B61-...": "<json string>" }] } }
-        const jsonKey = "JSON_F52E2B61-18A1-11d1-B105-00805F49916B";
-        const rawJson = typesRes.data?.decrypted?.data?.[0]?.[jsonKey];
-        const parsed = rawJson ? JSON.parse(rawJson) : null;
-        const workflowTypeRows: any[] = parsed?.workflows?.[0]?.workflow_types ?? [];
+        const { workflow: payloadWorkflow, workflowTypes: workflowTypeRows } =
+          extractWorkflowPayload(typesRes.data, wf.workflow_id);
 
         const bp = buildBranchParent();
         const groups: Record<string, WorkflowTypeExtended> = {};
 
         for (const row of workflowTypeRows) {
-          const name = row.workflow_types_name;
+          const name = String(row.workflow_types_name ?? "").trim();
+          const stages = parseStageOrder(
+            row.stage_order_json ?? row.stages?.[0]?.stage_order_json
+          );
+          const groupKey = `${name}__${row.is_active ?? "Y"}__${JSON.stringify(stages)}`;
 
-          let stages: StageOrderItem[] = [];
-          if (row.stages?.length > 0 && row.stages[0].stage_order_json) {
-            try { stages = JSON.parse(row.stages[0].stage_order_json); } catch { stages = []; }
-          }
-
-          if (!groups[name]) {
-            groups[name] = {
+          if (!groups[groupKey]) {
+            groups[groupKey] = {
               workflow_types_name: name,
-              com_snos: [], div_snos: [], brn_snos: [], dept_snos: [],
+              com_snos: [],
+              div_snos: [],
+              brn_snos: [],
+              dept_snos: [],
               is_active: row.is_active === "Y",
               stages,
               _typeIds: [],
             };
           }
-          const g = groups[name];
-          const brn = String(row.brn_sno);
-          if (!g.brn_snos.includes(brn)) g.brn_snos.push(brn);
-          if (!g.dept_snos.includes(String(row.dept_sno))) g.dept_snos.push(String(row.dept_sno));
+          const g = groups[groupKey];
+          const brn = String(row.brn_sno ?? "");
+          const dept = String(row.dept_sno ?? "");
+          if (brn && !g.brn_snos.includes(brn)) g.brn_snos.push(brn);
+          if (dept && !g.dept_snos.includes(dept)) g.dept_snos.push(dept);
           if (bp[brn]) {
             if (!g.com_snos.includes(bp[brn].com_sno)) g.com_snos.push(bp[brn].com_sno);
             if (!g.div_snos.includes(bp[brn].div_sno)) g.div_snos.push(bp[brn].div_sno);
           }
-          g._typeIds.push(row.workflow_types_id);
+          if (row.workflow_types_id != null) {
+            g._typeIds.push(row.workflow_types_id);
+          }
         }
 
         setEditWorkflow({
-          workflow_name: wf.workflow_name,
-          workflow_code: wf.workflow_code,
-          entity_type: wf.entity_type,
-          description: wf.description ?? "",
-          is_active: wf.is_active === "Y",
+          workflow_name: payloadWorkflow?.workflow_name ?? wf.workflow_name,
+          workflow_code: payloadWorkflow?.workflow_code ?? wf.workflow_code,
+          entity_type: payloadWorkflow?.entity_type ?? wf.entity_type,
+          description: payloadWorkflow?.description ?? wf.description ?? "",
+          is_active: (payloadWorkflow?.is_active ?? wf.is_active) === "Y",
         });
         setEditTypes(Object.values(groups));
         setMode("edit");
@@ -466,7 +580,6 @@ export default function ApprovalFlowDynamic() {
     },
     [workflows, buildBranchParent]
   );
-
   const handleNewWorkflow = useCallback(() => {
     setSelectedId("");
     setSelectedRow(null);
@@ -531,6 +644,7 @@ export default function ApprovalFlowDynamic() {
       )
     );
     try {
+       
       const data = await postData(apiSaveFullWorkflow, {
         workflow_name: createWorkflow.workflow_name,
         workflow_code: autoCode,
@@ -718,8 +832,7 @@ export default function ApprovalFlowDynamic() {
               <div className="space-y-2 pt-1">
                 <Button
                   className="w-full gap-2"
-                  // onClick={mode === "create" ? handleCreateSubmit : handleUpdateSubmit}
-                  onClick={handleCreateSubmit}
+                  onClick={mode === "create" ? handleCreateSubmit : handleUpdateSubmit}
                   disabled={isSaving}
                 >
                   {isSaving

@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +18,8 @@ import {
 } from '@/Services/Api';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
+import useFetch from '@/hooks/useFetchHook';
+import usePost from '@/hooks/usePostHook';
 
 import type {
   PRRecord, PRItem, Vendor, Quotation, QuotationItem,
@@ -42,25 +43,18 @@ const PurchaseTeamPage: React.FC = () => {
   useAppState(); // keep for auth context + hierarchy prefetch
   const { canCreate, canEdit } = usePermissions();
 
+  // ── Refresh keys ──────────────────────────────────────────────────────────
+  const [prRefreshKey, setPrRefreshKey] = useState(0);
+  const [vendorRefreshKey, setVendorRefreshKey] = useState(0);
+  const [quotationsRefreshKey, setQuotationsRefreshKey] = useState(0);
+
   // ── State ──────────────────────────────────────────────────────────────────
 
-  // PR List
-  const [prList, setPrList] = useState<PRRecord[]>([]);
-  const [loadingPR, setLoadingPR] = useState(false);
   const [selectedPR, setSelectedPR] = useState<PRRecord | null>(null);
 
   // Step 1 — PO Confirmation
   const [confirmedData, setConfirmedData] = useState<POConfirmationData | null>(null);
-  const [savingConfirm, setSavingConfirm] = useState(false);
-  const [editingConfirm, setEditingConfirm] = useState(false); // true = show edit form even if confirmed
-
-  // Vendors
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [loadingVendors, setLoadingVendors] = useState(false);
-
-  // Quotations for selected PR
-  const [existingQuotations, setExistingQuotations] = useState<Quotation[]>([]);
-  const [loadingQuotations, setLoadingQuotations] = useState(false);
+  const [editingConfirm, setEditingConfirm] = useState(false);
 
   // Quotation dialog
   const [showQuotationDialog, setShowQuotationDialog] = useState(false);
@@ -79,117 +73,103 @@ const PurchaseTeamPage: React.FC = () => {
   const [splitOpen, setSplitOpen] = useState(false);
   const [poGroups, setPOGroups] = useState<POGroup[]>([]);
 
-  // ── Fetchers ───────────────────────────────────────────────────────────────
+  // ── Fetch hooks ────────────────────────────────────────────────────────────
 
-  const fetchPRs = useCallback(async () => {
-    setLoadingPR(true);
-    try {
-      const res = await axios.get(purchaseTeamGetApprovedPRs, { withCredentials: true });
-      const rows: PRRecord[] = res.data?.decrypted?.data ?? res.data?.data ?? [];
-      setPrList(normalisePRRows(rows));
-    } catch {
-      toast.error('Failed to load purchase requisitions');
-    } finally {
-      setLoadingPR(false);
-    }
-  }, []);
+  const { data: prRaw, loading: loadingPR } = useFetch(
+    purchaseTeamGetApprovedPRs, '', null, prRefreshKey,
+  );
 
-  const fetchVendors = useCallback(async () => {
-    setLoadingVendors(true);
-    try {
-      const res = await axios.get(purchaseTeamGetVendors, { withCredentials: true });
-      setVendors(res.data?.decrypted?.data ?? res.data?.data ?? []);
-    } catch {
-      toast.error('Failed to load vendors');
-    } finally {
-      setLoadingVendors(false);
-    }
-  }, []);
+  const { data: vendorsRaw, loading: loadingVendors } = useFetch(
+    purchaseTeamGetVendors, '', null, vendorRefreshKey,
+  );
 
-  const fetchQuotations = useCallback(async (prBasicSno: number) => {
-    setLoadingQuotations(true);
-    try {
-      const res = await axios.get(purchaseTeamGetQuotations(prBasicSno), { withCredentials: true });
-      const raw = res.data?.decrypted?.data ?? res.data?.data ?? [];
+  const quotationsUrl = selectedPR?.pr_basic_sno
+    ? purchaseTeamGetQuotations(selectedPR.pr_basic_sno)
+    : null;
+  const { data: quotationsRaw, loading: loadingQuotations } = useFetch(
+    quotationsUrl, '', null, quotationsRefreshKey,
+  );
 
-      const quotations: Quotation[] = raw.map((row: any) => {
-        let parsedItems: QuotationItem[] = [];
-        if (row.sq_items) {
-          try {
-            const sqItems: any[] = typeof row.sq_items === 'string' ? JSON.parse(row.sq_items) : row.sq_items;
-            parsedItems = sqItems.map((it: any) => ({
-              pr_item_sno: it.pr_item_sno,
-              prod_sno: it.prod_sno,
-              prod_name: it.prod_name ?? it.item_name ?? '',
-              specification: it.specification ?? '',
-              qty: Number(it.qty ?? it.quantity ?? it.req_qty ?? 0),
-              unit: it.unit ?? it.uom_sno ?? it.unit_sno ?? 0,
-              unit_name: it.unit_name ?? it.uom_name ?? it.uom_code ?? '',
-              unit_price: Number(it.unit_price ?? 0),
-              discount_pct: Number(it.discount_pct ?? 0),
-              tax_pct: Number(it.tax_pct ?? 0),
-              total_amount: Number(it.total_amount ?? 0),
-              delivery_days: Number(it.delivery_days ?? 0),
-              remarks: it.remarks ?? '',
-            }));
-          } catch { /* ignore parse errors */ }
-        }
-        return {
-          sq_basic_sno: row.sq_basic_sno,
-          pr_basic_sno: row.pr_basic_sno,
-          vendor_sno: row.vendor_sno,
-          vendor_name: row.vendor_name ?? row.company_name ?? '',
-          company_name: row.company_name ?? '',
-          quotation_ref_no: row.quotation_ref_no ?? '',
-          quotation_date: row.quotation_date ?? '',
-          valid_upto: row.valid_upto ?? '',
-          currency_code: row.currency_code ?? 'INR',
-          payment_terms: row.payment_terms ?? '',
-          delivery_days: row.delivery_days ?? 0,
-          remarks: row.remarks ?? '',
-          is_selected: row.is_selected ?? 'N',
-          status: row.status ?? 'P',
-          items: parsedItems,
-          sq_quotation_file: row.sq_quotation_file,
-          split_group: row.split_group ?? undefined,
-        } as Quotation;
-      });
+  const poConfirmUrl = selectedPR?.pr_basic_sno
+    ? purchaseTeamGetPOConfirmation(selectedPR.pr_basic_sno)
+    : null;
+  const { data: poConfirmRaw } = useFetch(poConfirmUrl);
 
-      setExistingQuotations(quotations);
-    } catch {
-      toast.error('Failed to load quotations');
-    } finally {
-      setLoadingQuotations(false);
-    }
-  }, []);
+  // ── Post hooks ────────────────────────────────────────────────────────────
 
-  /** Fetch existing PO confirmation for a PR (if already saved) */
-  const fetchPOConfirmation = useCallback(async (prBasicSno: number) => {
-    try {
-      const res = await axios.get(purchaseTeamGetPOConfirmation(prBasicSno), { withCredentials: true });
-      const data = res.data?.decrypted?.data ?? res.data?.data ?? null;
-      if (data && data.pr_basic_sno) {
-        setConfirmedData(data);
-        setEditingConfirm(false);
-      } else {
-        setConfirmedData(null);
+  const { postData: postPOConfirmation, loading: savingConfirm } = usePost();
+  const { postData: postQuotation } = usePost();
+  const { postData: postSelectQuotation } = usePost();
+  const { postData: postCreatePO } = usePost();
+
+  // ── Derived data ───────────────────────────────────────────────────────────
+
+  const prList = useMemo<PRRecord[]>(() => {
+    const rows: PRRecord[] = (prRaw as any)?.decrypted?.data ?? (prRaw as any)?.data ?? [];
+    return normalisePRRows(rows);
+  }, [prRaw]);
+
+  const vendors = useMemo<Vendor[]>(() => {
+    return (vendorsRaw as any)?.decrypted?.data ?? (vendorsRaw as any)?.data ?? [];
+  }, [vendorsRaw]);
+
+  const existingQuotations = useMemo<Quotation[]>(() => {
+    const raw: any[] = (quotationsRaw as any)?.decrypted?.data ?? (quotationsRaw as any)?.data ?? [];
+    return raw.map((row: any) => {
+      let parsedItems: QuotationItem[] = [];
+      if (row.sq_items) {
+        try {
+          const sqItems: any[] = typeof row.sq_items === 'string' ? JSON.parse(row.sq_items) : row.sq_items;
+          parsedItems = sqItems.map((it: any) => ({
+            pr_item_sno: it.pr_item_sno,
+            prod_sno: it.prod_sno,
+            prod_name: it.prod_name ?? it.item_name ?? '',
+            specification: it.specification ?? '',
+            qty: Number(it.qty ?? it.quantity ?? it.req_qty ?? 0),
+            unit: it.unit ?? it.uom_sno ?? it.unit_sno ?? 0,
+            unit_name: it.unit_name ?? it.uom_name ?? it.uom_code ?? '',
+            unit_price: Number(it.unit_price ?? 0),
+            discount_pct: Number(it.discount_pct ?? 0),
+            tax_pct: Number(it.tax_pct ?? 0),
+            total_amount: Number(it.total_amount ?? 0),
+            delivery_days: Number(it.delivery_days ?? 0),
+            remarks: it.remarks ?? '',
+          }));
+        } catch { /* ignore parse errors */ }
       }
-    } catch {
-      setConfirmedData(null);
-    }
-  }, []);
+      return {
+        sq_basic_sno: row.sq_basic_sno,
+        pr_basic_sno: row.pr_basic_sno,
+        vendor_sno: row.vendor_sno,
+        vendor_name: row.vendor_name ?? row.company_name ?? '',
+        company_name: row.company_name ?? '',
+        quotation_ref_no: row.quotation_ref_no ?? '',
+        quotation_date: row.quotation_date ?? '',
+        valid_upto: row.valid_upto ?? '',
+        currency_code: row.currency_code ?? 'INR',
+        payment_terms: row.payment_terms ?? '',
+        delivery_days: row.delivery_days ?? 0,
+        remarks: row.remarks ?? '',
+        is_selected: row.is_selected ?? 'N',
+        status: row.status ?? 'P',
+        items: parsedItems,
+        sq_quotation_file: row.sq_quotation_file,
+        split_group: row.split_group ?? undefined,
+      } as Quotation;
+    });
+  }, [quotationsRaw]);
 
-  useEffect(() => { fetchPRs(); fetchVendors(); }, [fetchPRs, fetchVendors]);
-
+  // Sync PO confirmation data from fetch result
   useEffect(() => {
-    if (selectedPR?.pr_basic_sno) {
-      fetchQuotations(selectedPR.pr_basic_sno);
-      fetchPOConfirmation(selectedPR.pr_basic_sno);
+    if (!poConfirmRaw) return;
+    const data = (poConfirmRaw as any)?.decrypted?.data ?? (poConfirmRaw as any)?.data ?? null;
+    if (data?.pr_basic_sno) {
+      setConfirmedData(data);
+      setEditingConfirm(false);
     } else {
-      setExistingQuotations([]);
       setConfirmedData(null);
     }
-  }, [selectedPR?.pr_basic_sno, fetchQuotations, fetchPOConfirmation]);
+  }, [poConfirmRaw]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -204,14 +184,15 @@ const PurchaseTeamPage: React.FC = () => {
   // ── Step 1: PO Confirmation ────────────────────────────────────────────────
 
   const handlePOConfirmed = async (data: POConfirmationData) => {
-    setSavingConfirm(true);
     try {
-      await axios.post(purchaseTeamSavePOConfirmation, data, { withCredentials: true });
+      await postPOConfirmation(purchaseTeamSavePOConfirmation, data, { withCredentials: true });
       setConfirmedData(data);
       setEditingConfirm(false);
       toast.success('PO details confirmed. You can now select a supplier and add quotations.');
     } catch (err: any) {
-      console.log('Error saving PO confirmation', err);
+      const status = err?.response?.status;
+      // 401 = session expired; global interceptor in main.tsx already redirects to login
+      if (status === 401) return;
       const msg = err?.response?.data?.error ?? 'Failed to save PO confirmation';
       if (msg.toLowerCase().includes('database error')) {
         // SP not deployed yet — still let UX advance so team can continue
@@ -221,8 +202,6 @@ const PurchaseTeamPage: React.FC = () => {
       } else {
         toast.error(msg);
       }
-    } finally {
-      setSavingConfirm(false);
     }
   };
 
@@ -239,7 +218,6 @@ const PurchaseTeamPage: React.FC = () => {
     setSplitOpen(false);
     toast.info('Split cleared');
   };
-
 
   // ── Quotation handlers ────────────────────────────────────────────────────
 
@@ -262,7 +240,6 @@ const PurchaseTeamPage: React.FC = () => {
     });
 
     if (splitGroup !== undefined && confirmedData?.items?.length) {
-      // Filter items for this specific split group (0 = ungrouped / main PO)
       const groupItems = splitGroup === 0
         ? confirmedData.items.filter(it => !it.split_group)
         : confirmedData.items.filter(it => it.split_group === splitGroup);
@@ -289,7 +266,6 @@ const PurchaseTeamPage: React.FC = () => {
     setShowQuotationDialog(true);
   };
 
-
   const handleSubmitQuotation = async (form: QuotationFormState, items: QuotationItem[]) => {
     if (!selectedPR && poGroups.length === 0) return;
     if (!selectedVendor) return;
@@ -302,7 +278,7 @@ const PurchaseTeamPage: React.FC = () => {
     if (!prBasicSno) return;
 
     try {
-      await axios.post(purchaseTeamCreateQuotation, {
+      await postQuotation(purchaseTeamCreateQuotation, {
         pr_basic_sno: prBasicSno,
         vendor_sno: selectedVendor.kyc_basic_info_sno ?? selectedVendor.vendor_sno,
         ...form,
@@ -316,7 +292,7 @@ const PurchaseTeamPage: React.FC = () => {
 
       toast.success('Supplier quotation created');
       setShowQuotationDialog(false);
-      if (prBasicSno) fetchQuotations(prBasicSno);
+      setQuotationsRefreshKey(k => k + 1);
     } catch (err: any) {
       const msg = err?.response?.data?.error ?? 'Failed to create quotation';
       if (msg.toLowerCase().includes('database error')) {
@@ -330,29 +306,49 @@ const PurchaseTeamPage: React.FC = () => {
   const handleSelectQuotation = async (q: Quotation) => {
     if (!q.sq_basic_sno) return;
     try {
-      await axios.post(purchaseTeamSelectQuotation, { selectedQuotation: q }, { withCredentials: true });
+      await postSelectQuotation(purchaseTeamSelectQuotation, { selectedQuotation: q }, { withCredentials: true });
       toast.success('Quotation selected');
-      if (selectedPR?.pr_basic_sno) fetchQuotations(selectedPR.pr_basic_sno);
+      setQuotationsRefreshKey(k => k + 1);
     } catch (err: any) {
       toast.error(err?.response?.data?.error ?? 'Failed to select quotation');
     }
   };
 
-  const handleOpenCreatePO = (q: Quotation) => {
-    setSelectedQuotation(q);
-    setShowPOConfirm(true);
+  const handleOpenCreatePO = async (q: Quotation) => {
+    if (!q.sq_basic_sno) {
+      toast.error('Save the quotation before generating a PO');
+      return;
+    }
+
+    try {
+      if (q.is_selected !== 'Y') {
+        await postSelectQuotation(purchaseTeamSelectQuotation, { selectedQuotation: q }, { withCredentials: true });
+        setQuotationsRefreshKey(k => k + 1);
+      }
+      setSelectedQuotation({ ...q, is_selected: 'Y' });
+      setShowPOConfirm(true);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to select quotation for PO');
+    }
+  };
+
+  const handleClosePODialog = (open: boolean) => {
+    setShowPOConfirm(open);
+    if (!open) {
+      setSelectedQuotation(null);
+      setPOGroups([]);
+    }
   };
 
   const handleCreatePO = async (poForm: POFormState) => {
-    if (!selectedQuotation) return;
-    if (!poForm.required_date) { toast.error('Required date is needed'); return; }
+    if (!selectedQuotation) throw new Error('No quotation selected');
+    if (!poForm.required_date) { toast.error('Required date is needed'); throw new Error('Required date is needed'); }
 
     const basePR = selectedPR ?? (poGroups.length > 0
       ? prList.find(p => p.pr_basic_sno === poGroups[0].sourcePRs[0])
       : null);
-    if (!basePR) { toast.error('No PR context found'); return; }
+    if (!basePR) { toast.error('No PR context found'); throw new Error('No PR context found'); }
 
-    // Prefer confirmed billing org over PR org
     const billingComSno = confirmedData?.billing_com_sno ?? basePR.com_sno;
     const billingDivSno = confirmedData?.billing_div_sno ?? basePR.div_sno;
     const billingBrnSno = confirmedData?.billing_brn_sno ?? basePR.brn_sno;
@@ -362,7 +358,7 @@ const PurchaseTeamPage: React.FC = () => {
         let splitIdx = 1;
         for (const group of poGroups) {
           const groupPR = prList.find(p => p.pr_basic_sno === group.sourcePRs[0]) ?? basePR;
-          await axios.post(purchaseTeamCreatePO, {
+          await postCreatePO(purchaseTeamCreatePO, {
             pr_basic_sno: groupPR.pr_basic_sno,
             sq_basic_sno: selectedQuotation.sq_basic_sno,
             vendor_sno: group.vendorSno ?? selectedQuotation.vendor_sno,
@@ -383,7 +379,7 @@ const PurchaseTeamPage: React.FC = () => {
         }
         toast.success(`${poGroups.length} PO(s) created from split groups!`);
       } else {
-        await axios.post(purchaseTeamCreatePO, {
+        await postCreatePO(purchaseTeamCreatePO, {
           pr_basic_sno: basePR.pr_basic_sno,
           sq_basic_sno: selectedQuotation.sq_basic_sno,
           vendor_sno: selectedQuotation.vendor_sno,
@@ -400,10 +396,8 @@ const PurchaseTeamPage: React.FC = () => {
         toast.success('Purchase Order created successfully!');
       }
 
-      setShowPOConfirm(false);
-      setSelectedQuotation(null);
-      setPOGroups([]);
-      fetchPRs();
+      // Keep dialog open so user can download the PDF; refresh PR list in background
+      setPrRefreshKey(k => k + 1);
     } catch (err: any) {
       const msg = err?.response?.data?.error ?? 'Failed to create PO';
       if (msg.toLowerCase().includes('database error')) {
@@ -411,6 +405,7 @@ const PurchaseTeamPage: React.FC = () => {
       } else {
         toast.error(msg);
       }
+      throw err;
     }
   };
 
@@ -449,7 +444,12 @@ const PurchaseTeamPage: React.FC = () => {
             <p className="text-xs text-muted-foreground">Confirm PO details, split PRs, assign suppliers, manage quotations</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => { fetchPRs(); fetchVendors(); }} disabled={loadingPR}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => { setPrRefreshKey(k => k + 1); setVendorRefreshKey(k => k + 1); }}
+          disabled={loadingPR}
+        >
           <RefreshCw size={16} className={loadingPR ? 'animate-spin mr-1' : 'mr-1'} />
           Refresh
         </Button>
@@ -606,10 +606,7 @@ const PurchaseTeamPage: React.FC = () => {
                     onSelectQuotation={handleSelectQuotation}
                     onCreatePO={canCreate("PurchaseTeamPage") || canEdit("PurchaseTeamPage") ? handleOpenCreatePO : undefined}
                     onCompare={() => setShowCompareDialog(true)}
-                    onRefreshQuotations={() => {
-                      const sno = selectedPR?.pr_basic_sno ?? poGroups[0]?.sourcePRs[0];
-                      if (sno) fetchQuotations(sno);
-                    }}
+                    onRefreshQuotations={() => setQuotationsRefreshKey(k => k + 1)}
                     poGroups={poGroups}
                     confirmedSplitGroups={confirmedSplitGroups}
                   />
@@ -638,7 +635,7 @@ const PurchaseTeamPage: React.FC = () => {
 
       <CreatePODialog
         open={showPOConfirm}
-        onOpenChange={setShowPOConfirm}
+        onOpenChange={handleClosePODialog}
         selectedPR={selectedPR}
         selectedQuotation={selectedQuotation}
         onCreatePO={handleCreatePO}

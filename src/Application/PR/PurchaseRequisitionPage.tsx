@@ -17,7 +17,7 @@ import {  Plus,  Trash2,  Edit2,  Check,  X,  Save,  Send,  FileText,  RefreshCw
 import { downloadExcelTemplate, parseExcelFile } from '@/utils/excelUtils';
 import { FormSection } from '@/CustomComponent/PageComponents';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
-import { usePRBasicInfoFields, usePRItemDetailsFields } from '@/FieldDatas/PRData';
+import { usePRBasicInfoFields, usePRItemDetailsFields, type PRItemType } from '@/FieldDatas/PRData';
 import axios from 'axios';
 import {
   createPrRecord,
@@ -58,12 +58,24 @@ interface PRPageProps {
   editDraftId?: string;
   editDraftData?: Record<string, any>;
   onDraftSubmitted?: () => void;
+  requisitionType?: string;
+  pageTitle?: string;
+  pageSubtitle?: string;
+  allowedItemTypes?: PRItemType[];
+  permissionComponent?: string;
 }
+
+const DEFAULT_ITEM_TYPES: PRItemType[] = ['product', 'service'];
 
 const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   editDraftId,
   editDraftData,
   onDraftSubmitted,
+  requisitionType = 'purchase',
+  pageTitle = 'Purchase Requisition',
+  pageSubtitle = 'Non-trade purchase requisition form',
+  allowedItemTypes = DEFAULT_ITEM_TYPES,
+  permissionComponent = 'PurchaseRequisitionPage',
 }) => {
   const { data: hierarchyData, userData, socket } = useAppState();
   const { canCreate, canEdit } = usePermissions();
@@ -79,8 +91,13 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   const [selectedBranch, setSelectedBranch] = useState<string>('');
 
   // currentItem must be declared before usePRItemDetailsFields so itemType can drive conditional fields
+  const normalizedAllowedItemTypes = useMemo(
+    () => (allowedItemTypes.length > 0 ? allowedItemTypes : DEFAULT_ITEM_TYPES),
+    [allowedItemTypes]
+  );
+
   const [currentItem, setCurrentItem] = useState<Record<string, any>>({});
-  const currentItemType: string = currentItem.item_type ?? '';
+  const currentItemType: PRItemType | '' = currentItem.item_type ?? '';
 
   const basicInfoFields = usePRBasicInfoFields({
     hierarchyData,
@@ -88,7 +105,10 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
     selectedDivision,
     selectedBranch,
   });
-  const itemDetailsFields = usePRItemDetailsFields({ itemType: currentItemType });
+  const itemDetailsFields = usePRItemDetailsFields({
+    itemType: currentItemType,
+    allowedItemTypes: normalizedAllowedItemTypes,
+  });
 
   // Scope key for shared drafts: "{com_sno}:{div_sno}:{brn_sno}"
   const [scopeKey, setScopeKey] = useState<string | null>(null);
@@ -170,11 +190,14 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
         d[field.field] = '';
       }
     });
-    return d;
-  }, [basicInfoFields]);
+    return { ...d, requisition_type: requisitionType };
+  }, [basicInfoFields, requisitionType]);
 
   const buildEmptyItem = useCallback(() => {
-    const item: Record<string, any> = { item_type: '', item_attachment: null };
+    const item: Record<string, any> = {
+      item_type: normalizedAllowedItemTypes.length === 1 ? normalizedAllowedItemTypes[0] : '',
+      item_attachment: null,
+    };
     itemDetailsFields.forEach((field: FieldType) => {
       if (!field.input || field.field === 'pr_item_sno' || field.field === 'pr_basic_sno') return;
       if (field.field === 'item_type' || field.field === 'item_attachment') return; // already set above
@@ -186,7 +209,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
       else item[field.field] = '';
     });
     return item;
-  }, [itemDetailsFields]);
+  }, [itemDetailsFields, normalizedAllowedItemTypes]);
 
   // Initialize form state once field definitions are ready
   useEffect(() => {
@@ -205,19 +228,19 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   useEffect(() => {
     if (editDraftData) {
       const basicInfo = editDraftData.basicInfo || {};
-      setBasicFormData(basicInfo);
+      setBasicFormData({ ...basicInfo, requisition_type: requisitionType });
       setSavedItems(editDraftData.items || []);
       if (basicInfo.com_sno) setSelectedCompany(String(basicInfo.com_sno));
       if (basicInfo.div_sno) setSelectedDivision(String(basicInfo.div_sno));
       if (basicInfo.brn_sno) setSelectedBranch(String(basicInfo.brn_sno));
     }
-  }, [editDraftData]);
+  }, [editDraftData, requisitionType]);
 
   // Load sidebar-edited draft
   useEffect(() => {
     if (sidebarEditDraft) {
       const basicInfo = sidebarEditDraft.basicInfo || {};
-      setBasicFormData(basicInfo as Record<string, any>);
+      setBasicFormData({ ...(basicInfo as Record<string, any>), requisition_type: requisitionType });
       setSavedItems(sidebarEditDraft.items || []);
       setDeptDraftId(sidebarEditDraft.draftId);
       setDeptDraftScopeKey(sidebarEditDraft.scopeKey);
@@ -225,7 +248,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
       if ((basicInfo as any).div_sno) setSelectedDivision(String((basicInfo as any).div_sno));
       if ((basicInfo as any).brn_sno) setSelectedBranch(String((basicInfo as any).brn_sno));
     }
-  }, [sidebarEditDraft]);
+  }, [sidebarEditDraft, requisitionType]);
 
   // ── Scope key: update when hierarchy selection changes ───────────────────
 
@@ -382,9 +405,12 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
 
   const validateItem = (): boolean => {
     const errs: FormErrors = {};
-    if (!currentItem.item_type) {
-      errs.item_type = 'Please select Product or Service';
-    }
+    // if (!currentItem.item_type) {
+    //   errs.item_type =
+    //     normalizedAllowedItemTypes.length > 1
+    //       ? 'Please select Product or Service'
+    //       : 'Item category is required';
+    // }
     inputItemFields.forEach((field) => {
       if (['file', 'radio'].includes(field.type)) return;
       if (field.require && !currentItem[field.field]) {
@@ -470,7 +496,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   const buildFormData = (): FormData => {
     const formData = new FormData();
     const items = savedItems.map(({ id, ...item }) => {
-      const resolved = { ...item, is_active: true };
+      const resolved: Record<string, any> = { ...item, is_active: true };
       if (resolved.item_attachment instanceof File) {
         resolved.item_attachment = null; // replaced by the indexed field below
       }
@@ -492,7 +518,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   // For draft save/update — JSON only, File objects stripped (drafts are temporary, no FTP)
   const buildDraftPayload = () => {
     const items = savedItems.map(({ id, ...item }) => {
-      const resolved = { ...item, is_active: true };
+      const resolved: Record<string, any> = { ...item, is_active: true };
       if (resolved.item_attachment instanceof File) {
         resolved.item_attachment = null;
       }
@@ -662,6 +688,11 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
 
   const isDeptDraftMode = !!(deptDraftId && deptDraftScopeKey);
   const isPrivateDraftMode = !!draftId && !isDeptDraftMode;
+  const canSubmitRequisition =
+    canCreate(permissionComponent) ||
+    canEdit(permissionComponent) ||
+    (permissionComponent !== 'PurchaseRequisitionPage' &&
+      (canCreate('PurchaseRequisitionPage') || canEdit('PurchaseRequisitionPage')));
 
   return (
     <div className="flex flex-col h-full bg-muted/30 min-h-screen">
@@ -672,8 +703,8 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
             <FileText className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">Purchase Requisition</h1>
-            <p className="text-xs text-muted-foreground">Non-trade purchase requisition form</p>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">{pageTitle}</h1>
+            <p className="text-xs text-muted-foreground">{pageSubtitle}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -1116,7 +1147,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
                   </Button>
 
                   {/* Submit — only shown if user can create */}
-                  {(canCreate("PurchaseRequisitionPage") || canEdit("PurchaseRequisitionPage")) && (
+                  {canSubmitRequisition && (
                   <Button
                     type="submit"
                     className="bg-blue-600 hover:bg-blue-700 h-9"

@@ -46,6 +46,7 @@ export default function SignIn(): JSX.Element {
         toast.error(response?.error || response?.message || "Invalid credentials");
       }
     } catch (error: any) {
+      console.log("Sign-in error:", error);
       toast.error(error?.response?.data?.error || "Failed to sign in");
     } finally {
       setIsSigningIn(false);

@@ -88,6 +88,7 @@ export interface QuotationItem {
   total_amount: number;
   delivery_days: number;
   remarks: string;
+  buyback_value?: number;     // trade-in credit from supplier for existing asset
 }
 
 export interface Quotation {
@@ -108,6 +109,8 @@ export interface Quotation {
   items: QuotationItem[];
   sq_quotation_file?: string;
   split_group?: number;       // which confirmed split group this quotation belongs to
+  advance_payment_required?: boolean;
+  advance_payment_pct?: number;
 }
 
 export interface QuotationFormState {
@@ -118,6 +121,8 @@ export interface QuotationFormState {
   payment_terms: string;
   delivery_days: number;
   remarks: string;
+  advance_payment_required: boolean;
+  advance_payment_pct: number;
 }
 
 export interface POFormState {
@@ -174,6 +179,8 @@ export interface POConfirmItem {
   div_name?: string;
   brn_sno?: number | string;
   brn_name?: string;
+  dept_sno?: number | string;
+  dept_name?: string;
   isSplit: boolean;
   parentItemSno?: number;
   split_group?: number;       // which split PO group (1, 2, 3…). undefined = main PO
@@ -185,5 +192,6 @@ export interface POConfirmationData {
   billing_com_sno?: number | string;
   billing_div_sno?: number | string;
   billing_brn_sno?: number | string;
+  billing_dept_sno?: number | string;
   items: POConfirmItem[];
 }

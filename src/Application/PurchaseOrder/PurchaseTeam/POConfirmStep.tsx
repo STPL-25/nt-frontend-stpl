@@ -12,10 +12,12 @@ import {
 } from '@/components/ui/select';
 import {
   FileText, Package, Scissors, CheckCircle2,
-  Building2, Calendar, Loader2, Info, CheckSquare, X,
+  Building2, Calendar, Loader2, Info, CheckSquare, X, Plus, Minus,
 } from 'lucide-react';
 import { useAppSelector } from '@/globalState/hooks/useAppState';
 import { selectCompanyHierarchy } from '@/globalState/features/hierarchyCompanyDetailsSlice';
+import type { Company, Division, Branch } from '@/globalState/features/hierarchyCompanyDetailsSlice';
+import { useMasterOptions } from '@/hooks/ReUsableHook/useMasterOptions';
 import type { PRRecord, POConfirmItem, POConfirmationData } from './types';
 import { getPRDisplayNo, getPRItems, formatDate, formatINR, today } from './helpers';
 
@@ -50,25 +52,34 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
   onEditConfirm,
 }) => {
   const hierarchy = useAppSelector(selectCompanyHierarchy);
-  const companies = useMemo(() => hierarchy?.companies ?? [], [hierarchy]);
+  const companies = useMemo<Company[]>(() => hierarchy?.companies ?? [], [hierarchy]);
+  const { options: masterOptions } = useMasterOptions(['DeptMaster']);
 
   // ── Billing org (optional override) + required date ───────────────────────
   const [globalComSno, setGlobalComSno] = useState<string>(String(selectedPR.com_sno ?? ''));
   const [globalDivSno, setGlobalDivSno] = useState<string>(String(selectedPR.div_sno ?? ''));
   const [globalBrnSno, setGlobalBrnSno] = useState<string>(String(selectedPR.brn_sno ?? ''));
+  const [globalDeptSno, setGlobalDeptSno] = useState<string>(String(selectedPR.dept_sno ?? ''));
   const [requiredDate, setRequiredDate] = useState<string>(
     selectedPR.required_date ?? selectedPR.req_by_date ?? today()
   );
 
-  const globalDivisions = useMemo(() => {
-    if (!globalComSno) return companies.flatMap(c => c.divisions ?? []);
-    return companies.find(c => String(c.com_sno) === globalComSno)?.divisions ?? [];
+  const globalDivisions = useMemo<Division[]>(() => {
+    if (!globalComSno) return companies.flatMap((c: Company) => c.divisions ?? []);
+    return companies.find((c: Company) => String(c.com_sno) === globalComSno)?.divisions ?? [];
   }, [companies, globalComSno]);
 
-  const globalBranches = useMemo(() => {
-    if (!globalDivSno) return globalDivisions.flatMap(d => d.branches ?? []);
-    return globalDivisions.find(d => String(d.div_sno) === globalDivSno)?.branches ?? [];
+  const globalBranches = useMemo<Branch[]>(() => {
+    if (!globalDivSno) return globalDivisions.flatMap((d: Division) => d.branches ?? []);
+    return globalDivisions.find((d: Division) => String(d.div_sno) === globalDivSno)?.branches ?? [];
   }, [globalDivisions, globalDivSno]);
+
+  const deptOptions = useMemo(() => {
+    if (!masterOptions?.DeptMaster || !globalBrnSno) return [];
+    return (masterOptions.DeptMaster as any[]).filter(
+      (d: any) => d.brn_sno != null && String(d.brn_sno) === String(globalBrnSno)
+    );
+  }, [masterOptions?.DeptMaster, globalBrnSno]);
 
   // ── Item rows ─────────────────────────────────────────────────────────────
   const prItems = getPRItems(selectedPR);
@@ -148,6 +159,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
       billing_com_sno: globalComSno || selectedPR.com_sno,
       billing_div_sno: globalDivSno || selectedPR.div_sno || undefined,
       billing_brn_sno: globalBrnSno || selectedPR.brn_sno || undefined,
+      billing_dept_sno: globalDeptSno || selectedPR.dept_sno || undefined,
       items: rows,
     };
     await onConfirmed(confirmData);
@@ -368,12 +380,12 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                 (optional — leave as-is to use PR values)
               </span>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
               <div>
                 <label className="text-xs text-gray-500 font-medium block mb-1">Company</label>
                 <Select
                   value={globalComSno}
-                  onValueChange={v => { setGlobalComSno(v); setGlobalDivSno(''); setGlobalBrnSno(''); }}
+                  onValueChange={v => { setGlobalComSno(v); setGlobalDivSno(''); setGlobalBrnSno(''); setGlobalDeptSno(''); }}
                 >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Same as PR" />
@@ -389,7 +401,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                 <label className="text-xs text-gray-500 font-medium block mb-1">Division</label>
                 <Select
                   value={globalDivSno}
-                  onValueChange={v => { setGlobalDivSno(v); setGlobalBrnSno(''); }}
+                  onValueChange={v => { setGlobalDivSno(v); setGlobalBrnSno(''); setGlobalDeptSno(''); }}
                   disabled={!globalComSno}
                 >
                   <SelectTrigger className="h-8 text-xs">
@@ -406,7 +418,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                 <label className="text-xs text-gray-500 font-medium block mb-1">Branch</label>
                 <Select
                   value={globalBrnSno}
-                  onValueChange={v => setGlobalBrnSno(v)}
+                  onValueChange={v => { setGlobalBrnSno(v); setGlobalDeptSno(''); }}
                   disabled={!globalDivSno}
                 >
                   <SelectTrigger className="h-8 text-xs">
@@ -415,6 +427,23 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                   <SelectContent>
                     {globalBranches.map(b => (
                       <SelectItem key={b.brn_sno} value={String(b.brn_sno)}>{b.brn_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-medium block mb-1">Department</label>
+                <Select
+                  value={globalDeptSno}
+                  onValueChange={v => setGlobalDeptSno(v)}
+                  disabled={!globalBrnSno}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Same as PR" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {deptOptions.map((d: any) => (
+                      <SelectItem key={d.value} value={String(d.value)}>{d.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -589,13 +618,31 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
 
                     {/* Qty */}
                     <TableCell className="text-center py-2" onClick={e => e.stopPropagation()}>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={row.qty}
-                        onChange={e => updateRow(row.id, Number(e.target.value))}
-                        className="h-7 w-20 text-sm text-center mx-auto"
-                      />
+                      <div className="flex items-center justify-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 w-6 p-0"
+                          onClick={() => updateRow(row.id, Math.max(1, row.qty - 1))}
+                        >
+                          <Minus size={10} />
+                        </Button>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={row.qty}
+                          onChange={e => updateRow(row.id, Number(e.target.value))}
+                          className="h-7 w-14 text-sm text-center"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 w-6 p-0"
+                          onClick={() => updateRow(row.id, row.qty + 1)}
+                        >
+                          <Plus size={10} />
+                        </Button>
+                      </div>
                       <div className="text-[10px] text-gray-400 mt-0.5">orig: {row.originalQty}</div>
                     </TableCell>
 

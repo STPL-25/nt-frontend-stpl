@@ -87,6 +87,13 @@ export function useKycSections(
       return u;
     });
 
+  const patchAddress = (index: number, values: Record<string, unknown>) =>
+    setAddresses((prev) => {
+      const u = [...prev];
+      u[index] = { ...u[index], ...values };
+      return u;
+    });
+
   const setPrimaryAddress = (index: number) => {
     setAddresses((prev) => prev.map((a, i) => ({ ...a, isPrimary: i === index })));
     toast.success("Primary address updated");
@@ -111,6 +118,11 @@ export function useKycSections(
       u[index] = { ...u[index], [field]: value };
       return u;
     });
+
+  const patchBank = (bankId: string, values: Record<string, unknown>) =>
+    setBankDetails((prev) =>
+      prev.map((bank) => (bank.id === bankId ? { ...bank, ...values } : bank))
+    );
 
   const changeBankCheque = (index: number, file: File | null) =>
     setBankDetails((prev) => {
@@ -200,11 +212,13 @@ export function useKycSections(
     addAddress,
     removeAddress,
     changeAddress,
+    patchAddress,
     setPrimaryAddress,
     // bank
     addBank,
     removeBank,
     changeBank,
+    patchBank,
     changeBankCheque,
     setPrimaryBank,
     // contact

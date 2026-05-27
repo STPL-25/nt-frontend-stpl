@@ -118,7 +118,7 @@ const GRNPage: React.FC = () => {
     setGRNList([]);
   };
 
-  const handleSubmitGRN = (form: GRNFormState, items: GRNItemEntry[]) => {
+  const handleSubmitGRN = async (form: GRNFormState, items: GRNItemEntry[]) => {
     if (!selectedPO) return;
     if (!form.received_date) { toast.error('Received date is required'); return; }
     if (items.length === 0) { toast.error('Select at least one item to receive'); return; }
