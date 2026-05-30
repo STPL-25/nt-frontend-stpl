@@ -18,6 +18,7 @@ import useFetch from "@/hooks/useFetchHook";
 import { apiGetAllKycDatas } from "@/Services/Api";
 import { KYCData, APIResponse } from "./types/KYCDataViewType";
 import { LoadingState, ErrorState, EmptyState } from "@/CustomComponent/PageComponents";
+import { StatusBadge, getStatusInfo } from "@/utils/statusUtils";
 import { getAuthFileUrl } from "@/Services/authUrl";
 
 type DocPreview = { url: string; name: string; docType?: string };
@@ -36,18 +37,6 @@ const getInitials = (name: string) =>
 const isImageUrl = (url: string) => /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i.test(url);
 const isPdfUrl   = (url: string) => /\.pdf(\?.*)?$/i.test(url);
 
-const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-  Y: { label: "Active",   cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-800" },
-  N: { label: "Inactive", cls: "bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800/40 dark:text-slate-400 dark:border-slate-700" },
-  P: { label: "Pending",  cls: "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950/20 dark:text-yellow-400 dark:border-yellow-800" },
-  A: { label: "Approved", cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-800" },
-  R: { label: "Rejected", cls: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-800" },
-};
-
-function getStatus(s: string | undefined) {
-  const key = String(s ?? "P").toUpperCase();
-  return STATUS_MAP[key] ?? { label: key, cls: "" };
-}
 
 // ─── List card (left sidebar) ────────────────────────────────────────────────
 
@@ -56,7 +45,6 @@ function KYCListCard({
 }: {
   supplier: KYCData; isSelected: boolean; onClick: () => void;
 }) {
-  const { label, cls } = getStatus(supplier.status);
   return (
     <Card
       className={`cursor-pointer transition-all hover:shadow-md border ${
@@ -85,7 +73,7 @@ function KYCListCard({
         </div>
 
         <div className="flex flex-wrap gap-1.5">
-          <Badge variant="outline" className={`text-xs border ${cls}`}>{label}</Badge>
+          <StatusBadge status={supplier.status} />
           {supplier.is_gst_avail === "Y" && (
             <Badge className="text-xs bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/20 dark:text-blue-400">GST</Badge>
           )}
@@ -193,7 +181,7 @@ function KYCDetailPanel({ supplier }: { supplier: KYCData }) {
   const bankInfo  = useMemo(() => parseJSON(supplier.kyc_bank_info), [supplier]);
   const contacts  = useMemo(() => parseJSON(supplier.kyc_contact_details), [supplier]);
   const documents = useMemo(() => parseJSON(supplier.kyc_uploaded_doc), [supplier]);
-  const { label: statusLabel, cls: statusCls } = getStatus(supplier.status);
+  const { label: statusLabel, cls: statusCls } = getStatusInfo(supplier.status);
 
   const basicFields = [
     { label: "Company Name",   value: supplier.company_name,   icon: Building2   },

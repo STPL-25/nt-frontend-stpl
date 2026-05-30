@@ -587,7 +587,6 @@ export default function KycEntryForm() {
         { label: "Date Of Registration", value: gstSubmissionFields.date_of_reg },
       ]
     : [];
-console.log(gstSummaryRows)
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (

@@ -24,6 +24,7 @@ import { getPRDisplayNo, getPRItems, formatDate, formatINR, today } from './help
 interface POConfirmStepProps {
   selectedPR: PRRecord;
   onConfirmed: (data: POConfirmationData) => Promise<void>;
+  onSplitGroupCreated?: (groupNo: number, items: POConfirmItem[]) => Promise<void>;
   saving: boolean;
   confirmedData?: POConfirmationData | null;
   onEditConfirm?: () => void;
@@ -47,6 +48,7 @@ const gc = (g: number) => GROUP_COLORS[(g - 1) % GROUP_COLORS.length];
 const POConfirmStep: React.FC<POConfirmStepProps> = ({
   selectedPR,
   onConfirmed,
+  onSplitGroupCreated,
   saving,
   confirmedData,
   onEditConfirm,
@@ -126,10 +128,17 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
     if (selectedIds.size === 0) return;
     const newGroup = splitGroupCount + 1;
     setSplitGroupCount(newGroup);
+
+    const groupItems = rows
+      .filter(r => selectedIds.has(r.id))
+      .map(r => ({ ...r, split_group: newGroup }));
+
     setRows(prev => prev.map(r =>
       selectedIds.has(r.id) ? { ...r, split_group: newGroup } : r
     ));
     setSelectedIds(new Set());
+
+    onSplitGroupCreated?.(newGroup, groupItems);
   };
 
   const removeFromGroups = () => {

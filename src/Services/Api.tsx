@@ -110,6 +110,12 @@ export const purchaseTeamGetQuotationDrafts = baseUrl + "/api/purchase_team/getQ
 export const purchaseTeamDeleteQuotationDraft = (draftId: string) =>
   `${baseUrl}/api/purchase_team/deleteQuotationDraft/${draftId}`;
 
+// Split groups
+export const purchaseTeamSaveSplitGroup = baseUrl + "/api/purchase_team/saveSplitGroup";
+export const purchaseTeamGetSplitGroups = (prBasicSno: number) =>
+  `${baseUrl}/api/purchase_team/getSplitGroups/${prBasicSno}`;
+export const purchaseTeamUpdateSplitGroupOrg = baseUrl + "/api/purchase_team/updateSplitGroupOrg";
+
 // PO Confirmation (Step 1 before quotation)
 export const purchaseTeamSavePOConfirmation = baseUrl + "/api/purchase_team/savePOConfirmation";
 export const purchaseTeamGetPOConfirmation = (prBasicSno: number) =>

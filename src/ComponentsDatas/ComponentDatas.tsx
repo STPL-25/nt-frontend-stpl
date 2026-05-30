@@ -18,6 +18,7 @@ import { lazy, LazyExoticComponent, ComponentType } from "react";
  export const StorePOGeneratePage = lazy(() => import("../Application/Store/StorePOGeneratePage"));
  export const PurchaseOrder = lazy(() => import("../Application/PurchaseOrder/PurchaseOrder"));
  export const PurchaseTeamPage = lazy(() => import("../Application/PurchaseOrder/PurchaseTeamPage"));
+//  export const PurchaseTeamPRView = lazy(() => import("../Application/PurchaseOrder/PurchaseTeamPRView"));
  export const PurchaseRequisitionReview = lazy(() => import("../Application/PR/PurchaseRequisitionReview"));
  export const GRNPage = lazy(() => import("../Application/GRN/GRNPage"));
  export const InventoryPage = lazy(() => import("../Application/Inventory/InventoryPage"));
@@ -45,6 +46,7 @@ export const sectionComponents: SectionComponentsMap = {
   StorePOGeneratePage,
   PurchaseOrder,
   PurchaseTeamPage,
+  // PurchaseTeamPRView,
   PurchaseRequisitionReview,
   GRNPage,
   InventoryPage,

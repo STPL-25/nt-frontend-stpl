@@ -1,508 +1,283 @@
-import React, { useState, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useMemo, useState } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { Scissors, Plus, Trash2, Package, ArrowRight, Info, Search, Loader2, CheckSquare } from 'lucide-react';
-import { useSplitItemFields, useVendorFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
-import type { PRRecord, Vendor, POGroup, POGroupItem } from './types';
-import { getPRDisplayNo, getPRItems, formatINR } from './helpers';
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table';
+import {
+  Scissors, Package, CheckSquare, X, Info, PackageOpen,
+} from 'lucide-react';
+import type { POConfirmItem } from './types';
+import { formatINR } from './helpers';
+
+// ── Split group colour palette (mirrors POConfirmStep / QuotationsTab) ────────
+const GROUP_COLORS = [
+  { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200',  badge: 'bg-indigo-600'  },
+  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', badge: 'bg-emerald-600' },
+  { bg: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-200',  badge: 'bg-orange-500'  },
+  { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200',  badge: 'bg-purple-600'  },
+  { bg: 'bg-pink-50',    text: 'text-pink-700',    border: 'border-pink-200',    badge: 'bg-pink-500'    },
+];
+const gc = (g: number) => GROUP_COLORS[(g - 1) % GROUP_COLORS.length];
+
+const itemEst = (it: POConfirmItem) => (Number(it.est_cost ?? 0) * Number(it.qty ?? 0)) || 0;
 
 interface SplitPRTabProps {
-  selectedPR: PRRecord;
-  vendors: Vendor[];
-  loadingVendors: boolean;
-  /** Callback: user finalized the split groups, ready for quotations */
-  onSplitConfirmed: (groups: POGroup[]) => void;
+  prNo: string;
+  /** Confirmed items (POConfirmStep output). Items with a split_group form separate POs. */
+  items: POConfirmItem[];
+  /** Replace the full item list (split_group flags updated) in the parent. */
+  onItemsChange: (items: POConfirmItem[]) => void;
+  /** Best-effort backend persistence each time a new split group is created. */
+  onGroupPersist?: (groupNo: number, groupItems: POConfirmItem[]) => void;
 }
 
-let groupCounter = 0;
-const nextGroupId = () => `split-${++groupCounter}`;
-
 const SplitPRTab: React.FC<SplitPRTabProps> = ({
-  selectedPR, vendors, loadingVendors, onSplitConfirmed,
+  prNo, items, onItemsChange, onGroupPersist,
 }) => {
-  const splitItemFields = useSplitItemFields();
-  const vendorFields = useVendorFields();
-  const viewFields = splitItemFields.filter(f => f.view);
-  const viewVendorFields = vendorFields.filter(f => f.view);
+  // Selection works on the IDs of currently-available (unsplit) items
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const items = getPRItems(selectedPR);
-  const prNo = getPRDisplayNo(selectedPR);
+  // Items still available to split (no group yet) — split items disappear from here
+  const availableItems = useMemo(
+    () => items.filter(i => !i.split_group),
+    [items],
+  );
 
-  // Groups: each group gets a subset of items and an assigned vendor
-  const [groups, setGroups] = useState<POGroup[]>([]);
-  // item index → { groupId, qty }
-  const [itemAssignment, setItemAssignment] = useState<Record<number, { groupId: string; qty: number }>>({});
-  const [searchVendor, setSearchVendor] = useState('');
-  const [assigningVendorGroup, setAssigningVendorGroup] = useState<string | null>(null);
-
-  // Multi-select state
-  const [selectedIdxs, setSelectedIdxs] = useState<Set<number>>(new Set());
-  const [bulkGroupId, setBulkGroupId] = useState<string>('');
-
-  const filteredVendors = useMemo(() => {
-    const q = searchVendor.toLowerCase();
-    return vendors.filter(v =>
-      !q ||
-      (v.company_name ?? v.vendor_name ?? '').toLowerCase().includes(q) ||
-      (v.contact_person ?? '').toLowerCase().includes(q) ||
-      (v.gst_no ?? '').toLowerCase().includes(q)
-    );
-  }, [vendors, searchVendor]);
-
-  // ── Group CRUD ─────────────────────────────────────────────────────────────
-
-  const addGroup = () => {
-    const id = nextGroupId();
-    const label = `Split ${groups.length + 1}`;
-    setGroups(prev => [...prev, {
-      id, label, items: [],
-      sourcePRs: [selectedPR.pr_basic_sno!],
-    }]);
-  };
-
-  const removeGroup = (groupId: string) => {
-    setGroups(prev => prev.filter(g => g.id !== groupId));
-    // unassign any items in this group
-    setItemAssignment(prev => {
-      const next = { ...prev };
-      for (const [key, val] of Object.entries(next)) {
-        if (val.groupId === groupId) delete next[Number(key)];
+  // Split POs, grouped by split_group number, in creation order
+  const splitGroups = useMemo(() => {
+    const map = new Map<number, POConfirmItem[]>();
+    items.forEach(i => {
+      if (i.split_group) {
+        if (!map.has(i.split_group)) map.set(i.split_group, []);
+        map.get(i.split_group)!.push(i);
       }
-      return next;
     });
-  };
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([groupNo, groupItems]) => ({ groupNo, items: groupItems }));
+  }, [items]);
 
-  const assignVendorToGroup = (groupId: string, vendor: Vendor) => {
-    setGroups(prev => prev.map(g =>
-      g.id === groupId
-        ? { ...g, vendorSno: vendor.kyc_basic_info_sno ?? vendor.vendor_sno, vendorName: vendor.company_name ?? vendor.vendor_name }
-        : g
-    ));
-    setAssigningVendorGroup(null);
-    setSearchVendor('');
-  };
+  const nextGroupNo = useMemo(
+    () => splitGroups.reduce((max, g) => Math.max(max, g.groupNo), 0) + 1,
+    [splitGroups],
+  );
 
-  const assignItem = (itemIdx: number, groupId: string | null, qty?: number) => {
-    setItemAssignment(prev => {
-      const next = { ...prev };
-      if (!groupId) {
-        delete next[itemIdx];
-      } else {
-        const item = items[itemIdx];
-        const originalQty = Number(
-          item?.qty ?? item?.quantity ?? (item as any)?.req_qty ?? 0
-        ) || 1; // default to 1 if qty is 0 or missing
-        next[itemIdx] = { groupId, qty: qty ?? next[itemIdx]?.qty ?? originalQty };
-      }
-      return next;
-    });
-  };
-
-  const updateAssignedQty = (itemIdx: number, qty: number) => {
-    setItemAssignment(prev => {
-      if (!prev[itemIdx]) return prev;
-      return { ...prev, [itemIdx]: { ...prev[itemIdx], qty } };
-    });
-  };
-
-  // ── Multi-select helpers ───────────────────────────────────────────────────
-
-  const toggleSelectItem = (idx: number) => {
-    setSelectedIdxs(prev => {
+  // ── Selection helpers ───────────────────────────────────────────────────────
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
 
   const toggleSelectAll = () => {
-    if (selectedIdxs.size === items.length) {
-      setSelectedIdxs(new Set());
-    } else {
-      setSelectedIdxs(new Set(items.map((_, i) => i)));
-    }
+    setSelectedIds(prev =>
+      prev.size === availableItems.length
+        ? new Set()
+        : new Set(availableItems.map(i => i.id)),
+    );
   };
 
-  const bulkAssign = () => {
-    if (!bulkGroupId || selectedIdxs.size === 0) return;
-    setItemAssignment(prev => {
-      const next = { ...prev };
-      selectedIdxs.forEach(idx => {
-        const item = items[idx];
-        const originalQty = Number(item?.qty ?? item?.quantity ?? (item as any)?.req_qty ?? 0) || 1;
-        next[idx] = { groupId: bulkGroupId, qty: next[idx]?.qty ?? originalQty };
-      });
-      return next;
-    });
-    setSelectedIdxs(new Set());
-    setBulkGroupId('');
+  // ── Split / unsplit actions ─────────────────────────────────────────────────
+  const handleSplit = () => {
+    if (selectedIds.size === 0) return;
+    const groupNo = nextGroupNo;
+    const updated = items.map(i =>
+      selectedIds.has(i.id) ? { ...i, split_group: groupNo } : i,
+    );
+    onItemsChange(updated);
+    onGroupPersist?.(groupNo, updated.filter(i => i.split_group === groupNo));
+    setSelectedIds(new Set());
   };
 
-  // ── Build final groups for confirmation ────────────────────────────────────
-
-  const builtGroups = useMemo((): POGroup[] => {
-    return groups.map(g => {
-      const groupItems: POGroupItem[] = [];
-      items.forEach((item, idx) => {
-        const assignment = itemAssignment[idx];
-        if (assignment?.groupId !== g.id) return;
-        groupItems.push({
-          pr_basic_sno: selectedPR.pr_basic_sno!,
-          pr_no: prNo,
-          pr_item_sno: item.pr_item_sno,
-          prod_sno: item.prod_sno,
-          prod_name: item.prod_name ?? item.item_name ?? '',
-          specification: item.specification ?? '',
-          qty: assignment.qty,
-          originalQty: Number(item.qty ?? item.quantity ?? (item as any).req_qty ?? 0) || 1,
-          unit: item.unit ?? (item as any).uom_sno ?? (item as any).unit_sno ?? 0,
-          unit_name: item.unit_name ?? item.uom_name ?? item.uom_code ?? '',
-          est_cost: item.est_cost ?? item.estimated_price,
-        });
-      });
-      return { ...g, items: groupItems };
-    });
-  }, [groups, itemAssignment, items, selectedPR, prNo]);
-
-  const allItemsAssigned = items.every((_, idx) => itemAssignment[idx]);
-  const anyGroupHasVendor = builtGroups.some(g => g.vendorSno && g.items.length > 0);
-
-  const handleConfirm = () => {
-    const validGroups = builtGroups.filter(g => g.items.length > 0);
-    if (validGroups.length === 0) return;
-    onSplitConfirmed(validGroups);
+  const dissolveGroup = (groupNo: number) => {
+    onItemsChange(items.map(i =>
+      i.split_group === groupNo ? { ...i, split_group: undefined } : i,
+    ));
   };
 
-  // ── Helper: get vendor field display value ─────────────────────────────────
-  const getVendorFieldValue = (vendor: Vendor, field: string): string => {
-    if (field === 'company_name') return vendor.company_name ?? vendor.vendor_name ?? '—';
-    if (field === 'mobile_number') return vendor.mobile_number ?? vendor.mobile ?? vendor.phone ?? vendor.email ?? '—';
-    return (vendor as any)[field] ?? '—';
+  const removeItemFromGroup = (id: string) => {
+    onItemsChange(items.map(i =>
+      i.id === id ? { ...i, split_group: undefined } : i,
+    ));
   };
+
+  const mainPOItems = availableItems; // unsplit remainder = the main PO
+  const allSelected = availableItems.length > 0 && selectedIds.size === availableItems.length;
 
   return (
     <div className="space-y-4">
       {/* Info */}
-      <Card>
-        <CardContent className="py-3">
-          <div className="flex items-start gap-2 text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded p-3">
-            <Info size={16} className="shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium mb-1">Split PR into Multiple POs</p>
-              <p className="text-gray-600">
-                1. Create split groups below &nbsp;2. Assign items to each group &nbsp;3. Assign a vendor to each group
-                &nbsp;4. Confirm to proceed to quotations.
-                Each group will become a separate PO: <strong>{prNo}/1</strong>, <strong>{prNo}/2</strong>, etc.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-start gap-2 text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded p-3">
+        <Info size={16} className="shrink-0 mt-0.5" />
+        <p className="text-gray-600">
+          Tick the items you want to break out, then click <strong>Split</strong>. Each split becomes a
+          separate PO (<strong>{prNo}/Group&nbsp;1</strong>, <strong>{prNo}/Group&nbsp;2</strong>, …) and its
+          items drop off the list below. Pick a supplier and add a quotation for every PO in the section underneath.
+        </p>
+      </div>
 
-      {/* Groups management */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Scissors size={16} className="text-indigo-600" />
-              Split Groups
-              <Badge variant="outline" className="text-xs ml-1">{groups.length}</Badge>
-            </CardTitle>
-            <Button size="sm" variant="outline" className="text-xs" onClick={addGroup}>
-              <Plus size={12} className="mr-1" /> Add Group
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {groups.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">
-              No groups yet. Click <strong>"Add Group"</strong> to create split groups, then assign items and vendors.
-            </p>
-          ) : (
-            groups.map((group, gIdx) => {
-              const built = builtGroups.find(bg => bg.id === group.id);
-              const itemCount = built?.items.length ?? 0;
-              return (
-                <div key={group.id} className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-indigo-600 text-white border-none">{prNo}/{gIdx + 1}</Badge>
-                      <span className="text-sm font-medium text-gray-800">{group.label}</span>
-                      <span className="text-xs text-gray-400">({itemCount} items)</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {group.vendorSno ? (
-                        <Badge variant="outline" className="text-xs text-green-700 border-green-300 bg-green-50">
-                          {group.vendorName}
-                        </Badge>
-                      ) : (
-                        <Button size="sm" variant="outline" className="text-xs h-6"
-                          onClick={() => setAssigningVendorGroup(assigningVendorGroup === group.id ? null : group.id)}>
-                          Assign Vendor
-                        </Button>
-                      )}
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-400 hover:text-red-600"
-                        onClick={() => removeGroup(group.id)}>
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Vendor assignment picker */}
-                  {assigningVendorGroup === group.id && (
-                    <div className="border rounded p-2 bg-gray-50 space-y-2">
-                      <div className="relative">
-                        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <Input
-                          placeholder="Search vendors..."
-                          value={searchVendor}
-                          onChange={(e) => setSearchVendor(e.target.value)}
-                          className="pl-8 h-7 text-xs"
-                          autoFocus
-                        />
-                      </div>
-                      {loadingVendors ? (
-                        <div className="flex items-center gap-2 text-gray-400 py-2 justify-center">
-                          <Loader2 size={14} className="animate-spin" /><span className="text-xs">Loading...</span>
-                        </div>
-                      ) : (
-                        <div className="max-h-40 overflow-y-auto">
-                          <Table>
-                            <TableHeader>
-                              <TableRow className="bg-gray-100">
-                                {viewVendorFields.map(f => (
-                                  <TableHead key={f.field} className="text-[10px] py-1">{f.label}</TableHead>
-                                ))}
-                                <TableHead className="text-[10px] py-1 w-16"></TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {filteredVendors.slice(0, 10).map(v => (
-                                <TableRow key={v.kyc_basic_info_sno ?? v.vendor_sno} className="hover:bg-indigo-50 cursor-pointer"
-                                  onClick={() => assignVendorToGroup(group.id, v)}>
-                                  {viewVendorFields.map(f => (
-                                    <TableCell key={f.field} className="text-[11px] py-1">
-                                      {getVendorFieldValue(v, f.field)}
-                                    </TableCell>
-                                  ))}
-                                  <TableCell className="py-1">
-                                    <Button size="sm" variant="ghost" className="h-5 text-[10px] text-indigo-600">Select</Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      )}
-                    </div>
+      {/* ── Live split-PO list ───────────────────────────────────────────────── */}
+      {(splitGroups.length > 0 || mainPOItems.length > 0) && (
+        <div className="space-y-2">
+          {splitGroups.map(({ groupNo, items: gItems }) => {
+            const col = gc(groupNo);
+            const est = gItems.reduce((s, it) => s + itemEst(it), 0);
+            return (
+              <div
+                key={groupNo}
+                className={`rounded-lg border p-2.5 ${col.bg} ${col.border}`}
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge className={`${col.badge} text-white border-none text-[10px] shrink-0`}>
+                    {prNo}/Group {groupNo}
+                  </Badge>
+                  <span className="text-xs text-gray-500">{gItems.length} item(s) → separate PO</span>
+                  {est > 0 && (
+                    <span className="text-xs text-gray-500 ml-auto">Est: {formatINR(est)}</span>
                   )}
-                </div>
-              );
-            })
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Item assignment table (only show when groups exist) */}
-      {groups.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Package size={16} className="text-orange-600" />
-                Assign Items to Groups
-                {allItemsAssigned && (
-                  <Badge className="text-xs bg-green-100 text-green-700 border-green-200 ml-2">All assigned</Badge>
-                )}
-              </CardTitle>
-
-              {/* Bulk-assign toolbar — visible when items are checked */}
-              {selectedIdxs.size > 0 && (
-                <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5">
-                  <CheckSquare size={14} className="text-indigo-600 shrink-0" />
-                  <span className="text-xs font-medium text-indigo-700">{selectedIdxs.size} item(s) selected</span>
-                  <span className="text-gray-300 mx-1">|</span>
-                  <Select value={bulkGroupId} onValueChange={setBulkGroupId}>
-                    <SelectTrigger className="h-7 text-xs w-44">
-                      <SelectValue placeholder="Select group…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {groups.map((g, gIdx) => (
-                        <SelectItem key={g.id} value={g.id}>
-                          {prNo}/{gIdx + 1}{g.vendorName ? ` — ${g.vendorName}` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    size="sm"
-                    className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700"
-                    disabled={!bulkGroupId}
-                    onClick={bulkAssign}
-                  >
-                    Assign
-                  </Button>
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-7 text-xs text-gray-500"
-                    onClick={() => setSelectedIdxs(new Set())}
+                    className="h-6 text-[11px] text-red-500 hover:text-red-600 hover:bg-red-50"
+                    onClick={() => dissolveGroup(groupNo)}
                   >
-                    Clear
+                    <X size={12} className="mr-0.5" /> Dissolve
                   </Button>
                 </div>
-              )}
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {gItems.map(it => (
+                    <span
+                      key={it.id}
+                      className={`inline-flex items-center gap-1 text-[11px] bg-white/70 border ${col.border} rounded px-1.5 py-0.5`}
+                    >
+                      <span className="font-medium text-gray-700">{it.prod_name}</span>
+                      <span className="text-gray-400">{it.qty} {it.unit_name}</span>
+                      <button
+                        type="button"
+                        title="Move back to main PO"
+                        className="text-gray-300 hover:text-red-500"
+                        onClick={() => removeItemFromGroup(it.id)}
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Main PO — the unsplit remainder */}
+          {splitGroups.length > 0 && mainPOItems.length > 0 && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className="bg-gray-500 text-white border-none text-[10px] shrink-0">Main PO</Badge>
+                <span className="text-xs text-gray-500">{mainPOItems.length} item(s) kept together</span>
+              </div>
             </div>
-          </CardHeader>
-          <CardContent className="p-0">
+          )}
+        </div>
+      )}
+
+      {/* ── Available items to split ──────────────────────────────────────────── */}
+      <Card>
+        <CardContent className="p-0">
+          {/* Toolbar */}
+          <div className="flex items-center justify-between flex-wrap gap-2 px-3 py-2 border-b bg-gray-50/60">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <Package size={15} className="text-orange-600" />
+              Items {splitGroups.length > 0 ? '(remaining)' : ''}
+              <Badge variant="outline" className="text-xs">{availableItems.length}</Badge>
+            </div>
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1">
+                <CheckSquare size={14} className="text-indigo-600 shrink-0" />
+                <span className="text-xs font-medium text-indigo-700">{selectedIds.size} selected</span>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700"
+                  onClick={handleSplit}
+                >
+                  <Scissors size={12} className="mr-1" />
+                  Split into {prNo}/Group {nextGroupNo}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs text-gray-500"
+                  onClick={() => setSelectedIds(new Set())}
+                >
+                  Clear
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {availableItems.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-8 text-gray-400">
+              <PackageOpen size={26} />
+              <p className="text-sm">All items have been split into separate POs.</p>
+            </div>
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50">
-                  {/* Select-all checkbox */}
                   <TableHead className="w-10 pl-3">
                     <Checkbox
-                      checked={items.length > 0 && selectedIdxs.size === items.length}
+                      checked={allSelected}
                       onCheckedChange={toggleSelectAll}
                       aria-label="Select all items"
                     />
                   </TableHead>
                   <TableHead className="text-xs w-8">#</TableHead>
-                  {viewFields.map(f => (
-                    <TableHead key={f.field} className={`text-xs ${f.field === 'qty' ? 'text-center w-28' : ''}`}>
-                      {f.label}
-                    </TableHead>
-                  ))}
+                  <TableHead className="text-xs min-w-[160px]">Item</TableHead>
+                  <TableHead className="text-xs w-24 text-center">Qty</TableHead>
+                  <TableHead className="text-xs w-16 text-center">UOM</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item, idx) => {
-                  const assignment = itemAssignment[idx];
-                  const originalQty = Number(item.qty ?? item.quantity ?? (item as any).req_qty ?? 0) || 1;
-                  const isChecked = selectedIdxs.has(idx);
-
+                {availableItems.map((item, idx) => {
+                  const isChecked = selectedIds.has(item.id);
                   return (
                     <TableRow
-                      key={idx}
-                      className={`${assignment ? '' : 'bg-amber-50/40'} ${isChecked ? 'bg-indigo-50/60' : ''}`}
+                      key={item.id}
+                      className={`cursor-pointer select-none ${isChecked ? 'bg-indigo-50/70' : ''}`}
+                      onClick={() => toggleSelect(item.id)}
                     >
-                      {/* Row checkbox */}
-                      <TableCell className="pl-3 py-2">
+                      <TableCell className="pl-3 py-2" onClick={e => e.stopPropagation()}>
                         <Checkbox
                           checked={isChecked}
-                          onCheckedChange={() => toggleSelectItem(idx)}
-                          aria-label={`Select item ${idx + 1}`}
+                          onCheckedChange={() => toggleSelect(item.id)}
+                          aria-label={`Select ${item.prod_name}`}
                         />
                       </TableCell>
-                      <TableCell className="text-xs text-gray-400">{idx + 1}</TableCell>
-                      {viewFields.map(f => {
-                        if (f.field === 'prod_name') {
-                          return (
-                            <TableCell key={f.field} className="text-sm font-medium">
-                              {item.prod_name ?? item.item_name ?? '—'}
-                            </TableCell>
-                          );
-                        }
-                        if (f.field === 'qty') {
-                          return (
-                            <TableCell key={f.field} className="text-center">
-                              <div className="flex flex-col items-center">
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  max={originalQty}
-                                  value={assignment?.qty ?? originalQty}
-                                  onChange={(e) => {
-                                    if (assignment) updateAssignedQty(idx, Number(e.target.value));
-                                  }}
-                                  disabled={!assignment}
-                                  className="h-7 w-20 text-sm text-center"
-                                />
-                                <span className="text-[10px] text-gray-400">of {originalQty}</span>
-                              </div>
-                            </TableCell>
-                          );
-                        }
-                        if (f.field === 'unit_name') {
-                          return <TableCell key={f.field} className="text-sm text-center">{item.unit_name ?? '—'}</TableCell>;
-                        }
-                        if (f.field === 'assign_to') {
-                          return (
-                            <TableCell key={f.field}>
-                              <Select
-                                value={assignment?.groupId ?? 'unassigned'}
-                                onValueChange={(val) => assignItem(idx, val === 'unassigned' ? null : val)}
-                              >
-                                <SelectTrigger className="h-7 text-xs">
-                                  <SelectValue placeholder="— Unassigned —" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="unassigned">— Unassigned —</SelectItem>
-                                  {groups.map((g, gIdx) => (
-                                    <SelectItem key={g.id} value={g.id}>
-                                      {prNo}/{gIdx + 1} {g.vendorName ? `(${g.vendorName})` : ''}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                          );
-                        }
-                        return <TableCell key={f.field} className="text-sm">{(item as any)[f.field] ?? '—'}</TableCell>;
-                      })}
+                      <TableCell className="text-xs text-gray-400 pl-3">{idx + 1}</TableCell>
+                      <TableCell className="py-2">
+                        <div className="text-sm font-medium leading-tight">{item.prod_name || '—'}</div>
+                        {item.specification && (
+                          <div className="text-[11px] text-gray-400 truncate max-w-[220px]">
+                            {item.specification}
+                          </div>
+                        )}
+                        {item.est_cost ? (
+                          <div className="text-[11px] text-gray-400">Est: {formatINR(Number(item.est_cost))}</div>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-center text-sm font-medium py-2">{item.qty}</TableCell>
+                      <TableCell className="text-center text-xs py-2">{item.unit_name || '—'}</TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Split preview & confirm */}
-      {builtGroups.some(g => g.items.length > 0) && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">Split Preview</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {builtGroups.filter(g => g.items.length > 0).map((g, gIdx) => (
-              <div key={g.id} className="flex items-center gap-3 bg-indigo-50 border border-indigo-100 rounded p-2 text-xs">
-                <Badge className="bg-indigo-600 text-white border-none shrink-0">
-                  {prNo}/{gIdx + 1}
-                </Badge>
-                <span className="font-medium text-gray-800">
-                  {g.vendorName || <span className="text-amber-600 italic">No vendor assigned</span>}
-                </span>
-                <span className="text-gray-500">{g.items.length} item(s)</span>
-                <span className="text-gray-500 ml-auto">
-                  Est: {formatINR(g.items.reduce((s, it) => s + (it.est_cost ?? 0) * it.qty, 0))}
-                </span>
-              </div>
-            ))}
-
-            <div className="flex justify-end pt-2">
-              <Button
-                onClick={handleConfirm}
-                disabled={!anyGroupHasVendor}
-                className="bg-indigo-600 hover:bg-indigo-700"
-              >
-                <ArrowRight size={16} className="mr-1" />
-                Confirm Split &amp; Proceed to Quotations
-              </Button>
-            </div>
-            {!anyGroupHasVendor && (
-              <p className="text-[11px] text-amber-600 text-right">Assign a vendor to at least one group to proceed.</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };

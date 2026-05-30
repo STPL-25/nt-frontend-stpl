@@ -1,43 +1,39 @@
 import { useMemo } from "react";
 import { useAppState } from "@/globalState/hooks/useAppState";
-/* ---------- Types ---------- */
+import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
+import type { FieldType, OptionType } from "./fieldType/fieldType";
 
-export interface OptionType {
-  value: string | number;
-  label: string;
-}
+export type { FieldType, OptionType };
 
-export interface FieldType {
-  field: string;
-  label: string;
-  type: "text" | "number" | "select";
-  placeholder?: string;
-  require?: boolean;
-  options?: OptionType[] | any[];
-}
-
-/* ---------- Static Options ---------- */
-
-const priorityOptions: OptionType[] = [
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "urgent", label: "Urgent" },
-];
+/* ---------- Static Options (no master table) ---------- */
 
 const categoryOptions: OptionType[] = [
-  { value: "software", label: "Software" },
-  { value: "hardware", label: "Hardware" },
-  { value: "services", label: "Services" },
-  { value: "training", label: "Training" },
-  { value: "travel", label: "Travel" },
-  { value: "other", label: "Other" },
+  { value: "software",  label: "Software" },
+  { value: "hardware",  label: "Hardware" },
+  { value: "services",  label: "Services" },
+  { value: "training",  label: "Training" },
+  { value: "travel",    label: "Travel" },
+  { value: "other",     label: "Other" },
 ];
 
 /* ---------- Hooks ---------- */
 
 const useBudgetCommonFields = (): FieldType[] => {
   const { deptDetails } = useAppState();
+  const { options } = useMasterOptions(["PriorityMaster"]);
+
+  const priorityOptions: OptionType[] = useMemo(
+    () =>
+      (options?.PriorityMaster ?? []).length > 0
+        ? (options.PriorityMaster as OptionType[])
+        : [
+            { value: "low",    label: "Low" },
+            { value: "medium", label: "Medium" },
+            { value: "high",   label: "High" },
+            { value: "urgent", label: "Urgent" },
+          ],
+    [options?.PriorityMaster]
+  );
 
   return useMemo<FieldType[]>(
     () => [
@@ -72,7 +68,7 @@ const useBudgetCommonFields = (): FieldType[] => {
         require: true,
       },
     ],
-    [deptDetails]
+    [deptDetails, priorityOptions]
   );
 };
 

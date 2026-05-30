@@ -34,7 +34,6 @@ import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import type { FieldType } from '@/FieldDatas/fieldType/fieldType';
 import PRDraftSidebar, { type DeptDraft } from './PRDraftSidebar';
-import { de } from 'date-fns/locale';
 
 interface FormErrors {
   [key: string]: string;

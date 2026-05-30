@@ -3,7 +3,18 @@ export interface OptionType {
   label: string;
 }
 
-export type FieldInputType = "text" | "number" | "select" | "date" | "email" | "textarea" | "checkbox" | "radio" | "file";
+export type FieldInputType =
+  | "text"
+  | "number"
+  | "select"
+  | "search-select"
+  | "multi-select"
+  | "date"
+  | "email"
+  | "textarea"
+  | "checkbox"
+  | "radio"
+  | "file";
 
 export interface FieldType {
   field: string;
@@ -15,4 +26,5 @@ export interface FieldType {
   placeholder?: string;
   options?: OptionType[] | any[];
   defaultValue?: any;
+  disabled?: boolean;
 }

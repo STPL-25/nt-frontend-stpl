@@ -1,28 +1,11 @@
 import React, { ReactElement, useMemo } from "react";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import {  Building, MapPin, FileCheck, IndianRupee, Package, FolderOpen,
-  Receipt,CreditCard, Calendar, Truck, Hash,PiggyBank, UserPlus,Menu,
-  CheckCircle, Gift, FileText, Archive, Settings, Briefcase, Tag, TrendingUp, Wallet, GitBranch,} from "lucide-react";
+  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch,} from "lucide-react";
 import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
-/* ---------- Types ---------- */
+import type { FieldType, OptionType } from "./fieldType/fieldType";
 
-export interface OptionType {
-  value: string | number;
-  label: string;
-}
-
-export type FieldInputType = "text" | "number" | "select" | "date" | "email" | "textarea" | "checkbox" | "radio" | "file";
-
-export interface FieldType {
-  field: string;
-  label: string;
-  require?: boolean;
-  view?: boolean;
-  type: FieldInputType;
-  input?: boolean;
-  placeholder?: string;
-  options?: OptionType[] | any[]; // you can tighten this later
-}
+export type { FieldType, OptionType };
 
 /* ---------- Master Items (with typed icons) ---------- */
 

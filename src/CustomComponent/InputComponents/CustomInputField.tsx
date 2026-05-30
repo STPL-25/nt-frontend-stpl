@@ -1,7 +1,7 @@
 
 
 
-import { JSX } from "react";
+import { JSX, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -76,6 +76,8 @@ export function CustomInputField({
   };
 
   const optionsArray = getOptionsArray();
+
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // eventOrValue can be a native event or a direct value (from Select / Switch / Checkbox)
   const handleChange = (eventOrValue: any) => {
@@ -186,6 +188,53 @@ export function CustomInputField({
             </SelectContent>
           </Select>
         );
+
+      case "search-select": {
+        const selectedLabel = optionsArray.find(
+          (opt) => String(opt.value) === String(value)
+        )?.label;
+
+        return (
+          <Popover open={searchOpen} onOpenChange={setSearchOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                role="combobox"
+                className={cn("w-full justify-between font-normal", className, error && "border-red-500")}
+                disabled={disabled}
+              >
+                <span className={cn("truncate", !selectedLabel && "text-muted-foreground")}>
+                  {selectedLabel ?? placeholder ?? `Select ${label}`}
+                </span>
+                <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+              <Command>
+                <CommandInput placeholder={`Search ${label.toLowerCase()}...`} />
+                <CommandList>
+                  <CommandEmpty>No options found.</CommandEmpty>
+                  <CommandGroup>
+                    {optionsArray.map((option) => (
+                      <CommandItem
+                        key={option.value}
+                        value={String(option.label)}
+                        onSelect={() => {
+                          handleChange(String(option.value));
+                          setSearchOpen(false);
+                        }}
+                      >
+                        {option.label}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        );
+      }
 
       case "checkbox":
         return (

@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
-  RefreshCw, ClipboardCheck, Scissors, ChevronDown, ChevronUp, X,
+  RefreshCw, ClipboardCheck, Scissors, Menu,
 } from 'lucide-react';
+import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
 import {
   purchaseTeamGetApprovedPRs,
   purchaseTeamGetVendors,
@@ -15,9 +16,11 @@ import {
   purchaseTeamCreatePO,
   purchaseTeamSavePOConfirmation,
   purchaseTeamGetPOConfirmation,
+  purchaseTeamSaveSplitGroup,
 } from '@/Services/Api';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
+import { encryptFormMeta } from '@/Services/apiCrypto';
 import useFetch from '@/hooks/useFetchHook';
 import usePost from '@/hooks/usePostHook';
 
@@ -69,8 +72,7 @@ const PurchaseTeamPage: React.FC = () => {
   const [showPOConfirm, setShowPOConfirm] = useState(false);
   const [selectedQuotation, setSelectedQuotation] = useState<Quotation | null>(null);
 
-  // Split section state
-  const [splitOpen, setSplitOpen] = useState(false);
+  // Split section state — poGroups retained for the legacy multi-PO create path
   const [poGroups, setPOGroups] = useState<POGroup[]>([]);
 
   // ── Fetch hooks ────────────────────────────────────────────────────────────
@@ -98,6 +100,7 @@ const PurchaseTeamPage: React.FC = () => {
   // ── Post hooks ────────────────────────────────────────────────────────────
 
   const { postData: postPOConfirmation, loading: savingConfirm } = usePost();
+  const { postData: postSplitGroup } = usePost();
   const { postData: postQuotation } = usePost();
   const { postData: postSelectQuotation } = usePost();
   const { postData: postCreatePO } = usePost();
@@ -174,9 +177,9 @@ const PurchaseTeamPage: React.FC = () => {
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleSelectPR = (pr: PRRecord) => {
+    console.log('Selected PR:', pr);
     setSelectedPR(pr);
     setPOGroups([]);
-    setSplitOpen(false);
     setConfirmedData(null);
     setEditingConfirm(false);
   };
@@ -205,18 +208,45 @@ const PurchaseTeamPage: React.FC = () => {
     }
   };
 
-  // ── Split ──────────────────────────────────────────────────────────────────
+  // ── Split group created immediately when user clicks "Create Split Group" ──
 
-  const handleSplitConfirmed = (groups: POGroup[]) => {
-    setPOGroups(groups);
-    setSplitOpen(false);
-    toast.success(`${groups.length} split group(s) confirmed.`);
+  const handleSplitGroupCreated = async (groupNo: number, items: POConfirmItem[]) => {
+    if (!selectedPR?.pr_basic_sno) return;
+    try {
+      await postSplitGroup(purchaseTeamSaveSplitGroup, {
+        pr_basic_sno: selectedPR.pr_basic_sno,
+        com_sno: selectedPR.com_sno,
+        div_sno: selectedPR.div_sno,
+        brn_sno: selectedPR.brn_sno,
+        dept_sno: selectedPR.dept_sno,
+        group_no: groupNo,
+        items: items.map(i => ({
+          pr_item_sno: i.pr_item_sno,
+          prod_sno: i.prod_sno,
+          prod_name: i.prod_name,
+          qty: i.qty,
+          unit: i.unit,
+          unit_name: i.unit_name,
+   
+        })),
+      }, { withCredentials: true });
+      toast.success(`Split Group ${groupNo} saved`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error ?? 'Failed to save split group';
+      if (msg.toLowerCase().includes('database error')) {
+        toast.warning(`Group ${groupNo} recorded locally. SP may not be deployed yet.`);
+      } else {
+        toast.error(msg);
+      }
+    }
   };
 
-  const handleClearSplit = () => {
-    setPOGroups([]);
-    setSplitOpen(false);
-    toast.info('Split cleared');
+  // ── Split ──────────────────────────────────────────────────────────────────
+
+  // New checkbox-split flow updates confirmedData.items' split_group flags.
+  // This drives `confirmedSplitGroups` → per-PO supplier/quotation panels below.
+  const handleSplitChange = (updatedItems: POConfirmItem[]) => {
+    setConfirmedData(prev => (prev ? { ...prev, items: updatedItems } : prev));
   };
 
   // ── Quotation handlers ────────────────────────────────────────────────────
@@ -266,7 +296,7 @@ const PurchaseTeamPage: React.FC = () => {
     setShowQuotationDialog(true);
   };
 
-  const handleSubmitQuotation = async (form: QuotationFormState, items: QuotationItem[]) => {
+  const handleSubmitQuotation = async (form: QuotationFormState, items: QuotationItem[], file: File | null) => {
     if (!selectedPR && poGroups.length === 0) return;
     if (!selectedVendor) return;
     if (!form.quotation_ref_no.trim()) { toast.error('Quotation reference number required'); return; }
@@ -277,18 +307,31 @@ const PurchaseTeamPage: React.FC = () => {
     const prBasicSno = selectedPR?.pr_basic_sno ?? poGroups[0]?.sourcePRs[0];
     if (!prBasicSno) return;
 
+    const payload = {
+      pr_basic_sno: prBasicSno,
+      vendor_sno: selectedVendor.kyc_basic_info_sno ?? selectedVendor.vendor_sno,
+      ...form,
+      items,
+      ...(quotationSplitGroup !== undefined && { split_group: quotationSplitGroup }),
+      ...(poGroups.length > 0 && {
+        source_pr_basic_snos: poGroups.flatMap(g => g.sourcePRs),
+        po_group_id: poGroups[0]?.id,
+      }),
+    };
+
     try {
-      await postQuotation(purchaseTeamCreateQuotation, {
-        pr_basic_sno: prBasicSno,
-        vendor_sno: selectedVendor.kyc_basic_info_sno ?? selectedVendor.vendor_sno,
-        ...form,
-        items,
-        ...(quotationSplitGroup !== undefined && { split_group: quotationSplitGroup }),
-        ...(poGroups.length > 0 && {
-          source_pr_basic_snos: poGroups.flatMap(g => g.sourcePRs),
-          po_group_id: poGroups[0]?.id,
-        }),
-      }, { withCredentials: true });
+      if (file) {
+        // Multipart: encrypted metadata in `_ep`, binary file appended raw.
+        const fd = new FormData();
+        fd.append('_ep', await encryptFormMeta(payload));
+        fd.append('quotation_file', file);
+        await postQuotation(purchaseTeamCreateQuotation, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          withCredentials: true,
+        });
+      } else {
+        await postQuotation(purchaseTeamCreateQuotation, payload, { withCredentials: true });
+      }
 
       toast.success('Supplier quotation created');
       setShowQuotationDialog(false);
@@ -427,57 +470,58 @@ const PurchaseTeamPage: React.FC = () => {
   // ── Whether Step 2 (supplier/quotation) is unlocked ───────────────────────
   const isStep2Unlocked = !!confirmedData && !editingConfirm;
 
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   // ═══════════════════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex flex-col h-full bg-muted/30 min-h-screen">
-      {/* Page Header */}
-      <div className="bg-background border-b px-6 py-4 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-            <ClipboardCheck className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">Purchase Team</h1>
-            <p className="text-xs text-muted-foreground">Confirm PO details, split PRs, assign suppliers, manage quotations</p>
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => { setPrRefreshKey(k => k + 1); setVendorRefreshKey(k => k + 1); }}
-          disabled={loadingPR}
-        >
-          <RefreshCw size={16} className={loadingPR ? 'animate-spin mr-1' : 'mr-1'} />
-          Refresh
-        </Button>
-      </div>
-
-      {/* Body */}
-      <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-        {/* LEFT: PR List Sidebar */}
+    <>
+    <TwoPaneLayout
+      icon={ClipboardCheck}
+      title="Purchase Team"
+      description="Confirm PO details, split PRs, assign suppliers, manage quotations"
+      sidebarOpen={sidebarOpen}
+      onSidebarOpenChange={setSidebarOpen}
+      sidebar={
         <PRListSidebar
           prList={prList}
           loading={loadingPR}
           selectedPR={selectedPR}
-          onSelectPR={handleSelectPR}
+          onSelectPR={(pr) => { handleSelectPR(pr); setSidebarOpen(false); }}
         />
-
-        {/* RIGHT: Single scrollable flow */}
-        <div className="flex-1 overflow-y-auto">
-          {!selectedPR ? (
-            <div className="flex flex-col items-center justify-center h-full min-h-64 gap-4 text-muted-foreground">
-              <div className="bg-muted rounded-full p-6">
-                <ClipboardCheck size={40} className="opacity-30" />
-              </div>
-              <div className="text-center">
-                <p className="text-base font-medium text-foreground/60">Select a Purchase Requisition</p>
-                <p className="text-sm mt-1">Choose a PR from the left panel to get started</p>
-              </div>
-            </div>
-          ) : (
+      }
+      headerChildren={
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="lg:hidden bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu size={16} className="mr-1" /> PR List
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+            onClick={() => { setPrRefreshKey(k => k + 1); setVendorRefreshKey(k => k + 1); }}
+            disabled={loadingPR}
+          >
+            <RefreshCw size={16} className={loadingPR ? 'animate-spin mr-1' : 'mr-1'} />
+            Refresh
+          </Button>
+        </div>
+      }
+    >
+      {!selectedPR ? (
+        <EmptyState
+          message="Select a Purchase Requisition"
+          description="Choose a PR from the left panel to get started"
+          icon={ClipboardCheck}
+        />
+      ) : (
             <div className="px-6 py-4 space-y-4">
 
               {/* ── Step indicator ───────────────────────────────────────── */}
@@ -512,6 +556,7 @@ const PurchaseTeamPage: React.FC = () => {
                 key={selectedPR.pr_basic_sno}
                 selectedPR={selectedPR}
                 onConfirmed={handlePOConfirmed}
+                onSplitGroupCreated={handleSplitGroupCreated}
                 saving={savingConfirm}
                 confirmedData={editingConfirm ? null : confirmedData}
                 onEditConfirm={() => setEditingConfirm(true)}
@@ -526,73 +571,28 @@ const PurchaseTeamPage: React.FC = () => {
 
               {isStep2Unlocked && (
                 <>
-                  {/* ── Section 2: Split PR (collapsible) ─────────────────── */}
+                  {/* ── Section 2: Split PR ───────────────────────────────── */}
                   <Card>
                     <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                          <Scissors size={16} className="text-indigo-600" />
-                          Split PR
-                          <span className="text-xs font-normal text-gray-400">(optional)</span>
-                          {poGroups.length > 0 && (
-                            <Badge className="text-xs bg-green-100 text-green-700 border-green-200 ml-1">
-                              {poGroups.length} groups confirmed
-                            </Badge>
-                          )}
-                        </CardTitle>
-                        <div className="flex items-center gap-2">
-                          {poGroups.length > 0 && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-xs text-red-500 h-7 px-2"
-                              onClick={handleClearSplit}
-                            >
-                              <X size={12} className="mr-1" /> Clear
-                            </Button>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs h-7"
-                            onClick={() => setSplitOpen(v => !v)}
-                          >
-                            {splitOpen
-                              ? <><ChevronUp size={13} className="mr-1" /> Collapse</>
-                              : <><ChevronDown size={13} className="mr-1" />{poGroups.length > 0 ? 'Modify Split' : 'Split this PR'}</>
-                            }
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Summary when collapsed and split confirmed */}
-                      {!splitOpen && poGroups.length > 0 && (
-                        <div className="space-y-1.5 mt-3">
-                          {poGroups.map((g, idx) => (
-                            <div key={g.id} className="flex items-center gap-2 text-xs bg-indigo-50 border border-indigo-100 rounded p-2">
-                              <Badge className="bg-indigo-600 text-white border-none shrink-0">
-                                {getPRDisplayNo(selectedPR)}/{idx + 1}
-                              </Badge>
-                              <span className="font-medium text-gray-800">
-                                {g.vendorName ?? <span className="text-amber-600 italic">No vendor assigned</span>}
-                              </span>
-                              <span className="text-gray-400 ml-auto">{g.items.length} item(s)</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Scissors size={16} className="text-indigo-600" />
+                        Split PR into Multiple POs
+                        <span className="text-xs font-normal text-gray-400">(optional)</span>
+                        {confirmedSplitGroups.length > 0 && (
+                          <Badge className="text-xs bg-green-100 text-green-700 border-green-200 ml-1">
+                            {confirmedSplitGroups.length} split PO(s)
+                          </Badge>
+                        )}
+                      </CardTitle>
                     </CardHeader>
-
-                    {splitOpen && (
-                      <CardContent className="pt-0">
-                        <SplitPRTab
-                          selectedPR={selectedPR}
-                          vendors={vendors}
-                          loadingVendors={loadingVendors}
-                          onSplitConfirmed={handleSplitConfirmed}
-                        />
-                      </CardContent>
-                    )}
+                    <CardContent className="pt-0">
+                      <SplitPRTab
+                        prNo={getPRDisplayNo(selectedPR)}
+                        items={confirmedData?.items ?? []}
+                        onItemsChange={handleSplitChange}
+                        onGroupPersist={handleSplitGroupCreated}
+                      />
+                    </CardContent>
                   </Card>
 
                   {/* ── Section 3: Supplier & Quotation ───────────────────── */}
@@ -609,16 +609,16 @@ const PurchaseTeamPage: React.FC = () => {
                     onRefreshQuotations={() => setQuotationsRefreshKey(k => k + 1)}
                     poGroups={poGroups}
                     confirmedSplitGroups={confirmedSplitGroups}
+                    mainPOItems={(confirmedData?.items ?? []).filter(i => !i.split_group)}
                   />
                 </>
               )}
 
             </div>
           )}
-        </div>
-      </div>
+      </TwoPaneLayout>
 
-      {/* Dialogs */}
+      {/* Dialogs rendered outside layout so they aren't clipped */}
       <QuotationDialog
         open={showQuotationDialog}
         onOpenChange={setShowQuotationDialog}
@@ -640,7 +640,7 @@ const PurchaseTeamPage: React.FC = () => {
         selectedQuotation={selectedQuotation}
         onCreatePO={handleCreatePO}
       />
-    </div>
+    </>
   );
 };
 

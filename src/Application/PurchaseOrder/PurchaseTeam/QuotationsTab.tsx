@@ -36,6 +36,8 @@ interface QuotationsTabProps {
   poGroups?: POGroup[];
   /** Groups derived from POConfirmStep split selections */
   confirmedSplitGroups?: Array<{ groupNum: number; items: POConfirmItem[] }>;
+  /** Unsplit remainder — items that stay on the main PO */
+  mainPOItems?: POConfirmItem[];
 }
 
 // ── Quotation card (shared) ───────────────────────────────────────────────────
@@ -300,6 +302,7 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
   onCompare, onRefreshQuotations,
   poGroups = [],
   confirmedSplitGroups = [],
+  mainPOItems = [],
 }) => {
   const vendorFields = useVendorFields();
   const quotationItemFields = useQuotationItemFields();
@@ -374,15 +377,15 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
           );
         })}
 
-        {/* Main PO panel — quotations not belonging to any split group */}
-        {ungroupedQuotations.length > 0 && (
+        {/* Main PO panel — unsplit remainder + any ungrouped quotations */}
+        {(mainPOItems.length > 0 || ungroupedQuotations.length > 0) && (
           <GroupPanel
             label="Main PO"
             badgeClass="bg-gray-500"
             borderClass="border-gray-200"
             bgClass="bg-gray-50"
             textClass="text-gray-700"
-            items={[]}
+            items={mainPOItems}
             vendors={vendors}
             loadingVendors={loadingVendors}
             quotations={ungroupedQuotations}

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Boxes } from 'lucide-react';
+import { RefreshCw, Boxes, Menu } from 'lucide-react';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
+import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
 
 import type { InventoryItem, StockMovement, InventoryFormState } from './Inventory/types';
 import { TEMP_INVENTORY } from './Inventory/helpers';
@@ -18,6 +19,7 @@ import InventoryStockView from './Inventory/InventoryStockView';
 const InventoryPage: React.FC = () => {
   useAppState(); // keep for auth context
   const { canCreate, canEdit, canDelete } = usePermissions();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
@@ -123,79 +125,74 @@ const InventoryPage: React.FC = () => {
   const showDetail = selectedItem || isAddingNew;
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 min-h-screen">
-      {/* Page Header */}
-      <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-indigo-600 p-2 rounded-lg">
-            <Boxes className="text-white" size={20} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Inventory Management</h1>
-            <p className="text-sm text-gray-500">Manage stock items, levels, locations and movements</p>
-          </div>
-        </div>
-        <Button variant="outline" size="sm" onClick={fetchItems} disabled={loadingItems}>
-          <RefreshCw size={15} className={loadingItems ? 'animate-spin mr-1' : 'mr-1'} />
-          Refresh
-        </Button>
-      </div>
-
-      {/* Body */}
-      <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-        {/* LEFT: Item List Sidebar */}
+    <TwoPaneLayout
+      icon={Boxes}
+      title="Inventory Management"
+      description="Manage stock items, levels, locations and movements"
+      sidebarOpen={sidebarOpen}
+      onSidebarOpenChange={setSidebarOpen}
+      sidebar={
         <InventoryListSidebar
           items={items}
           loading={loadingItems}
           selectedItem={selectedItem}
-          onSelectItem={handleSelectItem}
+          onSelectItem={(item) => { handleSelectItem(item); setSidebarOpen(false); }}
           onAddNew={canCreate("InventoryPage") ? handleAddNew : undefined}
         />
-
-        {/* RIGHT: Main content */}
-        <div className="flex-1 overflow-y-auto">
-          {!showDetail ? (
-            /* Dashboard overview when nothing selected */
-            <div className="px-6 py-5 space-y-4">
-              <InventorySummaryCard items={items} />
-
-              <div className="flex flex-col items-center justify-center h-48 gap-4 text-gray-400">
-                <div className="bg-gray-100 p-5 rounded-full">
-                  <Boxes size={36} />
-                </div>
-                <div className="text-center">
-                  <p className="text-base font-medium text-gray-500">Select an Item</p>
-                  <p className="text-sm mt-1">Choose an item from the left panel to view details or add stock movements</p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="px-6 py-5 space-y-4">
-              {/* Summary stats always visible */}
-              <InventorySummaryCard items={items} />
-
-              {/* Item Form (add/edit/view) */}
-              <InventoryForm
-                selectedItem={selectedItem}
-                isAddingNew={isAddingNew}
-                onSave={(canCreate("InventoryPage") || canEdit("InventoryPage")) ? handleSave : undefined}
-                onDelete={canDelete("InventoryPage") ? handleDelete : undefined}
-                onCancel={handleCancel}
-                saving={saving}
-              />
-
-              {/* Stock Movement History — only when viewing existing item */}
-              {selectedItem && !isAddingNew && (
-                <InventoryStockView
-                  movements={movements}
-                  loading={loadingMovements}
-                />
-              )}
-            </div>
-          )}
+      }
+      headerChildren={
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="lg:hidden bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu size={16} className="mr-1" /> Items
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+            onClick={fetchItems}
+            disabled={loadingItems}
+          >
+            <RefreshCw size={15} className={loadingItems ? 'animate-spin mr-1' : 'mr-1'} />
+            Refresh
+          </Button>
         </div>
+      }
+    >
+      <div className="px-4 sm:px-6 py-5 space-y-4">
+        <InventorySummaryCard items={items} />
+
+        {!showDetail ? (
+          <EmptyState
+            message="Select an Item"
+            description="Choose an item from the left panel to view details or add stock movements"
+            icon={Boxes}
+          />
+        ) : (
+          <>
+            <InventoryForm
+              selectedItem={selectedItem}
+              isAddingNew={isAddingNew}
+              onSave={(canCreate("InventoryPage") || canEdit("InventoryPage")) ? handleSave : undefined}
+              onDelete={canDelete("InventoryPage") ? handleDelete : undefined}
+              onCancel={handleCancel}
+              saving={saving}
+            />
+
+            {selectedItem && !isAddingNew && (
+              <InventoryStockView
+                movements={movements}
+                loading={loadingMovements}
+              />
+            )}
+          </>
+        )}
       </div>
-    </div>
+    </TwoPaneLayout>
   );
 };
 

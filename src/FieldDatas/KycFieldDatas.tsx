@@ -6,35 +6,11 @@ import {
   selectCompanyHierarchyError,
 } from "@/globalState/features/hierarchyCompanyDetailsSlice";
 import { Option, Company, Division, Branch } from "@/Application/Kyc-Screen/types/KycEntryType";
-import {useMasterOptions} from "@/hooks/ReUsableHook/useMasterOptions";
+import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
 import axios from "axios";
-export type FieldInputType =
-  | "text"
-  | "number"
-  | "select"
-  | "date"
-  | "email"
-  | "textarea"
-  | "file"
-  | "radio"
-  | "multi-select";
+import type { FieldType, OptionType } from "./fieldType/fieldType";
 
-export interface OptionType {
-  value: string | number;
-  label: string;
-}
-
-export interface FieldType {
-  field: string;
-  label: string;
-  require?: boolean;
-  view?: boolean;
-  type: FieldInputType;
-  input?: boolean;
-  placeholder?: string;
-  options?: OptionType[] | any[];
-  disabled?: boolean;
-}
+export type { FieldType, OptionType };
 
 export const useComDivBranchDeptFields = (
   selectedCompany: number[],

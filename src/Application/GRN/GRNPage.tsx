@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { RefreshCw, PackageCheck, FileText, Building2, CalendarDays, Truck } from 'lucide-react';
+import { RefreshCw, PackageCheck, FileText, Building2, CalendarDays, Truck, Menu } from 'lucide-react';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
+import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
+import { StatusBadge } from '@/utils/statusUtils';
 
 import type { PORecord, GRNRecord, GRNFormState, GRNItemEntry } from './GRN/types';
 import { getPODisplayNo, formatDate, formatINR, getGRNStatus } from './GRN/helpers';
@@ -18,52 +19,47 @@ import GRNListView from './GRN/GRNListView';
 // ── PO Summary Card ───────────────────────────────────────────────────────────
 
 const POSummaryCard: React.FC<{ po: PORecord }> = ({ po }) => {
-  const { label, color } = getGRNStatus(po);
-  const statusClasses: Record<string, string> = {
-    green: 'bg-green-100 text-green-700 border-green-200',
-    amber: 'bg-amber-100 text-amber-700 border-amber-200',
-    red:   'bg-red-100   text-red-700   border-red-200',
-  };
+  const { label: grnLabel } = getGRNStatus(po);
 
   const fields = [
-    { icon: FileText,    label: 'PO Number',   value: getPODisplayNo(po) },
-    { icon: FileText,    label: 'PR Reference', value: po.pr_no ?? '—' },
-    { icon: Truck,       label: 'Vendor',       value: po.vendor_name ?? po.company_name ?? '—' },
-    { icon: Building2,   label: 'Company',      value: po.com_name ?? '—' },
-    { icon: CalendarDays,label: 'PO Date',      value: formatDate(po.po_date) },
-    { icon: CalendarDays,label: 'Required By',  value: formatDate(po.required_date) },
+    { icon: FileText,     label: 'PO Number',    value: getPODisplayNo(po) },
+    { icon: FileText,     label: 'PR Reference', value: po.pr_no ?? '—' },
+    { icon: Truck,        label: 'Vendor',        value: po.vendor_name ?? po.company_name ?? '—' },
+    { icon: Building2,    label: 'Company',       value: po.com_name ?? '—' },
+    { icon: CalendarDays, label: 'PO Date',       value: formatDate(po.po_date) },
+    { icon: CalendarDays, label: 'Required By',   value: formatDate(po.required_date) },
   ];
 
   return (
     <Card>
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-3 border-b">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <PackageCheck size={16} className="text-indigo-600" />
+            <PackageCheck size={16} className="text-primary" />
             Purchase Order — {getPODisplayNo(po)}
           </CardTitle>
-          <Badge className={`text-xs ${statusClasses[color]}`}>{label}</Badge>
+          <StatusBadge status={grnLabel} />
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-4">
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {fields.map(f => (
             <div key={f.label}>
-              <p className="text-xs text-gray-400 font-medium">{f.label}</p>
-              <p className="text-sm font-medium text-gray-800">{f.value}</p>
+              <p className="text-xs text-muted-foreground font-medium">{f.label}</p>
+              <p className="text-sm font-medium text-foreground">{f.value}</p>
             </div>
           ))}
         </div>
         {po.delivery_address && (
           <div className="mt-3 pt-3 border-t">
-            <p className="text-xs text-gray-400 font-medium">Delivery Address</p>
-            <p className="text-sm text-gray-700">{po.delivery_address}</p>
+            <p className="text-xs text-muted-foreground font-medium">Delivery Address</p>
+            <p className="text-sm text-foreground">{po.delivery_address}</p>
           </div>
         )}
         {po.total_amount != null && (
           <div className="mt-2 text-xs">
-            <span className="text-gray-400">PO Value: </span>
-            <span className="font-semibold text-gray-800">{formatINR(po.total_amount)}</span>
+            <span className="text-muted-foreground">PO Value: </span>
+            <span className="font-semibold text-foreground">{formatINR(po.total_amount)}</span>
           </div>
         )}
       </CardContent>
@@ -80,6 +76,7 @@ const GRNPage: React.FC = () => {
   const [poList, setPOList] = useState<PORecord[]>([]);
   const [loadingPO, setLoadingPO] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PORecord | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [grnList, setGRNList] = useState<GRNRecord[]>([]);
   const [loadingGRNs, setLoadingGRNs] = useState(false);
@@ -170,78 +167,71 @@ const GRNPage: React.FC = () => {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 min-h-screen">
-      {/* Header */}
-      <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-green-600 p-2 rounded-lg">
-            <PackageCheck className="text-white" size={20} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Goods Receipt Note</h1>
-            <p className="text-sm text-gray-500">Receive goods against purchase orders, record quantities and condition</p>
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchPOs}
-          disabled={loadingPO}
-        >
-          <RefreshCw size={16} className={loadingPO ? 'animate-spin mr-1' : 'mr-1'} />
-          Refresh
-        </Button>
-      </div>
-
-      {/* Body */}
-      <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-        {/* LEFT: PO List Sidebar */}
+    <TwoPaneLayout
+      icon={PackageCheck}
+      title="Goods Receipt Note"
+      description="Receive goods against purchase orders, record quantities and condition"
+      sidebarOpen={sidebarOpen}
+      onSidebarOpenChange={setSidebarOpen}
+      sidebar={
         <POListSidebar
           poList={poList}
           loading={loadingPO}
           selectedPO={selectedPO}
-          onSelectPO={handleSelectPO}
+          onSelectPO={(po) => { handleSelectPO(po); setSidebarOpen(false); }}
         />
-
-        {/* RIGHT: Main scrollable content */}
-        <div className="flex-1 overflow-y-auto">
-          {!selectedPO ? (
-            <div className="flex flex-col items-center justify-center h-96 gap-4 text-gray-400">
-              <div className="bg-gray-100 p-6 rounded-full">
-                <PackageCheck size={40} />
-              </div>
-              <div className="text-center">
-                <p className="text-base font-medium text-gray-500">Select a Purchase Order</p>
-                <p className="text-sm mt-1">Choose a PO from the left panel to create a Goods Receipt Note</p>
-              </div>
-            </div>
-          ) : (
-            <div className="px-6 py-4 space-y-4">
-              {/* Section 1: PO Summary */}
-              <POSummaryCard po={selectedPO} />
-
-              {/* Section 2: New GRN Entry — only shown if create/edit permission */}
-              {(canCreate("GRNPage") || canEdit("GRNPage")) && (
-                <GRNEntryForm
-                  po={selectedPO}
-                  onSubmit={handleSubmitGRN}
-                  submitting={submitting}
-                />
-              )}
-
-              {/* Section 3: GRN History */}
-              <GRNListView
-                grns={grnList}
-                loading={loadingGRNs}
-                onRefresh={() => {
-                  if (selectedPO?.po_basic_sno) fetchGRNs(selectedPO.po_basic_sno);
-                }}
-              />
-            </div>
-          )}
+      }
+      headerChildren={
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="lg:hidden bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu size={16} className="mr-1" /> PO List
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+            onClick={fetchPOs}
+            disabled={loadingPO}
+          >
+            <RefreshCw size={16} className={loadingPO ? 'animate-spin mr-1' : 'mr-1'} />
+            Refresh
+          </Button>
         </div>
-      </div>
-    </div>
+      }
+    >
+      {!selectedPO ? (
+        <EmptyState
+          message="Select a Purchase Order"
+          description="Choose a PO from the left panel to create a Goods Receipt Note"
+          icon={PackageCheck}
+        />
+      ) : (
+        <div className="px-4 sm:px-6 py-4 space-y-4">
+          <POSummaryCard po={selectedPO} />
+
+          {(canCreate("GRNPage") || canEdit("GRNPage")) && (
+            <GRNEntryForm
+              po={selectedPO}
+              onSubmit={handleSubmitGRN}
+              submitting={submitting}
+            />
+          )}
+
+          <GRNListView
+            grns={grnList}
+            loading={loadingGRNs}
+            onRefresh={() => {
+              if (selectedPO?.po_basic_sno) fetchGRNs(selectedPO.po_basic_sno);
+            }}
+          />
+        </div>
+      )}
+    </TwoPaneLayout>
   );
 };
 

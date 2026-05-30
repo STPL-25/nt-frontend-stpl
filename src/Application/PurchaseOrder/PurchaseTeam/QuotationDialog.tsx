@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
-import { Users, Send, Loader2, CreditCard, RefreshCcw } from 'lucide-react';
+import { Users, Send, Loader2, CreditCard, RefreshCcw, Paperclip, FileText, X } from 'lucide-react';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { useQuotationHeaderFields, useQuotationItemFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
 import type { QuotationItem, QuotationFormState } from './types';
@@ -16,8 +16,11 @@ interface QuotationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   quotationItems: QuotationItem[];
-  onSubmit: (form: QuotationFormState, items: QuotationItem[]) => Promise<void>;
+  onSubmit: (form: QuotationFormState, items: QuotationItem[], file: File | null) => Promise<void>;
 }
+
+const MAX_FILE_MB = 10;
+const ACCEPTED_FILE = 'image/png,image/jpeg,image/jpg,image/webp,application/pdf';
 
 const INITIAL_FORM: QuotationFormState = {
   quotation_ref_no: '',
@@ -46,6 +49,8 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
   const [items, setItems] = useState<QuotationItem[]>(initialItems);
   const [itemSelection, setItemSelection] = useState<Set<number>>(new Set(initialItems.map((_, i) => i)));
   const [submitting, setSubmitting] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string>('');
 
   // Reset when dialog opens with new items
   React.useEffect(() => {
@@ -53,8 +58,20 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
       setItems(initialItems);
       setItemSelection(new Set(initialItems.map((_, i) => i)));
       setForm(INITIAL_FORM);
+      setFile(null);
+      setFileError('');
     }
   }, [open, initialItems]);
+
+  const handlePickFile = (f: File | null) => {
+    setFileError('');
+    if (!f) { setFile(null); return; }
+    if (f.size > MAX_FILE_MB * 1024 * 1024) {
+      setFileError(`File must be under ${MAX_FILE_MB} MB`);
+      return;
+    }
+    setFile(f);
+  };
 
   const updateItem = (idx: number, field: keyof QuotationItem, value: string | number) => {
     setItems(prev =>
@@ -82,7 +99,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      await onSubmit(form, selectedItems);
+      await onSubmit(form, selectedItems, file);
       onOpenChange(false);
     } finally {
       setSubmitting(false);
@@ -310,6 +327,43 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
               </div>
             )}
           </div>
+        </div>
+
+        {/* Quotation document upload (image / PDF) */}
+        <div className="rounded-lg border border-dashed border-indigo-200 bg-indigo-50/40 p-3">
+          <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-indigo-700">
+            <Paperclip size={14} />
+            Quotation Document
+            <span className="text-[10px] font-normal text-gray-400">(image or PDF, optional, max {MAX_FILE_MB}MB)</span>
+          </div>
+          {file ? (
+            <div className="flex items-center gap-2 bg-white border rounded px-2.5 py-1.5">
+              <FileText size={16} className="text-indigo-600 shrink-0" />
+              <span className="text-xs font-medium text-gray-700 truncate flex-1">{file.name}</span>
+              <span className="text-[10px] text-gray-400 shrink-0">{(file.size / 1024).toFixed(0)} KB</span>
+              <button
+                type="button"
+                className="text-gray-300 hover:text-red-500"
+                onClick={() => handlePickFile(null)}
+                title="Remove file"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <label className="flex items-center gap-2 cursor-pointer text-xs text-indigo-600 hover:text-indigo-700">
+              <span className="inline-flex items-center gap-1.5 border border-indigo-300 rounded px-2.5 py-1.5 bg-white hover:bg-indigo-50">
+                <Paperclip size={13} /> Choose file…
+              </span>
+              <input
+                type="file"
+                accept={ACCEPTED_FILE}
+                className="hidden"
+                onChange={e => handlePickFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+          )}
+          {fileError && <p className="text-[11px] text-red-500 mt-1">{fileError}</p>}
         </div>
 
         <DialogFooter>
