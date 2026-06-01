@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/utils/statusUtils';
+import { PageHeader } from '@/CustomComponent/PageComponents';
 import {
   Dialog,
   DialogContent,
@@ -319,20 +321,7 @@ const StoreRequisitionDashboard: React.FC = () => {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Pending':
-        return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
-      case 'Approved':
-        return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300"><CheckCircle className="h-3 w-3 mr-1" />Approved</Badge>;
-      case 'Rejected':
-        return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300"><XCircle className="h-3 w-3 mr-1" />Rejected</Badge>;
-      case 'Partially Approved':
-        return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300"><AlertCircle className="h-3 w-3 mr-1" />Partial</Badge>;
-      default:
-        return <Badge>{status}</Badge>;
-    }
-  };
+  const getStatusBadge = (status: string) => <StatusBadge status={status} />;
 
   const viewRequisitionDetails = (requisition: Requisition) => {
     setSelectedRequisition(requisition);
@@ -340,17 +329,17 @@ const StoreRequisitionDashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className=" mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-       
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-sm">
-              User ID: EMP001
-            </Badge>
-          </div>
-        </div>
+    <div className="flex flex-col min-h-screen bg-muted/20">
+      <PageHeader
+        icon={FileText}
+        title="Store Requisition"
+        description="Raise and track store material requisitions"
+      >
+        <Badge variant="outline" className="text-sm bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground">
+          User ID: EMP001
+        </Badge>
+      </PageHeader>
+      <div className="p-4 sm:p-6 space-y-6 w-full">
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -358,8 +347,8 @@ const StoreRequisitionDashboard: React.FC = () => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Total Requisitions</p>
-                  <p className="text-3xl font-bold text-gray-900 mt-2">{stats.totalRequisitions}</p>
+                  <p className="text-sm font-medium text-muted-foreground">Total Requisitions</p>
+                  <p className="text-3xl font-bold text-foreground mt-2">{stats.totalRequisitions}</p>
                 </div>
                 <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
                   <FileText className="h-6 w-6 text-blue-600" />
@@ -372,7 +361,7 @@ const StoreRequisitionDashboard: React.FC = () => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Pending</p>
+                  <p className="text-sm font-medium text-muted-foreground">Pending</p>
                   <p className="text-3xl font-bold text-yellow-600 mt-2">{stats.pendingRequisitions}</p>
                 </div>
                 <div className="h-12 w-12 bg-yellow-100 rounded-full flex items-center justify-center">
@@ -386,7 +375,7 @@ const StoreRequisitionDashboard: React.FC = () => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Approved</p>
+                  <p className="text-sm font-medium text-muted-foreground">Approved</p>
                   <p className="text-3xl font-bold text-green-600 mt-2">{stats.approvedRequisitions}</p>
                 </div>
                 <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
@@ -400,7 +389,7 @@ const StoreRequisitionDashboard: React.FC = () => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Rejected</p>
+                  <p className="text-sm font-medium text-muted-foreground">Rejected</p>
                   <p className="text-3xl font-bold text-red-600 mt-2">{stats.rejectedRequisitions}</p>
                 </div>
                 <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center">
@@ -442,7 +431,7 @@ const StoreRequisitionDashboard: React.FC = () => {
                     {/* Search and Filter */}
                     <div className="flex gap-4">
                       <div className="relative flex-1">
-                        <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground/70" />
                         <Input
                           placeholder="Search by item name or code..."
                           value={searchTerm}
@@ -469,7 +458,7 @@ const StoreRequisitionDashboard: React.FC = () => {
                     <div className="border rounded-lg overflow-hidden">
                       <Table>
                         <TableHeader>
-                          <TableRow className="bg-gray-50">
+                          <TableRow className="bg-muted/40">
                             <TableHead>Item Code</TableHead>
                             <TableHead>Item Name</TableHead>
                             <TableHead>Category</TableHead>
@@ -481,7 +470,7 @@ const StoreRequisitionDashboard: React.FC = () => {
                         <TableBody>
                           {filteredStocks.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                                 No stock items found
                               </TableCell>
                             </TableRow>
@@ -533,21 +522,21 @@ const StoreRequisitionDashboard: React.FC = () => {
                   <div className="space-y-4">
                     {requisitionItems.length === 0 ? (
                       <div className="text-center py-12">
-                        <Package className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                        <p className="text-sm text-gray-500">No items added yet</p>
+                        <Package className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
+                        <p className="text-sm text-muted-foreground">No items added yet</p>
                       </div>
                     ) : (
                       <div className="space-y-3 max-h-96 overflow-y-auto">
                         {requisitionItems.map((item) => (
                           <div
                             key={item.id}
-                            className="border rounded-lg p-3 space-y-2 bg-white"
+                            className="border rounded-lg p-3 space-y-2 bg-card"
                           >
                             <div className="flex items-start justify-between">
                               <div className="flex-1">
                                 <p className="font-medium text-sm">{item.stockItem.itemName}</p>
-                                <p className="text-xs text-gray-500">{item.stockItem.itemCode}</p>
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-muted-foreground">{item.stockItem.itemCode}</p>
+                                <p className="text-xs text-muted-foreground">
                                   Available: {item.stockItem.availableQuantity} {item.stockItem.unit}
                                 </p>
                               </div>
@@ -617,7 +606,7 @@ const StoreRequisitionDashboard: React.FC = () => {
                 <div className="border rounded-lg overflow-hidden">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-gray-50">
+                      <TableRow className="bg-muted/40">
                         <TableHead>Requisition No.</TableHead>
                         <TableHead>Request Date</TableHead>
                         <TableHead>Items</TableHead>
@@ -629,7 +618,7 @@ const StoreRequisitionDashboard: React.FC = () => {
                     <TableBody>
                       {myRequisitions.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                             No requisitions found
                           </TableCell>
                         </TableRow>
@@ -686,7 +675,7 @@ const StoreRequisitionDashboard: React.FC = () => {
                   <div className="border rounded-lg overflow-hidden">
                     <Table>
                       <TableHeader>
-                        <TableRow className="bg-gray-50">
+                        <TableRow className="bg-muted/40">
                           <TableHead>Item Code</TableHead>
                           <TableHead>Item Name</TableHead>
                           <TableHead>Category</TableHead>
@@ -749,33 +738,33 @@ const StoreRequisitionDashboard: React.FC = () => {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-sm text-gray-500">Requisition No.</Label>
+                  <Label className="text-sm text-muted-foreground">Requisition No.</Label>
                   <p className="font-medium">{selectedRequisition.requisitionNo}</p>
                 </div>
                 <div>
-                  <Label className="text-sm text-gray-500">Request Date</Label>
+                  <Label className="text-sm text-muted-foreground">Request Date</Label>
                   <p className="font-medium">
                     {new Date(selectedRequisition.requestDate).toLocaleDateString()}
                   </p>
                 </div>
                 <div>
-                  <Label className="text-sm text-gray-500">Status</Label>
+                  <Label className="text-sm text-muted-foreground">Status</Label>
                   <div className="mt-1">{getStatusBadge(selectedRequisition.status)}</div>
                 </div>
                 <div>
-                  <Label className="text-sm text-gray-500">Total Items</Label>
+                  <Label className="text-sm text-muted-foreground">Total Items</Label>
                   <p className="font-medium">{selectedRequisition.items}</p>
                 </div>
               </div>
               {selectedRequisition.remarks && (
                 <div>
-                  <Label className="text-sm text-gray-500">Remarks</Label>
+                  <Label className="text-sm text-muted-foreground">Remarks</Label>
                   <p className="mt-1 text-sm">{selectedRequisition.remarks}</p>
                 </div>
               )}
               <div className="pt-4 border-t">
-                <p className="text-sm text-gray-500 mb-2">Items Requested</p>
-                <div className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground mb-2">Items Requested</p>
+                <div className="text-sm text-muted-foreground">
                   Item details will be loaded from API...
                 </div>
               </div>

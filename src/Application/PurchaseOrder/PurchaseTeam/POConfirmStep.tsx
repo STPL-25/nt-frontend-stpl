@@ -36,7 +36,7 @@ const nextRowId = () => `row-${++rowCounter}`;
 
 // ── Split group colour palette ────────────────────────────────────────────────
 const GROUP_COLORS = [
-  { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200',  badge: 'bg-indigo-600'  },
+  { bg: 'bg-primary/10',  text: 'text-primary',  border: 'border-primary/20',  badge: 'bg-primary'  },
   { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', badge: 'bg-emerald-600' },
   { bg: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-200',  badge: 'bg-orange-500'  },
   { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200',  badge: 'bg-purple-600'  },
@@ -212,15 +212,15 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
           <CardContent>
             {/* PR submitted details */}
             {(selectedPR.com_name || selectedPR.div_name) && (
-              <div className="bg-gray-50 border border-gray-100 rounded p-2 mb-2">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">PR Submitted Details</p>
-                <div className="flex flex-wrap gap-3 text-xs text-gray-600">
-                  {selectedPR.com_name && <span><span className="text-gray-400">Company: </span>{selectedPR.com_name}</span>}
-                  {selectedPR.div_name && <span><span className="text-gray-400">Division: </span>{selectedPR.div_name}</span>}
-                  {selectedPR.brn_name && <span><span className="text-gray-400">Branch: </span>{selectedPR.brn_name}</span>}
-                  {selectedPR.dept_name && <span><span className="text-gray-400">Dept: </span>{selectedPR.dept_name}</span>}
+              <div className="bg-muted/40 border border-border rounded p-2 mb-2">
+                <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wide mb-1.5">PR Submitted Details</p>
+                <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                  {selectedPR.com_name && <span><span className="text-muted-foreground/70">Company: </span>{selectedPR.com_name}</span>}
+                  {selectedPR.div_name && <span><span className="text-muted-foreground/70">Division: </span>{selectedPR.div_name}</span>}
+                  {selectedPR.brn_name && <span><span className="text-muted-foreground/70">Branch: </span>{selectedPR.brn_name}</span>}
+                  {selectedPR.dept_name && <span><span className="text-muted-foreground/70">Dept: </span>{selectedPR.dept_name}</span>}
                   {(selectedPR.required_date ?? selectedPR.req_by_date) && (
-                    <span><span className="text-gray-400">Req. Date: </span>{formatDate(selectedPR.required_date ?? selectedPR.req_by_date)}</span>
+                    <span><span className="text-muted-foreground/70">Req. Date: </span>{formatDate(selectedPR.required_date ?? selectedPR.req_by_date)}</span>
                   )}
                 </div>
               </div>
@@ -228,15 +228,15 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
 
             {/* Confirmed billing org + date */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm mb-3">
-              <div><p className="text-xs text-gray-500">Billing Company</p><p className="font-medium">{comName}</p></div>
-              <div><p className="text-xs text-gray-500">Billing Division</p><p className="font-medium">{divName}</p></div>
-              <div><p className="text-xs text-gray-500">Required Date</p><p className="font-medium">{formatDate(confirmedData.required_date)}</p></div>
+              <div><p className="text-xs text-muted-foreground">Billing Company</p><p className="font-medium">{comName}</p></div>
+              <div><p className="text-xs text-muted-foreground">Billing Division</p><p className="font-medium">{divName}</p></div>
+              <div><p className="text-xs text-muted-foreground">Required Date</p><p className="font-medium">{formatDate(confirmedData.required_date)}</p></div>
             </div>
 
             {/* Split groups summary */}
             {confirmedGroups.length > 0 && (
               <div className="mb-3 space-y-1.5">
-                <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Split Groups → Separate POs</p>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Split Groups → Separate POs</p>
                 {confirmedGroups.map(g => {
                   const col = gc(g);
                   const gItems = confirmedData.items.filter(i => i.split_group === g);
@@ -248,7 +248,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                       <span className={`${col.text} font-medium truncate flex-1`}>
                         {gItems.map(i => i.prod_name).join(' • ')}
                       </span>
-                      <span className="text-gray-500 shrink-0">{gItems.length} item(s)</span>
+                      <span className="text-muted-foreground shrink-0">{gItems.length} item(s)</span>
                     </div>
                   );
                 })}
@@ -257,7 +257,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
 
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50">
+                <TableRow className="bg-muted/40">
                   <TableHead className="text-xs w-8">#</TableHead>
                   <TableHead className="text-xs">Item</TableHead>
                   <TableHead className="text-xs w-20 text-center">Qty</TableHead>
@@ -270,10 +270,10 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                   const col = row.split_group ? gc(row.split_group) : null;
                   return (
                     <TableRow key={row.id} className={col ? `${col.bg}/40` : ''}>
-                      <TableCell className="text-xs text-gray-400 pl-3">{idx + 1}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground/70 pl-3">{idx + 1}</TableCell>
                       <TableCell>
                         <div className="text-sm font-medium">{row.prod_name}</div>
-                        {row.specification && <div className="text-[11px] text-gray-400">{row.specification}</div>}
+                        {row.specification && <div className="text-[11px] text-muted-foreground/70">{row.specification}</div>}
                       </TableCell>
                       <TableCell className="text-center text-sm font-medium">{row.qty}</TableCell>
                       <TableCell className="text-center text-xs">{row.unit_name}</TableCell>
@@ -281,7 +281,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                         <TableCell className="text-center">
                           {row.split_group && col
                             ? <Badge className={`${col.badge} text-white border-none text-[10px]`}>Group {row.split_group}</Badge>
-                            : <span className="text-xs text-gray-400">—</span>
+                            : <span className="text-xs text-muted-foreground/70">—</span>
                           }
                         </TableCell>
                       )}
@@ -305,11 +305,11 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
       {/* Info banner */}
       <Card>
         <CardContent className="py-3">
-          <div className="flex items-start gap-2 text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded p-3">
+          <div className="flex items-start gap-2 text-xs text-primary bg-primary/10 border border-primary/20 rounded p-3">
             <Info size={16} className="shrink-0 mt-0.5" />
             <div>
               <p className="font-medium mb-0.5">Step 1 — Confirm PO Details</p>
-              <p className="text-gray-600">
+              <p className="text-muted-foreground">
                 Review PR details, adjust quantities, split items into separate POs if needed, then save.
                 Supplier selection &amp; quotation unlock after saving.
               </p>
@@ -322,9 +322,9 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <FileText size={16} className="text-indigo-600" />
+            <FileText size={16} className="text-primary" />
             PR Reference — {prNo}
-            <span className="text-xs font-normal text-gray-400">
+            <span className="text-xs font-normal text-muted-foreground/70">
               (PR date: {formatDate(selectedPR.reg_date ?? selectedPR.request_date ?? selectedPR.req_date)})
             </span>
           </CardTitle>
@@ -332,48 +332,48 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
         <CardContent className="space-y-3">
 
           {/* PR submitted values — read-only */}
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+          <div className="bg-muted/40 border border-border rounded-lg p-3">
+            <p className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide mb-2">
               PR Submitted Details (from requester)
             </p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
-                <p className="text-[10px] text-gray-400">Company</p>
-                <p className="text-xs font-medium text-gray-700">{selectedPR.com_name ?? '—'}</p>
+                <p className="text-[10px] text-muted-foreground/70">Company</p>
+                <p className="text-xs font-medium text-foreground">{selectedPR.com_name ?? '—'}</p>
               </div>
               <div>
-                <p className="text-[10px] text-gray-400">Division</p>
-                <p className="text-xs font-medium text-gray-700">{selectedPR.div_name ?? '—'}</p>
+                <p className="text-[10px] text-muted-foreground/70">Division</p>
+                <p className="text-xs font-medium text-foreground">{selectedPR.div_name ?? '—'}</p>
               </div>
               <div>
-                <p className="text-[10px] text-gray-400">Branch</p>
-                <p className="text-xs font-medium text-gray-700">{selectedPR.brn_name ?? '—'}</p>
+                <p className="text-[10px] text-muted-foreground/70">Branch</p>
+                <p className="text-xs font-medium text-foreground">{selectedPR.brn_name ?? '—'}</p>
               </div>
               <div>
-                <p className="text-[10px] text-gray-400">Required Date</p>
-                <p className="text-xs font-medium text-gray-700">
+                <p className="text-[10px] text-muted-foreground/70">Required Date</p>
+                <p className="text-xs font-medium text-foreground">
                   {formatDate(selectedPR.required_date ?? selectedPR.req_by_date)}
                 </p>
               </div>
             </div>
             {(selectedPR.dept_name || selectedPR.purpose || selectedPR.priority_name) && (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2 pt-2 border-t border-gray-100">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2 pt-2 border-t border-border">
                 {selectedPR.dept_name && (
                   <div>
-                    <p className="text-[10px] text-gray-400">Department</p>
-                    <p className="text-xs font-medium text-gray-700">{selectedPR.dept_name}</p>
+                    <p className="text-[10px] text-muted-foreground/70">Department</p>
+                    <p className="text-xs font-medium text-foreground">{selectedPR.dept_name}</p>
                   </div>
                 )}
                 {selectedPR.priority_name && (
                   <div>
-                    <p className="text-[10px] text-gray-400">Priority</p>
-                    <p className="text-xs font-medium text-gray-700">{selectedPR.priority_name}</p>
+                    <p className="text-[10px] text-muted-foreground/70">Priority</p>
+                    <p className="text-xs font-medium text-foreground">{selectedPR.priority_name}</p>
                   </div>
                 )}
                 {selectedPR.purpose && (
                   <div>
-                    <p className="text-[10px] text-gray-400">Purpose</p>
-                    <p className="text-xs font-medium text-gray-700 truncate">{selectedPR.purpose}</p>
+                    <p className="text-[10px] text-muted-foreground/70">Purpose</p>
+                    <p className="text-xs font-medium text-foreground truncate">{selectedPR.purpose}</p>
                   </div>
                 )}
               </div>
@@ -391,7 +391,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
               <div>
-                <label className="text-xs text-gray-500 font-medium block mb-1">Company</label>
+                <label className="text-xs text-muted-foreground font-medium block mb-1">Company</label>
                 <Select
                   value={globalComSno}
                   onValueChange={v => { setGlobalComSno(v); setGlobalDivSno(''); setGlobalBrnSno(''); setGlobalDeptSno(''); }}
@@ -407,7 +407,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                 </Select>
               </div>
               <div>
-                <label className="text-xs text-gray-500 font-medium block mb-1">Division</label>
+                <label className="text-xs text-muted-foreground font-medium block mb-1">Division</label>
                 <Select
                   value={globalDivSno}
                   onValueChange={v => { setGlobalDivSno(v); setGlobalBrnSno(''); setGlobalDeptSno(''); }}
@@ -424,7 +424,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                 </Select>
               </div>
               <div>
-                <label className="text-xs text-gray-500 font-medium block mb-1">Branch</label>
+                <label className="text-xs text-muted-foreground font-medium block mb-1">Branch</label>
                 <Select
                   value={globalBrnSno}
                   onValueChange={v => { setGlobalBrnSno(v); setGlobalDeptSno(''); }}
@@ -441,7 +441,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                 </Select>
               </div>
               <div>
-                <label className="text-xs text-gray-500 font-medium block mb-1">Department</label>
+                <label className="text-xs text-muted-foreground font-medium block mb-1">Department</label>
                 <Select
                   value={globalDeptSno}
                   onValueChange={v => setGlobalDeptSno(v)}
@@ -458,7 +458,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                 </Select>
               </div>
               <div>
-                <label className="text-xs text-gray-500 font-medium block mb-1">
+                <label className="text-xs text-muted-foreground font-medium block mb-1">
                   <Calendar size={11} className="inline mr-1" />
                   Required Date *
                 </label>
@@ -484,27 +484,27 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                 <Package size={16} className="text-orange-600" />
                 Items — Confirm Quantities
                 {groupNums.length > 0 && (
-                  <Badge className="text-xs bg-indigo-100 text-indigo-700 border-indigo-200 ml-1">
+                  <Badge className="text-xs bg-primary/15 text-primary border-primary/20 ml-1">
                     {groupNums.length} split group(s)
                   </Badge>
                 )}
               </CardTitle>
-              <p className="text-[11px] text-gray-400 mt-1 ml-6">
+              <p className="text-[11px] text-muted-foreground/70 mt-1 ml-6">
                 Select items with checkboxes then click <strong>"Create Split Group"</strong> — each group becomes a separate PO.
               </p>
             </div>
 
             {/* Bulk split toolbar (visible when items are checked) */}
             {selectedIds.size > 0 && (
-              <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5 flex-wrap">
-                <CheckSquare size={14} className="text-indigo-600 shrink-0" />
-                <span className="text-xs font-medium text-indigo-700">
+              <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-lg px-3 py-1.5 flex-wrap">
+                <CheckSquare size={14} className="text-primary shrink-0" />
+                <span className="text-xs font-medium text-primary">
                   {selectedIds.size} item(s) selected
                 </span>
-                <span className="text-gray-300">|</span>
+                <span className="text-muted-foreground/50">|</span>
                 <Button
                   size="sm"
-                  className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700"
+                  className="h-7 text-xs bg-primary hover:bg-primary/90"
                   onClick={createSplitGroup}
                 >
                   <Scissors size={12} className="mr-1" />
@@ -523,7 +523,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-7 text-xs text-gray-500"
+                  className="h-7 text-xs text-muted-foreground"
                   onClick={() => setSelectedIds(new Set())}
                 >
                   Clear
@@ -549,17 +549,17 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                     <span className={`${col.text} font-medium flex-1 truncate`}>
                       {gItems.map(i => i.prod_name).join(' • ')}
                     </span>
-                    <span className="text-gray-500 shrink-0">{gItems.length} item(s) → separate PO</span>
+                    <span className="text-muted-foreground shrink-0">{gItems.length} item(s) → separate PO</span>
                   </div>
                 );
               })}
               {rows.some(r => !r.split_group) && (
-                <div className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 border text-xs bg-gray-50 border-gray-200">
-                  <Badge className="bg-gray-500 text-white border-none text-[10px] shrink-0">Main PO</Badge>
-                  <span className="text-gray-600 font-medium flex-1 truncate">
+                <div className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 border text-xs bg-muted/40 border-border">
+                  <Badge className="bg-muted/400 text-white border-none text-[10px] shrink-0">Main PO</Badge>
+                  <span className="text-muted-foreground font-medium flex-1 truncate">
                     {rows.filter(r => !r.split_group).map(i => i.prod_name).join(' • ')}
                   </span>
-                  <span className="text-gray-400 shrink-0">{rows.filter(r => !r.split_group).length} item(s)</span>
+                  <span className="text-muted-foreground/70 shrink-0">{rows.filter(r => !r.split_group).length} item(s)</span>
                 </div>
               )}
             </div>
@@ -569,7 +569,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
         <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="bg-gray-50">
+              <TableRow className="bg-muted/40">
                 <TableHead className="w-10 pl-3">
                   <Checkbox
                     checked={rows.length > 0 && selectedIds.size === rows.length}
@@ -594,7 +594,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                   <TableRow
                     key={row.id}
                     className={`cursor-pointer select-none ${
-                      isChecked ? 'bg-indigo-50/70' : col ? `${col.bg}/30` : ''
+                      isChecked ? 'bg-primary/10/70' : col ? `${col.bg}/30` : ''
                     }`}
                     onClick={() => toggleSelect(row.id)}
                   >
@@ -608,18 +608,18 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                     </TableCell>
 
                     {/* # */}
-                    <TableCell className="text-xs text-gray-400 pl-3">{idx + 1}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground/70 pl-3">{idx + 1}</TableCell>
 
                     {/* Item */}
                     <TableCell className="py-2" onClick={e => e.stopPropagation()}>
                       <div className="text-sm font-medium leading-tight">{row.prod_name || '—'}</div>
                       {row.specification && (
-                        <div className="text-[11px] text-gray-400 truncate max-w-[200px]">
+                        <div className="text-[11px] text-muted-foreground/70 truncate max-w-[200px]">
                           {row.specification}
                         </div>
                       )}
                       {row.est_cost && (
-                        <div className="text-[11px] text-gray-400">
+                        <div className="text-[11px] text-muted-foreground/70">
                           Est: {formatINR(Number(row.est_cost))}
                         </div>
                       )}
@@ -652,7 +652,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                           <Plus size={10} />
                         </Button>
                       </div>
-                      <div className="text-[10px] text-gray-400 mt-0.5">orig: {row.originalQty}</div>
+                      <div className="text-[10px] text-muted-foreground/70 mt-0.5">orig: {row.originalQty}</div>
                     </TableCell>
 
                     {/* UOM */}
@@ -669,7 +669,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-5 w-5 p-0 text-gray-300 hover:text-red-500"
+                              className="h-5 w-5 p-0 text-muted-foreground/50 hover:text-red-500"
                               title="Remove from group"
                               onClick={() => removeItemFromGroup(row.id)}
                             >
@@ -677,7 +677,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                             </Button>
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-400">Main PO</span>
+                          <span className="text-xs text-muted-foreground/70">Main PO</span>
                         )}
                       </TableCell>
                     )}
@@ -697,7 +697,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
         <Button
           onClick={handleSave}
           disabled={!canSave}
-          className="bg-indigo-600 hover:bg-indigo-700"
+          className="bg-primary hover:bg-primary/90"
         >
           {saving ? (
             <>

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { PageHeader } from '@/CustomComponent/PageComponents';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -123,7 +124,7 @@ function prStatus(status?: string) {
   if (s.includes('submit') || s.includes('pending') || s.includes('review') || s.includes('approval'))
     return { label: 'Pending Approval', color: 'bg-amber-100 text-amber-700 border-amber-200' };
   if (s.includes('draft'))
-    return { label: 'Draft', color: 'bg-gray-100 text-gray-600 border-gray-200' };
+    return { label: 'Draft', color: 'bg-muted text-muted-foreground border-border' };
   return { label: status || 'Unknown', color: 'bg-blue-100 text-blue-700 border-blue-200' };
 }
 
@@ -383,44 +384,50 @@ const StorePOGeneratePage: React.FC = () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 min-h-screen">
+    <div className="flex flex-col h-full bg-muted/40 min-h-screen">
       {/* ── Page Header ── */}
-      <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-blue-600 p-2 rounded-lg">
-            <ShoppingCart className="text-white" size={20} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Store PO Generation</h1>
-            <p className="text-sm text-gray-500">Generate purchase orders from approved / pending PRs</p>
-          </div>
-        </div>
+      <PageHeader
+        icon={ShoppingCart}
+        title="Store PO Generation"
+        description="Generate purchase orders from approved / pending PRs"
+      >
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowDrafts(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+            onClick={() => setShowDrafts(true)}
+          >
             <ClipboardList size={16} className="mr-1" />
-            PO Drafts {drafts.length > 0 && <Badge className="ml-1 bg-blue-100 text-blue-700 border-0">{drafts.length}</Badge>}
+            PO Drafts {drafts.length > 0 && <Badge className="ml-1 bg-primary-foreground/20 text-primary-foreground border-0">{drafts.length}</Badge>}
           </Button>
-          <Button variant="outline" size="sm" onClick={fetchPRs} disabled={loadingPR}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+            onClick={fetchPRs}
+            disabled={loadingPR}
+          >
             <RefreshCw size={16} className={loadingPR ? 'animate-spin' : ''} />
           </Button>
         </div>
-      </div>
+      </PageHeader>
 
       {/* ── Body: Split panel ── */}
       <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
 
         {/* ── LEFT: PR List ── */}
-        <div className="w-80 flex-shrink-0 bg-white border-r flex flex-col overflow-hidden">
+        <div className="w-80 flex-shrink-0 bg-card border-r flex flex-col overflow-hidden">
           {/* Summary strip */}
-          <div className="px-4 py-3 border-b bg-gray-50 flex gap-3 text-xs font-medium">
-            <span className="text-gray-500">{prList.length} total</span>
+          <div className="px-4 py-3 border-b bg-muted/40 flex gap-3 text-xs font-medium">
+            <span className="text-muted-foreground">{prList.length} total</span>
             <span className="text-amber-600">{pendingCount} pending</span>
           </div>
 
           {/* Filters */}
           <div className="px-3 py-2 border-b space-y-2">
             <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
               <Input
                 placeholder="Search PR no, company…"
                 value={searchPR}
@@ -436,7 +443,7 @@ const StorePOGeneratePage: React.FC = () => {
                   className={`flex-1 text-xs py-1 rounded capitalize font-medium border transition-colors ${
                     filterStatus === tab
                       ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      : 'bg-card text-muted-foreground border-border hover:bg-muted/40'
                   }`}
                 >
                   {tab}
@@ -448,12 +455,12 @@ const StorePOGeneratePage: React.FC = () => {
           {/* PR cards */}
           <div className="flex-1 overflow-y-auto">
             {loadingPR ? (
-              <div className="flex flex-col items-center justify-center h-40 gap-2 text-gray-400">
+              <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground/70">
                 <Loader2 size={24} className="animate-spin" />
                 <span className="text-sm">Loading PRs…</span>
               </div>
             ) : filteredPRs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 gap-2 text-gray-400">
+              <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground/70">
                 <FileText size={24} />
                 <span className="text-sm">No PRs found</span>
               </div>
@@ -478,11 +485,11 @@ const StorePOGeneratePage: React.FC = () => {
                         {label}
                       </span>
                     </div>
-                    <div className="text-xs text-gray-600 truncate">{pr.com_name}</div>
-                    <div className="text-xs text-gray-500 truncate">{pr.dept_name} • {formatDate(pr.request_date ?? pr.req_date)}</div>
+                    <div className="text-xs text-muted-foreground truncate">{pr.com_name}</div>
+                    <div className="text-xs text-muted-foreground truncate">{pr.dept_name} • {formatDate(pr.request_date ?? pr.req_date)}</div>
                     <div className="flex items-center justify-between mt-1">
-                      <span className="text-xs text-gray-400">{(pr.items as PRItem[])?.length ?? 0} items</span>
-                      <ChevronRight size={14} className="text-gray-400" />
+                      <span className="text-xs text-muted-foreground/70">{(pr.items as PRItem[])?.length ?? 0} items</span>
+                      <ChevronRight size={14} className="text-muted-foreground/70" />
                     </div>
                   </button>
                 );
@@ -494,12 +501,12 @@ const StorePOGeneratePage: React.FC = () => {
         {/* ── RIGHT: PO Form ── */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {!selectedPR ? (
-            <div className="flex flex-col items-center justify-center h-96 gap-4 text-gray-400">
-              <div className="bg-gray-100 p-6 rounded-full">
+            <div className="flex flex-col items-center justify-center h-96 gap-4 text-muted-foreground/70">
+              <div className="bg-muted p-6 rounded-full">
                 <ShoppingCart size={40} />
               </div>
               <div className="text-center">
-                <p className="text-base font-medium text-gray-500">Select a Purchase Requisition</p>
+                <p className="text-base font-medium text-muted-foreground">Select a Purchase Requisition</p>
                 <p className="text-sm mt-1">Click a PR from the left panel to generate a Store PO</p>
               </div>
             </div>
@@ -521,35 +528,35 @@ const StorePOGeneratePage: React.FC = () => {
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                     <div>
-                      <p className="text-xs text-gray-500 font-medium">PR Number</p>
+                      <p className="text-xs text-muted-foreground font-medium">PR Number</p>
                       <p className="font-semibold text-blue-700">{selectedPR.pr_no ?? `PR-${selectedPR.pr_id}`}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 font-medium">Company</p>
+                      <p className="text-xs text-muted-foreground font-medium">Company</p>
                       <p className="font-medium">{selectedPR.com_name ?? '—'}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 font-medium">Division / Branch</p>
+                      <p className="text-xs text-muted-foreground font-medium">Division / Branch</p>
                       <p className="font-medium">{[selectedPR.div_name, selectedPR.brn_name].filter(Boolean).join(' / ') || '—'}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 font-medium">Department</p>
+                      <p className="text-xs text-muted-foreground font-medium">Department</p>
                       <p className="font-medium">{selectedPR.dept_name ?? '—'}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 font-medium">Request Date</p>
+                      <p className="text-xs text-muted-foreground font-medium">Request Date</p>
                       <p className="font-medium">{formatDate(selectedPR.request_date ?? selectedPR.req_date)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 font-medium">Required By</p>
+                      <p className="text-xs text-muted-foreground font-medium">Required By</p>
                       <p className="font-medium">{formatDate(selectedPR.required_date ?? selectedPR.req_by_date)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 font-medium">Priority</p>
+                      <p className="text-xs text-muted-foreground font-medium">Priority</p>
                       <p className="font-medium">{selectedPR.priority_name ?? '—'}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 font-medium">Purpose</p>
+                      <p className="text-xs text-muted-foreground font-medium">Purpose</p>
                       <p className="font-medium truncate" title={selectedPR.purpose}>{selectedPR.purpose ?? '—'}</p>
                     </div>
                   </div>
@@ -682,18 +689,18 @@ const StorePOGeneratePage: React.FC = () => {
                     <CardTitle className="text-sm font-semibold flex items-center gap-2">
                       <Package size={16} className="text-orange-600" />
                       Order Items
-                      <span className="text-xs font-normal text-gray-400">(pre-filled from PR — enter unit price &amp; tax)</span>
+                      <span className="text-xs font-normal text-muted-foreground/70">(pre-filled from PR — enter unit price &amp; tax)</span>
                     </CardTitle>
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
                   {poItems.length === 0 ? (
-                    <div className="text-center py-8 text-gray-400 text-sm">No items in this PR</div>
+                    <div className="text-center py-8 text-muted-foreground/70 text-sm">No items in this PR</div>
                   ) : (
                     <div className="overflow-x-auto">
                       <Table>
                         <TableHeader>
-                          <TableRow className="bg-gray-50">
+                          <TableRow className="bg-muted/40">
                             <TableHead className="text-xs w-8">#</TableHead>
                             <TableHead className="text-xs">Item / Product</TableHead>
                             <TableHead className="text-xs text-center w-28">Qty</TableHead>
@@ -705,13 +712,13 @@ const StorePOGeneratePage: React.FC = () => {
                         </TableHeader>
                         <TableBody>
                           {poItems.map((item, idx) => (
-                            <TableRow key={idx} className="hover:bg-gray-50">
-                              <TableCell className="text-xs text-gray-400">{idx + 1}</TableCell>
+                            <TableRow key={idx} className="hover:bg-muted/40">
+                              <TableCell className="text-xs text-muted-foreground/70">{idx + 1}</TableCell>
                               <TableCell>
                                 <Input
                                   value={item.prod_name}
                                   onChange={(e) => updateItem(idx, 'prod_name', e.target.value)}
-                                  className="h-8 text-sm border-0 bg-transparent hover:bg-white hover:border focus:border p-1"
+                                  className="h-8 text-sm border-0 bg-transparent hover:bg-card hover:border focus:border p-1"
                                 />
                               </TableCell>
                               <TableCell>
@@ -727,7 +734,7 @@ const StorePOGeneratePage: React.FC = () => {
                                 <Input
                                   value={item.unit_name}
                                   onChange={(e) => updateItem(idx, 'unit_name', e.target.value)}
-                                  className="h-8 text-sm text-center border-0 bg-transparent hover:bg-white hover:border focus:border p-1"
+                                  className="h-8 text-sm text-center border-0 bg-transparent hover:bg-card hover:border focus:border p-1"
                                 />
                               </TableCell>
                               <TableCell>
@@ -770,11 +777,11 @@ const StorePOGeneratePage: React.FC = () => {
                 <Card className="flex-1">
                   <CardContent className="pt-4">
                     <div className="space-y-2 text-sm max-w-xs ml-auto">
-                      <div className="flex justify-between text-gray-600">
+                      <div className="flex justify-between text-muted-foreground">
                         <span>Subtotal</span>
                         <span className="font-medium">{formatINR(subtotal)}</span>
                       </div>
-                      <div className="flex justify-between text-gray-600">
+                      <div className="flex justify-between text-muted-foreground">
                         <span>Total Tax</span>
                         <span className="font-medium">{formatINR(taxTotal)}</span>
                       </div>
@@ -808,7 +815,7 @@ const StorePOGeneratePage: React.FC = () => {
                   <Button
                     variant="ghost"
                     onClick={() => setSelectedPR(null)}
-                    className="flex items-center gap-2 text-gray-500"
+                    className="flex items-center gap-2 text-muted-foreground"
                   >
                     <X size={16} />
                     Clear
@@ -831,7 +838,7 @@ const StorePOGeneratePage: React.FC = () => {
           </DialogHeader>
 
           {drafts.length === 0 ? (
-            <div className="flex flex-col items-center py-10 text-gray-400 gap-2">
+            <div className="flex flex-col items-center py-10 text-muted-foreground/70 gap-2">
               <ClipboardList size={32} />
               <p className="text-sm">No saved PO drafts</p>
             </div>
@@ -846,11 +853,11 @@ const StorePOGeneratePage: React.FC = () => {
                           <span className="font-semibold text-blue-700">{draft.pr_no || 'No PR Ref'}</span>
                           <Badge variant="outline" className="text-xs">{draft.status ?? 'Draft'}</Badge>
                         </div>
-                        <p className="text-gray-600">Vendor: <span className="font-medium">{draft.vendor?.vendor_name || '—'}</span></p>
-                        <p className="text-gray-500 text-xs">
+                        <p className="text-muted-foreground">Vendor: <span className="font-medium">{draft.vendor?.vendor_name || '—'}</span></p>
+                        <p className="text-muted-foreground text-xs">
                           {draft.items?.length ?? 0} items · Grand Total: {formatINR(draft.grand_total ?? 0)}
                         </p>
-                        <p className="text-gray-400 text-xs">
+                        <p className="text-muted-foreground/70 text-xs">
                           Saved: {formatDate(draft.savedAt)}
                         </p>
                       </div>

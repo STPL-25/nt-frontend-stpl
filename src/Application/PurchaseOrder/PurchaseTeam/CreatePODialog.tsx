@@ -21,7 +21,6 @@ interface CreatePODialogProps {
 const CreatePODialog: React.FC<CreatePODialogProps> = ({
   open, onOpenChange, selectedPR, selectedQuotation, onCreatePO,
 }) => {
-  console.log(  open, onOpenChange, selectedPR, selectedQuotation, onCreatePO,)
   const poFormFields = usePOFormFields();
   const inputFields = poFormFields.filter(f => f.input);
   const gridFields = inputFields.filter(f => f.type !== 'textarea');
@@ -92,7 +91,7 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Package size={18} className="text-indigo-600" />
+            <Package size={18} className="text-primary" />
             Create Purchase Order
           </DialogTitle>
         </DialogHeader>
@@ -131,9 +130,9 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
               </div>
             </div>
 
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-sm flex items-start gap-2">
-              <FileText size={15} className="text-indigo-500 mt-0.5 shrink-0" />
-              <p className="text-indigo-700">
+            <div className="rounded-lg border border-primary/20 bg-primary/10 p-3 text-sm flex items-start gap-2">
+              <FileText size={15} className="text-primary mt-0.5 shrink-0" />
+              <p className="text-primary">
                 Download the Purchase Order as a PDF to share with your supplier or for record-keeping.
               </p>
             </div>
@@ -142,7 +141,7 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
           /* ── Form state ── */
           <div className="space-y-4">
             {/* PO Summary info */}
-            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-sm">
+            <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 text-sm">
               <p><span className="font-medium">PR:</span> {getPRDisplayNo(selectedPR)}</p>
               <p><span className="font-medium">Vendor:</span> {selectedQuotation.vendor_name ?? selectedQuotation.company_name}</p>
               <p><span className="font-medium">Quotation:</span> {selectedQuotation.quotation_ref_no}</p>
@@ -186,7 +185,7 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
               <Button variant="outline" onClick={handleClose}>Close</Button>
               <Button
                 onClick={handleDownloadPDF}
-                className="bg-indigo-600 hover:bg-indigo-700"
+                className="bg-primary hover:bg-primary/90"
               >
                 <Download size={16} className="mr-1" />
                 Download PO as PDF
@@ -195,7 +194,7 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
           ) : (
             <>
               <Button variant="outline" onClick={handleClose}>Cancel</Button>
-              <Button onClick={handleCreate} disabled={creating} className="bg-indigo-600 hover:bg-indigo-700">
+              <Button onClick={handleCreate} disabled={creating} className="bg-primary hover:bg-primary/90">
                 {creating ? <Loader2 size={16} className="animate-spin mr-1" /> : <Send size={16} className="mr-1" />}
                 Create PO
               </Button>

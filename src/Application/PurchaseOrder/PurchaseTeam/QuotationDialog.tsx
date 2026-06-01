@@ -162,14 +162,14 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
                   advance_payment_pct: v ? f.advance_payment_pct : 0,
                 }))}
               />
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-muted-foreground">
                 {form.advance_payment_required ? 'Required' : 'Not Required'}
               </span>
             </div>
           </div>
           {form.advance_payment_required && (
             <div className="mt-2 flex items-center gap-3 flex-wrap">
-              <label className="text-xs text-gray-500">Advance %</label>
+              <label className="text-xs text-muted-foreground">Advance %</label>
               <Input
                 type="number"
                 min={0}
@@ -180,7 +180,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
                 placeholder="0"
                 className="h-7 w-20 text-xs text-right"
               />
-              <span className="text-xs text-gray-500">%</span>
+              <span className="text-xs text-muted-foreground">%</span>
               <span className="text-xs font-medium text-amber-700 ml-1">
                 = {formatINR(advanceAmount)}
               </span>
@@ -192,7 +192,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
         <div className="border rounded overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="bg-gray-50">
+              <TableRow className="bg-muted/40">
                 <TableHead className="text-xs w-8">
                   <input
                     type="checkbox"
@@ -231,7 +231,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
                         className="cursor-pointer"
                       />
                     </TableCell>
-                    <TableCell className="text-xs text-gray-400">{idx + 1}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground/70">{idx + 1}</TableCell>
                     {viewItemFields.map(f => {
                       const val = (item as any)[f.field];
 
@@ -290,21 +290,21 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
         {/* Totals */}
         <div className="flex justify-end">
           <div className="space-y-1 text-sm w-72">
-            <div className="flex justify-between text-gray-600">
+            <div className="flex justify-between text-muted-foreground">
               <span>Subtotal</span>
               <span className="font-medium">{formatINR(totals.subtotal)}</span>
             </div>
-            <div className="flex justify-between text-gray-600">
+            <div className="flex justify-between text-muted-foreground">
               <span>Discount</span>
               <span className="font-medium text-red-600">-{formatINR(totals.discount)}</span>
             </div>
-            <div className="flex justify-between text-gray-600">
+            <div className="flex justify-between text-muted-foreground">
               <span>Tax</span>
               <span className="font-medium">{formatINR(totals.tax)}</span>
             </div>
             <div className="flex justify-between border-t pt-1 font-bold">
               <span>Grand Total</span>
-              <span className="text-indigo-700">{formatINR(totals.grandTotal)}</span>
+              <span className="text-primary">{formatINR(totals.grandTotal)}</span>
             </div>
             {totalBuyback > 0 && (
               <>
@@ -330,20 +330,20 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
         </div>
 
         {/* Quotation document upload (image / PDF) */}
-        <div className="rounded-lg border border-dashed border-indigo-200 bg-indigo-50/40 p-3">
-          <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-indigo-700">
+        <div className="rounded-lg border border-dashed border-primary/20 bg-primary/10/40 p-3">
+          <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-primary">
             <Paperclip size={14} />
             Quotation Document
-            <span className="text-[10px] font-normal text-gray-400">(image or PDF, optional, max {MAX_FILE_MB}MB)</span>
+            <span className="text-[10px] font-normal text-muted-foreground/70">(image or PDF, optional, max {MAX_FILE_MB}MB)</span>
           </div>
           {file ? (
-            <div className="flex items-center gap-2 bg-white border rounded px-2.5 py-1.5">
-              <FileText size={16} className="text-indigo-600 shrink-0" />
-              <span className="text-xs font-medium text-gray-700 truncate flex-1">{file.name}</span>
-              <span className="text-[10px] text-gray-400 shrink-0">{(file.size / 1024).toFixed(0)} KB</span>
+            <div className="flex items-center gap-2 bg-card border rounded px-2.5 py-1.5">
+              <FileText size={16} className="text-primary shrink-0" />
+              <span className="text-xs font-medium text-foreground truncate flex-1">{file.name}</span>
+              <span className="text-[10px] text-muted-foreground/70 shrink-0">{(file.size / 1024).toFixed(0)} KB</span>
               <button
                 type="button"
-                className="text-gray-300 hover:text-red-500"
+                className="text-muted-foreground/50 hover:text-red-500"
                 onClick={() => handlePickFile(null)}
                 title="Remove file"
               >
@@ -351,8 +351,8 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
               </button>
             </div>
           ) : (
-            <label className="flex items-center gap-2 cursor-pointer text-xs text-indigo-600 hover:text-indigo-700">
-              <span className="inline-flex items-center gap-1.5 border border-indigo-300 rounded px-2.5 py-1.5 bg-white hover:bg-indigo-50">
+            <label className="flex items-center gap-2 cursor-pointer text-xs text-primary hover:text-primary">
+              <span className="inline-flex items-center gap-1.5 border border-primary/40 rounded px-2.5 py-1.5 bg-card hover:bg-primary/10">
                 <Paperclip size={13} /> Choose file…
               </span>
               <input
@@ -368,7 +368,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={submitting} className="bg-indigo-600 hover:bg-indigo-700">
+          <Button onClick={handleSubmit} disabled={submitting} className="bg-primary hover:bg-primary/90">
             {submitting ? <Loader2 size={16} className="animate-spin mr-1" /> : <Send size={16} className="mr-1" />}
             Submit Quotation
           </Button>

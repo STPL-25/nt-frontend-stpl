@@ -34,7 +34,7 @@ const PRDetailsTab: React.FC<PRDetailsTabProps> = ({ selectedPR, onSaveQtyChange
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <FileText size={16} className="text-indigo-600" />
+            <FileText size={16} className="text-primary" />
             PR Reference — {getPRDisplayNo(selectedPR)}
           </CardTitle>
         </CardHeader>
@@ -42,7 +42,7 @@ const PRDetailsTab: React.FC<PRDetailsTabProps> = ({ selectedPR, onSaveQtyChange
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
             {viewSummaryFields.map((field) => (
               <div key={field.field}>
-                <p className="text-xs text-gray-500 font-medium">{field.label}</p>
+                <p className="text-xs text-muted-foreground font-medium">{field.label}</p>
                 <p className="font-medium">{renderFieldValue(field, prRecord[field.field])}</p>
               </div>
             ))}
@@ -56,13 +56,13 @@ const PRDetailsTab: React.FC<PRDetailsTabProps> = ({ selectedPR, onSaveQtyChange
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Package size={16} className="text-orange-600" />
             PR Items
-            <span className="text-xs font-normal text-gray-400">(click qty to edit)</span>
+            <span className="text-xs font-normal text-muted-foreground/70">(click qty to edit)</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow className="bg-gray-50">
+              <TableRow className="bg-muted/40">
                 <TableHead className="text-xs w-8">#</TableHead>
                 {viewItemFields.map((field) => (
                   <TableHead
@@ -77,7 +77,7 @@ const PRDetailsTab: React.FC<PRDetailsTabProps> = ({ selectedPR, onSaveQtyChange
             <TableBody>
               {items.map((item, idx) => (
                 <TableRow key={idx}>
-                  <TableCell className="text-xs text-gray-400">{idx + 1}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground/70">{idx + 1}</TableCell>
                   {viewItemFields.map((field) => {
                     const rawValue = (item as any)[field.field] ?? (item as any)[field.field === 'prod_name' ? 'item_name' : ''];
 
@@ -107,7 +107,7 @@ const PRDetailsTab: React.FC<PRDetailsTabProps> = ({ selectedPR, onSaveQtyChange
                           ) : (
                             <button
                               onClick={() => setEditingQty({ idx, value: Number(item.qty ?? item.quantity ?? 0) })}
-                              className="text-sm font-medium text-indigo-600 hover:underline cursor-pointer"
+                              className="text-sm font-medium text-primary hover:underline cursor-pointer"
                             >
                               {item.qty ?? item.quantity ?? 0}
                             </button>

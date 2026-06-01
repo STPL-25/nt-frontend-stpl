@@ -15,7 +15,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import {  Plus,  Trash2,  Edit2,  Check,  X,  Save,  Send,  FileText,  RefreshCw,  Building2,  Package,  Users,  FileSpreadsheet,  Upload,  Wrench,  Paperclip,} from 'lucide-react';
 import { downloadExcelTemplate, parseExcelFile } from '@/utils/excelUtils';
-import { FormSection } from '@/CustomComponent/PageComponents';
+import { FormSection, PageHeader } from '@/CustomComponent/PageComponents';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { usePRBasicInfoFields, usePRItemDetailsFields, type PRItemType } from '@/FieldDatas/PRData';
 import axios from 'axios';
@@ -696,16 +696,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   return (
     <div className="flex flex-col h-full bg-muted/30 min-h-screen">
       {/* Page Header */}
-      <div className="bg-background border-b px-6 py-4 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-            <FileText className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">{pageTitle}</h1>
-            <p className="text-xs text-muted-foreground">{pageSubtitle}</p>
-          </div>
-        </div>
+      <PageHeader icon={FileText} title={pageTitle} description={pageSubtitle}>
         <div className="flex items-center gap-2 flex-wrap">
           {isDeptDraftMode && (
             <Badge className="text-xs bg-amber-100 text-amber-800 border-amber-300">
@@ -714,18 +705,18 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
             </Badge>
           )}
           {isPrivateDraftMode && (
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant="secondary" className="text-xs bg-primary-foreground/15 text-primary-foreground border-0">
               <Save className="h-3 w-3 mr-1" />
               Private Draft
             </Badge>
           )}
           {scopeKey && (
-            <Badge variant="outline" className="text-xs text-muted-foreground">
+            <Badge variant="outline" className="text-xs bg-primary-foreground/10 text-primary-foreground border-primary-foreground/20">
               Scope: {[basicFormData.com_sno, basicFormData.div_sno, basicFormData.brn_sno, basicFormData.dept_sno].filter(Boolean).join(' › ')}
             </Badge>
           )}
         </div>
-      </div>
+      </PageHeader>
 
       {/* Main form */}
       <div className="container mx-auto py-6 px-4">

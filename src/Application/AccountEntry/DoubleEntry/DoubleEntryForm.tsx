@@ -99,7 +99,7 @@ const AccountSelector: React.FC<{
                   >
                     <div className="flex items-center justify-between w-full">
                       <div>
-                        <span className="font-mono text-indigo-700 mr-1.5">{l.ledger_code}</span>
+                        <span className="font-mono text-primary mr-1.5">{l.ledger_code}</span>
                         <span>{l.ledger_name}</span>
                       </div>
                       <span className={`text-xs ${l.current_balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -198,7 +198,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
   };
 
   const voucherBadgeColor: Record<string, string> = {
-    Journal:  'bg-indigo-100 text-indigo-700',
+    Journal:  'bg-primary/15 text-primary',
     Payment:  'bg-red-100 text-red-700',
     Receipt:  'bg-green-100 text-green-700',
     Contra:   'bg-purple-100 text-purple-700',
@@ -213,7 +213,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <BookOpen size={15} className="text-indigo-600" />
+              <BookOpen size={15} className="text-primary" />
               {isNewEntry ? 'New Journal Entry' : `Entry — ${entryNo}`}
               {!isNewEntry && selectedEntry && (
                 <Badge className={`text-xs ml-1 ${voucherBadgeColor[selectedEntry.voucher_type] ?? ''}`}>
@@ -237,16 +237,16 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Entry number display */}
-          <div className="flex items-center gap-3 p-2 bg-indigo-50 rounded-lg border border-indigo-100">
-            <FileText size={14} className="text-indigo-600 shrink-0" />
+          <div className="flex items-center gap-3 p-2 bg-primary/10 rounded-lg border border-primary/20">
+            <FileText size={14} className="text-primary shrink-0" />
             <div>
-              <p className="text-xs text-indigo-500 font-medium">Entry Number</p>
-              <p className="text-sm font-bold text-indigo-800 font-mono">{entryNo || '—'}</p>
+              <p className="text-xs text-primary font-medium">Entry Number</p>
+              <p className="text-sm font-bold text-primary font-mono">{entryNo || '—'}</p>
             </div>
             {!isNewEntry && selectedEntry && (
               <div className="ml-auto text-right">
-                <p className="text-xs text-gray-400">Posted on</p>
-                <p className="text-xs font-medium text-gray-700">{formatDate(selectedEntry.posted_at)}</p>
+                <p className="text-xs text-muted-foreground/70">Posted on</p>
+                <p className="text-xs font-medium text-foreground">{formatDate(selectedEntry.posted_at)}</p>
               </div>
             )}
           </div>
@@ -254,7 +254,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
           {/* Header Fields */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs text-gray-600">Entry Date *</Label>
+              <Label className="text-xs text-muted-foreground">Entry Date *</Label>
               <Input
                 type="date"
                 value={form.entry_date}
@@ -264,7 +264,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs text-gray-600">Voucher Type *</Label>
+              <Label className="text-xs text-muted-foreground">Voucher Type *</Label>
               <Select value={form.voucher_type} onValueChange={v => setFormField('voucher_type', v)} disabled={!canEdit}>
                 <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -275,7 +275,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
               </Select>
             </div>
             <div className="space-y-1 md:col-span-2">
-              <Label className="text-xs text-gray-600">Reference No.</Label>
+              <Label className="text-xs text-muted-foreground">Reference No.</Label>
               <Input
                 value={form.reference_no}
                 onChange={e => setFormField('reference_no', e.target.value)}
@@ -286,7 +286,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
             </div>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-gray-600">Narration *</Label>
+            <Label className="text-xs text-muted-foreground">Narration *</Label>
             <Textarea
               rows={2}
               value={form.narration}
@@ -304,7 +304,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <BookOpen size={14} className="text-indigo-600" />
+              <BookOpen size={14} className="text-primary" />
               Debit / Credit Lines
               <Badge variant="outline" className="text-xs ml-1">{lines.length} lines</Badge>
             </CardTitle>
@@ -319,7 +319,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
           <div className="border rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50">
+                <TableRow className="bg-muted/40">
                   <TableHead className="text-xs w-8">#</TableHead>
                   <TableHead className="text-xs min-w-[260px]">Account</TableHead>
                   <TableHead className="text-xs">Group</TableHead>
@@ -332,7 +332,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
               <TableBody>
                 {lines.map((line, idx) => (
                   <TableRow key={line.id} className="align-middle">
-                    <TableCell className="text-xs text-gray-400">{idx + 1}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground/70">{idx + 1}</TableCell>
 
                     {/* Account selector */}
                     <TableCell>
@@ -346,8 +346,8 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
                         />
                       ) : (
                         <div>
-                          <p className="text-xs font-mono text-indigo-700">{line.ledger_code}</p>
-                          <p className="text-sm font-medium text-gray-800">{line.ledger_name}</p>
+                          <p className="text-xs font-mono text-primary">{line.ledger_code}</p>
+                          <p className="text-sm font-medium text-foreground">{line.ledger_name}</p>
                         </div>
                       )}
                     </TableCell>
@@ -357,7 +357,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
                       {line.account_group ? (
                         <Badge variant="outline" className="text-xs whitespace-nowrap">{line.account_group}</Badge>
                       ) : (
-                        <span className="text-xs text-gray-300">—</span>
+                        <span className="text-xs text-muted-foreground/50">—</span>
                       )}
                     </TableCell>
 
@@ -371,7 +371,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
                           className="h-7 text-xs"
                         />
                       ) : (
-                        <span className="text-xs text-gray-600">{line.description || '—'}</span>
+                        <span className="text-xs text-muted-foreground">{line.description || '—'}</span>
                       )}
                     </TableCell>
 
@@ -386,7 +386,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
                           className="h-7 text-sm text-right w-28 ml-auto"
                         />
                       ) : (
-                        <span className={`text-sm font-semibold ${line.debit > 0 ? 'text-gray-800' : 'text-gray-300'}`}>
+                        <span className={`text-sm font-semibold ${line.debit > 0 ? 'text-foreground' : 'text-muted-foreground/50'}`}>
                           {line.debit > 0 ? formatINR(line.debit) : '—'}
                         </span>
                       )}
@@ -403,7 +403,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
                           className="h-7 text-sm text-right w-28 ml-auto"
                         />
                       ) : (
-                        <span className={`text-sm font-semibold ${line.credit > 0 ? 'text-gray-800' : 'text-gray-300'}`}>
+                        <span className={`text-sm font-semibold ${line.credit > 0 ? 'text-foreground' : 'text-muted-foreground/50'}`}>
                           {line.credit > 0 ? formatINR(line.credit) : '—'}
                         </span>
                       )}
@@ -414,7 +414,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
                       <TableCell>
                         <Button
                           variant="ghost" size="icon"
-                          className="h-7 w-7 text-gray-400 hover:text-red-500"
+                          className="h-7 w-7 text-muted-foreground/70 hover:text-red-500"
                           disabled={lines.length <= 2}
                           onClick={() => removeLine(line.id)}
                         >
@@ -426,16 +426,16 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
                 ))}
 
                 {/* Totals Row */}
-                <TableRow className="bg-gray-50 font-semibold border-t-2">
+                <TableRow className="bg-muted/40 font-semibold border-t-2">
                   <TableCell />
-                  <TableCell className="text-xs text-gray-600 font-semibold" colSpan={3}>
+                  <TableCell className="text-xs text-muted-foreground font-semibold" colSpan={3}>
                     TOTAL
                   </TableCell>
                   <TableCell className="text-right">
-                    <span className="text-sm font-bold text-gray-900">{formatINR(totalDebit)}</span>
+                    <span className="text-sm font-bold text-foreground">{formatINR(totalDebit)}</span>
                   </TableCell>
                   <TableCell className="text-right">
-                    <span className="text-sm font-bold text-gray-900">{formatINR(totalCredit)}</span>
+                    <span className="text-sm font-bold text-foreground">{formatINR(totalCredit)}</span>
                   </TableCell>
                   {canEdit && <TableCell />}
                 </TableRow>
@@ -486,7 +486,7 @@ const DoubleEntryForm: React.FC<DoubleEntryFormProps> = ({
                     </Button>
                     <Button
                       size="sm"
-                      className="bg-indigo-600 hover:bg-indigo-700 text-xs"
+                      className="bg-primary hover:bg-primary/90 text-xs"
                       disabled={saving || !balanced || !form.entry_date || !form.narration || totalDebit === 0}
                       onClick={() => handleSave('Posted')}
                     >

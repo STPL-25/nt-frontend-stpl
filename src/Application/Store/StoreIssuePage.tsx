@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/utils/statusUtils';
+import { PageHeader } from '@/CustomComponent/PageComponents';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 // import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
@@ -505,28 +507,12 @@ const StoreRequisitionPage: React.FC = () => {
   };
 
   const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      pending: { variant: 'secondary' as const, icon: AlertCircle, className: 'bg-yellow-100 text-yellow-800' },
-      approved: { variant: 'default' as const, icon: CheckCircle2, className: 'bg-blue-100 text-blue-800' },
-      partial: { variant: 'outline' as const, icon: Package, className: 'bg-orange-100 text-orange-800' },
-      completed: { variant: 'default' as const, icon: CheckCircle2, className: 'bg-green-100 text-green-800' },
-      rejected: { variant: 'destructive' as const, icon: XCircle, className: 'bg-red-100 text-red-800' }
-    };
-
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
-    const Icon = config.icon;
-
-    return (
-      <Badge className={`gap-1 ${config.className}`}>
-        <Icon className="h-3 w-3" />
-        {status.toUpperCase()}
-      </Badge>
-    );
+    return <StatusBadge status={status} />;
   };
 
   const getPriorityBadge = (priority: string) => {
     const priorityColors = {
-      low: 'bg-gray-100 text-gray-800 border-gray-300',
+      low: 'bg-muted text-foreground border-input',
       medium: 'bg-blue-100 text-blue-800 border-blue-300',
       high: 'bg-orange-100 text-orange-800 border-orange-300',
       urgent: 'bg-red-100 text-red-800 border-red-300'
@@ -550,18 +536,24 @@ const StoreRequisitionPage: React.FC = () => {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Page Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Store Requisitions</h1>
-          <p className="text-muted-foreground">Issue products to approved requisitions</p>
-        </div>
-        <Button onClick={loadMockData} disabled={loading}>
+    <div className="flex flex-col min-h-screen bg-muted/20">
+      <PageHeader
+        icon={Package}
+        title="Store Requisitions"
+        description="Issue products to approved requisitions"
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+          onClick={loadMockData}
+          disabled={loading}
+        >
           {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
           Refresh
         </Button>
-      </div>
+      </PageHeader>
+      <div className="p-4 sm:p-6 space-y-6">
 
       {/* Alerts */}
       {/* {error && (
@@ -888,6 +880,7 @@ const StoreRequisitionPage: React.FC = () => {
             )}
           </CardContent>
         </Card>
+      </div>
       </div>
     </div>
   );

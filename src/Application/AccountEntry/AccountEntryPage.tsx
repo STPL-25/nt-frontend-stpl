@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, BookOpen } from 'lucide-react';
+import { RefreshCw, BookOpen, Menu } from 'lucide-react';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
+import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
 
 import type { JournalEntry, EntryLine, DoubleEntryFormState } from './DoubleEntry/types';
 import { MOCK_ENTRIES, today, generateEntryNo } from './DoubleEntry/helpers';
@@ -18,6 +19,7 @@ import AccountSummaryCard from './DoubleEntry/AccountSummaryCard';
 const AccountEntryPage: React.FC = () => {
   useAppState(); // keep for auth context
   const { canCreate, canEdit } = usePermissions();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
@@ -131,82 +133,74 @@ const AccountEntryPage: React.FC = () => {
   const showPostedDetail = selectedEntry && !isNewEntry && selectedEntry.status === 'Posted';
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 min-h-screen">
-      {/* Page Header */}
-      <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-indigo-600 p-2 rounded-lg">
-            <BookOpen className="text-white" size={20} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">A/C Double Entry</h1>
-            <p className="text-sm text-gray-500">
-              Record journal entries with balanced debit and credit lines
-            </p>
-          </div>
-        </div>
-        <Button variant="outline" size="sm" onClick={fetchEntries} disabled={loadingEntries}>
-          <RefreshCw size={15} className={loadingEntries ? 'animate-spin mr-1' : 'mr-1'} />
-          Refresh
-        </Button>
-      </div>
-
-      {/* Body */}
-      <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-        {/* LEFT: Entry list sidebar */}
+    <TwoPaneLayout
+      icon={BookOpen}
+      title="A/C Double Entry"
+      description="Record journal entries with balanced debit and credit lines"
+      sidebarOpen={sidebarOpen}
+      onSidebarOpenChange={setSidebarOpen}
+      sidebar={
         <JournalEntrySidebar
           entries={entries}
           loading={loadingEntries}
           selectedEntry={selectedEntry}
-          onSelectEntry={handleSelectEntry}
-          onNewEntry={canCreate("AccountEntryPage") ? handleNewEntry : undefined}
+          onSelectEntry={(entry) => { handleSelectEntry(entry); setSidebarOpen(false); }}
+          onNewEntry={canCreate("AccountEntryPage") ? () => { handleNewEntry(); setSidebarOpen(false); } : undefined}
         />
-
-        {/* RIGHT: Main content */}
-        <div className="flex-1 overflow-y-auto">
-          {!showForm ? (
-            /* Overview when nothing selected */
-            <div className="px-6 py-5 space-y-4">
-              <AccountSummaryCard entries={entries} />
-
-              <div className="flex flex-col items-center justify-center h-48 gap-4 text-gray-400">
-                <div className="bg-gray-100 p-5 rounded-full">
-                  <BookOpen size={36} />
-                </div>
-                <div className="text-center">
-                  <p className="text-base font-medium text-gray-500">Select or Create an Entry</p>
-                  <p className="text-sm mt-1">
-                    Choose a journal entry from the left panel to view details,<br />
-                    or click "New Entry" to record a new double-entry transaction
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="px-6 py-5 space-y-4">
-              {/* Summary stats */}
-              <AccountSummaryCard entries={entries} />
-
-              {/* New / Edit form */}
-              {(isNewEntry || (selectedEntry && selectedEntry.status !== 'Posted')) && (
-                <DoubleEntryForm
-                  selectedEntry={selectedEntry}
-                  isNewEntry={isNewEntry}
-                  onSave={(canCreate("AccountEntryPage") || canEdit("AccountEntryPage")) ? handleSave : undefined}
-                  onCancel={handleCancel}
-                  saving={saving}
-                />
-              )}
-
-              {/* View-only posted entry */}
-              {showPostedDetail && !isNewEntry && (
-                <EntryHistoryView entry={selectedEntry} />
-              )}
-            </div>
-          )}
+      }
+      headerChildren={
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="lg:hidden bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu size={16} className="mr-1" /> Entries
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+            onClick={fetchEntries}
+            disabled={loadingEntries}
+          >
+            <RefreshCw size={15} className={loadingEntries ? 'animate-spin mr-1' : 'mr-1'} />
+            Refresh
+          </Button>
         </div>
+      }
+    >
+      <div className="px-4 sm:px-6 py-5 space-y-4">
+        <AccountSummaryCard entries={entries} />
+
+        {!showForm ? (
+          <EmptyState
+            icon={BookOpen}
+            message="Select or Create an Entry"
+            description="Choose a journal entry from the left panel to view details, or click 'New Entry' to record a new double-entry transaction"
+          />
+        ) : (
+          <>
+            {/* New / Edit form */}
+            {(isNewEntry || (selectedEntry && selectedEntry.status !== 'Posted')) && (
+              <DoubleEntryForm
+                selectedEntry={selectedEntry}
+                isNewEntry={isNewEntry}
+                onSave={(canCreate("AccountEntryPage") || canEdit("AccountEntryPage")) ? handleSave : undefined}
+                onCancel={handleCancel}
+                saving={saving}
+              />
+            )}
+
+            {/* View-only posted entry */}
+            {showPostedDetail && !isNewEntry && (
+              <EntryHistoryView entry={selectedEntry} />
+            )}
+          </>
+        )}
       </div>
-    </div>
+    </TwoPaneLayout>
   );
 };
 

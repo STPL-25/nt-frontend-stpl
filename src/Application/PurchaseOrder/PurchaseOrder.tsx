@@ -1,6 +1,8 @@
 
 import React, { useState } from 'react';
-import { Search, Filter, Download, Plus, Eye, Edit, Trash2, MoreVertical } from 'lucide-react';
+import { Search, Filter, Download, Plus, Eye, Edit, Trash2, MoreVertical, FileText } from 'lucide-react';
+import { StatusBadge } from '@/utils/statusUtils';
+import { PageHeader } from '@/CustomComponent/PageComponents';
 
 // Types
 interface POItem {
@@ -153,16 +155,6 @@ const mockPurchaseOrders: PurchaseOrder[] = [
 ];
 
 // Status color mapping
-const statusColors: Record<PurchaseOrder['status'], string> = {
-  'Draft': 'bg-gray-100 text-gray-700',
-  'Pending Approval': 'bg-yellow-100 text-yellow-700',
-  'Approved': 'bg-green-100 text-green-700',
-  'Rejected': 'bg-red-100 text-red-700',
-  'Sent': 'bg-blue-100 text-blue-700',
-  'Received': 'bg-purple-100 text-purple-700',
-  'Cancelled': 'bg-gray-100 text-gray-500'
-};
-
 const POPage: React.FC = () => {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(mockPurchaseOrders);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
@@ -204,37 +196,35 @@ const POPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Purchase Orders</h1>
-              <p className="text-gray-500 mt-1">Manage and track all purchase orders</p>
-            </div>
-            <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
-              <Plus size={20} />
-              Create PO
-            </button>
-          </div>
-
-          {/* Filters and Search */}
-          <div className="flex gap-4">
+    <div className="flex flex-col min-h-screen bg-muted/20">
+      <PageHeader
+        icon={FileText}
+        title="Purchase Orders"
+        description="Manage and track all purchase orders"
+      >
+        <button className="bg-primary-foreground/15 hover:bg-primary-foreground/25 text-primary-foreground px-4 py-2 rounded-lg flex items-center gap-2 transition border border-primary-foreground/20">
+          <Plus size={18} />
+          Create PO
+        </button>
+      </PageHeader>
+      <div className="max-w-7xl mx-auto w-full p-4 sm:p-6">
+        {/* Filters and Search */}
+        <div className="bg-card rounded-lg shadow-sm p-4 sm:p-6 mb-6">
+          <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground/70" size={20} />
               <input
                 type="text"
                 placeholder="Search by PO number or vendor name..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="All">All Status</option>
               <option value="Draft">Draft</option>
@@ -244,7 +234,7 @@ const POPage: React.FC = () => {
               <option value="Sent">Sent</option>
               <option value="Received">Received</option>
             </select>
-            <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2">
+            <button className="px-4 py-2 border border-input rounded-lg hover:bg-muted/40 flex items-center gap-2">
               <Download size={20} />
               Export
             </button>
@@ -253,24 +243,24 @@ const POPage: React.FC = () => {
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <p className="text-gray-500 text-sm font-medium">Total POs</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{purchaseOrders.length}</p>
+          <div className="bg-card rounded-lg shadow-sm p-6">
+            <p className="text-muted-foreground text-sm font-medium">Total POs</p>
+            <p className="text-3xl font-bold text-foreground mt-2">{purchaseOrders.length}</p>
           </div>
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <p className="text-gray-500 text-sm font-medium">Pending Approval</p>
+          <div className="bg-card rounded-lg shadow-sm p-6">
+            <p className="text-muted-foreground text-sm font-medium">Pending Approval</p>
             <p className="text-3xl font-bold text-yellow-600 mt-2">
               {purchaseOrders.filter(po => po.status === 'Pending Approval').length}
             </p>
           </div>
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <p className="text-gray-500 text-sm font-medium">Approved</p>
+          <div className="bg-card rounded-lg shadow-sm p-6">
+            <p className="text-muted-foreground text-sm font-medium">Approved</p>
             <p className="text-3xl font-bold text-green-600 mt-2">
               {purchaseOrders.filter(po => po.status === 'Approved').length}
             </p>
           </div>
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <p className="text-gray-500 text-sm font-medium">Total Value</p>
+          <div className="bg-card rounded-lg shadow-sm p-6">
+            <p className="text-muted-foreground text-sm font-medium">Total Value</p>
             <p className="text-2xl font-bold text-blue-600 mt-2">
               {formatCurrency(purchaseOrders.reduce((sum, po) => sum + po.totalAmount, 0))}
             </p>
@@ -278,58 +268,56 @@ const POPage: React.FC = () => {
         </div>
 
         {/* PO Table */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-card rounded-lg shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-muted/40 border-b border-border">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     PO Number
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Vendor
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Order Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Delivery Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Total Amount
                   </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-card divide-y divide-border">
                 {filteredPOs.map((po) => (
-                  <tr key={po.id} className="hover:bg-gray-50 transition">
+                  <tr key={po.id} className="hover:bg-muted/40 transition">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm font-medium text-blue-600">{po.poNumber}</span>
                     </td>
                     <td className="px-6 py-4">
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{po.vendor.name}</p>
-                        <p className="text-sm text-gray-500">{po.vendor.email}</p>
+                        <p className="text-sm font-medium text-foreground">{po.vendor.name}</p>
+                        <p className="text-sm text-muted-foreground">{po.vendor.email}</p>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                       {formatDate(po.orderDate)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                       {formatDate(po.deliveryDate)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[po.status]}`}>
-                        {po.status}
-                      </span>
+                      <StatusBadge status={po.status} />
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold text-foreground">
                       {formatCurrency(po.totalAmount)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -359,18 +347,16 @@ const POPage: React.FC = () => {
         {/* Modal for PO Details */}
         {showModal && selectedPO && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6 border-b border-gray-200">
+            <div className="bg-card rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-border">
                 <div className="flex justify-between items-start">
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900">{selectedPO.poNumber}</h2>
-                    <span className={`mt-2 px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[selectedPO.status]}`}>
-                      {selectedPO.status}
-                    </span>
+                    <h2 className="text-2xl font-bold text-foreground">{selectedPO.poNumber}</h2>
+                    <StatusBadge status={selectedPO.status} className="mt-2" />
                   </div>
                   <button
                     onClick={() => setShowModal(false)}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-muted-foreground/70 hover:text-muted-foreground"
                   >
                     ✕
                   </button>
@@ -380,8 +366,8 @@ const POPage: React.FC = () => {
               <div className="p-6">
                 {/* Vendor Details */}
                 <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Vendor Information</h3>
-                  <div className="bg-gray-50 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold text-foreground mb-3">Vendor Information</h3>
+                  <div className="bg-muted/40 rounded-lg p-4">
                     <p className="text-sm"><span className="font-medium">Name:</span> {selectedPO.vendor.name}</p>
                     <p className="text-sm mt-1"><span className="font-medium">Email:</span> {selectedPO.vendor.email}</p>
                     <p className="text-sm mt-1"><span className="font-medium">Phone:</span> {selectedPO.vendor.phone}</p>
@@ -392,28 +378,28 @@ const POPage: React.FC = () => {
                 {/* Order Details */}
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div>
-                    <p className="text-sm text-gray-500">Order Date</p>
+                    <p className="text-sm text-muted-foreground">Order Date</p>
                     <p className="text-sm font-medium">{formatDate(selectedPO.orderDate)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Delivery Date</p>
+                    <p className="text-sm text-muted-foreground">Delivery Date</p>
                     <p className="text-sm font-medium">{formatDate(selectedPO.deliveryDate)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Payment Terms</p>
+                    <p className="text-sm text-muted-foreground">Payment Terms</p>
                     <p className="text-sm font-medium">{selectedPO.paymentTerms}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Created By</p>
+                    <p className="text-sm text-muted-foreground">Created By</p>
                     <p className="text-sm font-medium">{selectedPO.createdBy}</p>
                   </div>
                 </div>
 
                 {/* Items */}
                 <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Order Items</h3>
+                  <h3 className="text-lg font-semibold text-foreground mb-3">Order Items</h3>
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-muted/40">
                       <tr>
                         <th className="px-4 py-2 text-left">Item</th>
                         <th className="px-4 py-2 text-center">Qty</th>
@@ -427,7 +413,7 @@ const POPage: React.FC = () => {
                         <tr key={item.id}>
                           <td className="px-4 py-3">
                             <p className="font-medium">{item.itemName}</p>
-                            <p className="text-gray-500 text-xs">{item.description}</p>
+                            <p className="text-muted-foreground text-xs">{item.description}</p>
                           </td>
                           <td className="px-4 py-3 text-center">{item.quantity} {item.unit}</td>
                           <td className="px-4 py-3 text-right">{formatCurrency(item.unitPrice)}</td>
@@ -444,11 +430,11 @@ const POPage: React.FC = () => {
                   <div className="flex justify-end">
                     <div className="w-64">
                       <div className="flex justify-between mb-2">
-                        <span className="text-sm text-gray-600">Subtotal:</span>
+                        <span className="text-sm text-muted-foreground">Subtotal:</span>
                         <span className="text-sm font-medium">{formatCurrency(selectedPO.subtotal)}</span>
                       </div>
                       <div className="flex justify-between mb-2">
-                        <span className="text-sm text-gray-600">Tax:</span>
+                        <span className="text-sm text-muted-foreground">Tax:</span>
                         <span className="text-sm font-medium">{formatCurrency(selectedPO.taxAmount)}</span>
                       </div>
                       <div className="flex justify-between border-t pt-2">
@@ -464,14 +450,14 @@ const POPage: React.FC = () => {
                 {/* Notes */}
                 {selectedPO.notes && (
                   <div className="mt-6">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Notes</h3>
-                    <p className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">{selectedPO.notes}</p>
+                    <h3 className="text-sm font-semibold text-foreground mb-2">Notes</h3>
+                    <p className="text-sm text-muted-foreground bg-muted/40 rounded-lg p-3">{selectedPO.notes}</p>
                   </div>
                 )}
               </div>
 
-              <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
-                <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+              <div className="p-6 border-t border-border flex justify-end gap-3">
+                <button className="px-4 py-2 border border-input rounded-lg hover:bg-muted/40">
                   Print
                 </button>
                 <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">

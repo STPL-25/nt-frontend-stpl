@@ -269,7 +269,7 @@ function KYCDetailPanel({ supplier }: { supplier: KYCData }) {
                 <TabsContent value="basic">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {basicFields.map(({ label, value, icon: Icon }) => (
-                      <div key={label} className="relative bg-white dark:bg-card rounded-xl border border-border overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                      <div key={label} className="relative bg-card dark:bg-card rounded-xl border border-border overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/70 rounded-l-xl" />
                         <div className="pl-4 pr-3 py-3 flex items-start gap-3">
                           <div className="p-2 rounded-lg bg-primary/10 flex-shrink-0 mt-0.5">
@@ -608,7 +608,7 @@ const KYCDataView = () => {
   if (!apiData.data.success) return <ErrorState message="Failed to load KYC data" fullPage />;
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 overflow-hidden flex">
+    <div className="h-screen bg-muted/20 dark:from-slate-950 dark:to-slate-900 overflow-hidden flex">
       {/* Desktop sidebar */}
       <div className="hidden lg:flex w-80 xl:w-96 flex-shrink-0 border-r border-border bg-card flex-col h-full">
         <KYCListContent

@@ -73,7 +73,7 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({ po, onSubmit, submitting })
         {/* Header fields */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="space-y-1">
-            <Label className="text-xs text-gray-600">Received Date *</Label>
+            <Label className="text-xs text-muted-foreground">Received Date *</Label>
             <Input
               type="date"
               value={form.received_date}
@@ -82,7 +82,7 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({ po, onSubmit, submitting })
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-gray-600">Doc / Invoice Ref</Label>
+            <Label className="text-xs text-muted-foreground">Doc / Invoice Ref</Label>
             <Input
               placeholder="INV-2024-001"
               value={form.doc_ref_no}
@@ -91,7 +91,7 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({ po, onSubmit, submitting })
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-gray-600">Challan No</Label>
+            <Label className="text-xs text-muted-foreground">Challan No</Label>
             <Input
               placeholder="DC-001"
               value={form.challan_no}
@@ -100,7 +100,7 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({ po, onSubmit, submitting })
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-gray-600">Vehicle No</Label>
+            <Label className="text-xs text-muted-foreground">Vehicle No</Label>
             <Input
               placeholder="TN-01-AB-1234"
               value={form.vehicle_no}
@@ -111,7 +111,7 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({ po, onSubmit, submitting })
         </div>
 
         <div className="space-y-1">
-          <Label className="text-xs text-gray-600">Remarks</Label>
+          <Label className="text-xs text-muted-foreground">Remarks</Label>
           <Input
             placeholder="Any notes about this delivery..."
             value={form.remarks}
@@ -131,7 +131,7 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({ po, onSubmit, submitting })
             <div className="border rounded-md overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50">
+                  <TableRow className="bg-muted/40">
                     <TableHead className="w-8">
                       <Checkbox
                         checked={allSelected}
@@ -152,7 +152,7 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({ po, onSubmit, submitting })
                   {items.map((item, idx) => (
                     <TableRow
                       key={idx}
-                      className={!item.selected ? 'opacity-50 bg-gray-50/50' : ''}
+                      className={!item.selected ? 'opacity-50 bg-muted/40/50' : ''}
                     >
                       <TableCell>
                         <Checkbox
@@ -161,20 +161,20 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({ po, onSubmit, submitting })
                           onCheckedChange={(v) => updateItem(idx, { selected: Boolean(v) })}
                         />
                       </TableCell>
-                      <TableCell className="text-xs text-gray-400">{idx + 1}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground/70">{idx + 1}</TableCell>
                       <TableCell>
                         <div>
-                          <p className="text-sm font-medium text-gray-800">{item.prod_name || '—'}</p>
+                          <p className="text-sm font-medium text-foreground">{item.prod_name || '—'}</p>
                           {item.specification && (
-                            <p className="text-xs text-gray-400 truncate max-w-[160px]">{item.specification}</p>
+                            <p className="text-xs text-muted-foreground/70 truncate max-w-[160px]">{item.specification}</p>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-xs text-center text-gray-600">
-                        {item.ordered_qty} <span className="text-gray-400">{item.unit_name}</span>
+                      <TableCell className="text-xs text-center text-muted-foreground">
+                        {item.ordered_qty} <span className="text-muted-foreground/70">{item.unit_name}</span>
                       </TableCell>
                       <TableCell className="text-center">
-                        <span className={`text-xs font-medium ${item.pending_qty === 0 ? 'text-green-600' : 'text-indigo-700'}`}>
+                        <span className={`text-xs font-medium ${item.pending_qty === 0 ? 'text-green-600' : 'text-primary'}`}>
                           {item.pending_qty === 0 ? '✓ Done' : `${item.pending_qty} ${item.unit_name}`}
                         </span>
                       </TableCell>
@@ -233,10 +233,10 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({ po, onSubmit, submitting })
 
             {/* Summary + Actions */}
             <div className="flex items-center justify-between pt-1">
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-muted-foreground">
                 {selectedItems.length} of {items.length} item(s) selected &nbsp;•&nbsp;
                 Total received:{' '}
-                <span className="font-semibold text-gray-800">
+                <span className="font-semibold text-foreground">
                   {formatINR(selectedItems.reduce((s, it) => s + it.unit_price * it.received_qty, 0))}
                 </span>
               </div>

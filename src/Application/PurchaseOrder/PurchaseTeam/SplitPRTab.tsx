@@ -14,7 +14,7 @@ import { formatINR } from './helpers';
 
 // ── Split group colour palette (mirrors POConfirmStep / QuotationsTab) ────────
 const GROUP_COLORS = [
-  { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200',  badge: 'bg-indigo-600'  },
+  { bg: 'bg-primary/10',  text: 'text-primary',  border: 'border-primary/20',  badge: 'bg-primary'  },
   { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', badge: 'bg-emerald-600' },
   { bg: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-200',  badge: 'bg-orange-500'  },
   { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200',  badge: 'bg-purple-600'  },
@@ -112,9 +112,9 @@ const SplitPRTab: React.FC<SplitPRTabProps> = ({
   return (
     <div className="space-y-4">
       {/* Info */}
-      <div className="flex items-start gap-2 text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded p-3">
+      <div className="flex items-start gap-2 text-xs text-primary bg-primary/10 border border-primary/20 rounded p-3">
         <Info size={16} className="shrink-0 mt-0.5" />
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           Tick the items you want to break out, then click <strong>Split</strong>. Each split becomes a
           separate PO (<strong>{prNo}/Group&nbsp;1</strong>, <strong>{prNo}/Group&nbsp;2</strong>, …) and its
           items drop off the list below. Pick a supplier and add a quotation for every PO in the section underneath.
@@ -136,9 +136,9 @@ const SplitPRTab: React.FC<SplitPRTabProps> = ({
                   <Badge className={`${col.badge} text-white border-none text-[10px] shrink-0`}>
                     {prNo}/Group {groupNo}
                   </Badge>
-                  <span className="text-xs text-gray-500">{gItems.length} item(s) → separate PO</span>
+                  <span className="text-xs text-muted-foreground">{gItems.length} item(s) → separate PO</span>
                   {est > 0 && (
-                    <span className="text-xs text-gray-500 ml-auto">Est: {formatINR(est)}</span>
+                    <span className="text-xs text-muted-foreground ml-auto">Est: {formatINR(est)}</span>
                   )}
                   <Button
                     size="sm"
@@ -153,14 +153,14 @@ const SplitPRTab: React.FC<SplitPRTabProps> = ({
                   {gItems.map(it => (
                     <span
                       key={it.id}
-                      className={`inline-flex items-center gap-1 text-[11px] bg-white/70 border ${col.border} rounded px-1.5 py-0.5`}
+                      className={`inline-flex items-center gap-1 text-[11px] bg-card/70 border ${col.border} rounded px-1.5 py-0.5`}
                     >
-                      <span className="font-medium text-gray-700">{it.prod_name}</span>
-                      <span className="text-gray-400">{it.qty} {it.unit_name}</span>
+                      <span className="font-medium text-foreground">{it.prod_name}</span>
+                      <span className="text-muted-foreground/70">{it.qty} {it.unit_name}</span>
                       <button
                         type="button"
                         title="Move back to main PO"
-                        className="text-gray-300 hover:text-red-500"
+                        className="text-muted-foreground/50 hover:text-red-500"
                         onClick={() => removeItemFromGroup(it.id)}
                       >
                         <X size={11} />
@@ -174,10 +174,10 @@ const SplitPRTab: React.FC<SplitPRTabProps> = ({
 
           {/* Main PO — the unsplit remainder */}
           {splitGroups.length > 0 && mainPOItems.length > 0 && (
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5">
+            <div className="rounded-lg border border-border bg-muted/40 p-2.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge className="bg-gray-500 text-white border-none text-[10px] shrink-0">Main PO</Badge>
-                <span className="text-xs text-gray-500">{mainPOItems.length} item(s) kept together</span>
+                <Badge className="bg-muted/400 text-white border-none text-[10px] shrink-0">Main PO</Badge>
+                <span className="text-xs text-muted-foreground">{mainPOItems.length} item(s) kept together</span>
               </div>
             </div>
           )}
@@ -188,19 +188,19 @@ const SplitPRTab: React.FC<SplitPRTabProps> = ({
       <Card>
         <CardContent className="p-0">
           {/* Toolbar */}
-          <div className="flex items-center justify-between flex-wrap gap-2 px-3 py-2 border-b bg-gray-50/60">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+          <div className="flex items-center justify-between flex-wrap gap-2 px-3 py-2 border-b bg-muted/40/60">
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <Package size={15} className="text-orange-600" />
               Items {splitGroups.length > 0 ? '(remaining)' : ''}
               <Badge variant="outline" className="text-xs">{availableItems.length}</Badge>
             </div>
             {selectedIds.size > 0 && (
-              <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1">
-                <CheckSquare size={14} className="text-indigo-600 shrink-0" />
-                <span className="text-xs font-medium text-indigo-700">{selectedIds.size} selected</span>
+              <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-lg px-2.5 py-1">
+                <CheckSquare size={14} className="text-primary shrink-0" />
+                <span className="text-xs font-medium text-primary">{selectedIds.size} selected</span>
                 <Button
                   size="sm"
-                  className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700"
+                  className="h-7 text-xs bg-primary hover:bg-primary/90"
                   onClick={handleSplit}
                 >
                   <Scissors size={12} className="mr-1" />
@@ -209,7 +209,7 @@ const SplitPRTab: React.FC<SplitPRTabProps> = ({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-7 text-xs text-gray-500"
+                  className="h-7 text-xs text-muted-foreground"
                   onClick={() => setSelectedIds(new Set())}
                 >
                   Clear
@@ -219,14 +219,14 @@ const SplitPRTab: React.FC<SplitPRTabProps> = ({
           </div>
 
           {availableItems.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-8 text-gray-400">
+            <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground/70">
               <PackageOpen size={26} />
               <p className="text-sm">All items have been split into separate POs.</p>
             </div>
           ) : (
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50">
+                <TableRow className="bg-muted/40">
                   <TableHead className="w-10 pl-3">
                     <Checkbox
                       checked={allSelected}
@@ -246,7 +246,7 @@ const SplitPRTab: React.FC<SplitPRTabProps> = ({
                   return (
                     <TableRow
                       key={item.id}
-                      className={`cursor-pointer select-none ${isChecked ? 'bg-indigo-50/70' : ''}`}
+                      className={`cursor-pointer select-none ${isChecked ? 'bg-primary/10/70' : ''}`}
                       onClick={() => toggleSelect(item.id)}
                     >
                       <TableCell className="pl-3 py-2" onClick={e => e.stopPropagation()}>
@@ -256,16 +256,16 @@ const SplitPRTab: React.FC<SplitPRTabProps> = ({
                           aria-label={`Select ${item.prod_name}`}
                         />
                       </TableCell>
-                      <TableCell className="text-xs text-gray-400 pl-3">{idx + 1}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground/70 pl-3">{idx + 1}</TableCell>
                       <TableCell className="py-2">
                         <div className="text-sm font-medium leading-tight">{item.prod_name || '—'}</div>
                         {item.specification && (
-                          <div className="text-[11px] text-gray-400 truncate max-w-[220px]">
+                          <div className="text-[11px] text-muted-foreground/70 truncate max-w-[220px]">
                             {item.specification}
                           </div>
                         )}
                         {item.est_cost ? (
-                          <div className="text-[11px] text-gray-400">Est: {formatINR(Number(item.est_cost))}</div>
+                          <div className="text-[11px] text-muted-foreground/70">Est: {formatINR(Number(item.est_cost))}</div>
                         ) : null}
                       </TableCell>
                       <TableCell className="text-center text-sm font-medium py-2">{item.qty}</TableCell>

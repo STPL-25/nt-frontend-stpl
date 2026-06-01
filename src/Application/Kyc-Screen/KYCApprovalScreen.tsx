@@ -22,6 +22,7 @@ import { apiGetKycPendingApprovals, apiKycApproveAction } from '@/Services/Api';
 import { useAppState } from '@/imports';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { getAuthFileUrl } from '@/Services/authUrl';
+import { getStatusInfo } from '@/utils/statusUtils';
 import { socket, SOCKET_JOIN_KYC_APPROVAL, SOCKET_LEAVE_KYC_APPROVAL, SOCKET_KYC_APPROVAL_UPDATED } from '@/Services/Socket';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -75,15 +76,9 @@ const getInitials = (name: string) =>
 const isImageUrl = (url: string) => /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i.test(url);
 const isPdfUrl   = (url: string) => /\.pdf(\?.*)?$/i.test(url);
 
-const STATUS_MAP: Record<string, { label: string; badgeCls: string; dotCls: string }> = {
-  P: { label: 'Pending',  badgeCls: 'bg-amber-100 text-amber-700 border-amber-200',   dotCls: 'bg-amber-500' },
-  A: { label: 'Approved', badgeCls: 'bg-green-100 text-green-700 border-green-200',   dotCls: 'bg-green-500' },
-  R: { label: 'Rejected', badgeCls: 'bg-red-100 text-red-700 border-red-200',         dotCls: 'bg-red-500' },
-};
-
 function getStatus(s: string | undefined) {
-  const key = String(s ?? 'P').toUpperCase();
-  return STATUS_MAP[key] ?? { label: key, badgeCls: '', dotCls: 'bg-gray-400' };
+  const info = getStatusInfo(s ?? 'P');
+  return { label: info.label, badgeCls: info.cls, dotCls: info.dotCls };
 }
 
 // ─── Sidebar KYC Row ──────────────────────────────────────────────────────────
@@ -97,15 +92,15 @@ function KYCSidebarRow({ kyc, isSelected, onClick }: {
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-indigo-50 transition-colors ${
+      className={`w-full text-left px-4 py-3 border-b border-border hover:bg-primary/10 transition-colors ${
         isSelected
-          ? 'bg-indigo-50 border-l-4 border-l-indigo-600'
+          ? 'bg-primary/10 border-l-4 border-l-primary'
           : 'border-l-4 border-l-transparent'
       }`}
     >
       <div className="flex items-start justify-between gap-2 mb-1">
         <span className={`text-sm font-semibold truncate capitalize leading-tight ${
-          isSelected ? 'text-indigo-700' : 'text-gray-800'
+          isSelected ? 'text-primary' : 'text-foreground'
         }`}>
           {kyc.company_name}
         </span>
@@ -114,10 +109,10 @@ function KYCSidebarRow({ kyc, isSelected, onClick }: {
           {label}
         </span>
       </div>
-      <div className="text-xs text-gray-500 truncate capitalize">{kyc.business_type}</div>
+      <div className="text-xs text-muted-foreground truncate capitalize">{kyc.business_type}</div>
       <div className="flex items-center justify-between mt-1">
-        <span className="text-xs text-gray-400">{kyc.contact_person}</span>
-        <div className="flex items-center gap-1 text-xs text-gray-400">
+        <span className="text-xs text-muted-foreground/70">{kyc.contact_person}</span>
+        <div className="flex items-center gap-1 text-xs text-muted-foreground/70">
           <Calendar size={11} />
           {formatDate(kyc.created_date)}
         </div>
@@ -141,10 +136,10 @@ function KYCSidebarRow({ kyc, isSelected, onClick }: {
 function SectionHeader({ icon: Icon, title, count }: { icon: any; title: string; count?: number }) {
   return (
     <div className="flex items-center gap-2 px-0 pb-2 mb-1">
-      <Icon className="h-4 w-4 text-indigo-600" />
-      <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+      <Icon className="h-4 w-4 text-primary" />
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       {count !== undefined && (
-        <span className="ml-1 text-xs text-gray-400">({count})</span>
+        <span className="ml-1 text-xs text-muted-foreground/70">({count})</span>
       )}
     </div>
   );
@@ -156,9 +151,9 @@ function DataRow({ label, value, mono = false, fullWidth = false }: {
   label: string; value: string | React.ReactNode; mono?: boolean; fullWidth?: boolean;
 }) {
   return (
-    <div className={`flex ${fullWidth ? 'flex-col gap-0.5' : 'items-start justify-between gap-4'} py-2 border-b border-gray-100 last:border-0`}>
-      <span className="text-xs text-gray-400 flex-shrink-0 min-w-[110px]">{label}</span>
-      <span className={`text-sm text-gray-800 font-medium capitalize ${fullWidth ? '' : 'text-right'} ${mono ? 'font-mono tracking-wide text-xs uppercase' : ''}`}>
+    <div className={`flex ${fullWidth ? 'flex-col gap-0.5' : 'items-start justify-between gap-4'} py-2 border-b border-border last:border-0`}>
+      <span className="text-xs text-muted-foreground/70 flex-shrink-0 min-w-[110px]">{label}</span>
+      <span className={`text-sm text-foreground font-medium capitalize ${fullWidth ? '' : 'text-right'} ${mono ? 'font-mono tracking-wide text-xs uppercase' : ''}`}>
         {value || '—'}
       </span>
     </div>
@@ -169,15 +164,15 @@ function DataRow({ label, value, mono = false, fullWidth = false }: {
 
 function AddressSection({ addresses }: { addresses: any[] }) {
   if (addresses.length === 0) return (
-    <div className="py-6 text-center text-sm text-gray-400">No addresses found</div>
+    <div className="py-6 text-center text-sm text-muted-foreground/70">No addresses found</div>
   );
   return (
-    <div className="divide-y divide-gray-100">
+    <div className="divide-y divide-border">
       {addresses.map((addr: any, idx: number) => (
         <div key={idx} className="py-4 first:pt-0">
           <div className="flex items-center gap-2 mb-2">
-            <MapPin className="h-3.5 w-3.5 text-gray-400" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <MapPin className="h-3.5 w-3.5 text-muted-foreground/70" />
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {addr.isPrimary ? 'Primary Address' : `Address ${idx + 1}`}
             </span>
             {addr.isPrimary && (
@@ -193,13 +188,13 @@ function AddressSection({ addresses }: { addresses: any[] }) {
             <DataRow label="State" value={addr.state} />
             <DataRow label="Pincode" value={addr.pincode} />
             {addr.location_link && (
-              <div className="py-2 border-b border-gray-100 last:border-0">
-                <span className="text-xs text-gray-400 block mb-1">Location</span>
+              <div className="py-2 border-b border-border last:border-0">
+                <span className="text-xs text-muted-foreground/70 block mb-1">Location</span>
                 <a
                   href={addr.location_link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:underline"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
                 >
                   <MapPin className="h-3 w-3" /> View on Map
                 </a>
@@ -216,15 +211,15 @@ function AddressSection({ addresses }: { addresses: any[] }) {
 
 function BankSection({ bankInfo }: { bankInfo: any[] }) {
   if (bankInfo.length === 0) return (
-    <div className="py-6 text-center text-sm text-gray-400">No bank accounts found</div>
+    <div className="py-6 text-center text-sm text-muted-foreground/70">No bank accounts found</div>
   );
   return (
-    <div className="divide-y divide-gray-100">
+    <div className="divide-y divide-border">
       {bankInfo.map((bank: any, idx: number) => (
         <div key={idx} className="py-4 first:pt-0">
           <div className="flex items-center gap-2 mb-2">
-            <CreditCard className="h-3.5 w-3.5 text-gray-400" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <CreditCard className="h-3.5 w-3.5 text-muted-foreground/70" />
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {bank.bank_name || `Bank ${idx + 1}`}
             </span>
             {bank.isPrimary && (
@@ -249,10 +244,10 @@ function BankSection({ bankInfo }: { bankInfo: any[] }) {
 
 function ContactsSection({ contacts }: { contacts: any[] }) {
   if (contacts.length === 0) return (
-    <div className="py-6 text-center text-sm text-gray-400">No contacts found</div>
+    <div className="py-6 text-center text-sm text-muted-foreground/70">No contacts found</div>
   );
   return (
-    <div className="divide-y divide-gray-100">
+    <div className="divide-y divide-border">
       {contacts.map((contact: any, idx: number) => {
         const name   = contact.contact_name  || contact.ownername    || '—';
         const pos    = contact.contact_position || contact.ownerposition || '';
@@ -261,12 +256,12 @@ function ContactsSection({ contacts }: { contacts: any[] }) {
         return (
           <div key={idx} className="py-4 first:pt-0">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs flex-shrink-0">
+              <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-primary font-bold text-xs flex-shrink-0">
                 {name[0]?.toUpperCase() ?? '?'}
               </div>
               <div>
-                <p className="text-sm font-semibold text-gray-800 capitalize">{name}</p>
-                {pos && <p className="text-xs text-gray-400 capitalize">{pos}</p>}
+                <p className="text-sm font-semibold text-foreground capitalize">{name}</p>
+                {pos && <p className="text-xs text-muted-foreground/70 capitalize">{pos}</p>}
               </div>
               {contact.isPrimary && (
                 <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200">Primary</span>
@@ -274,15 +269,15 @@ function ContactsSection({ contacts }: { contacts: any[] }) {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
               {mobile && (
-                <div className="py-2 border-b border-gray-100 last:border-0 flex items-center justify-between gap-4">
-                  <span className="text-xs text-gray-400 flex-shrink-0 min-w-[110px]">Mobile</span>
-                  <a href={`tel:${mobile}`} className="text-sm font-medium text-indigo-600 hover:underline">{mobile}</a>
+                <div className="py-2 border-b border-border last:border-0 flex items-center justify-between gap-4">
+                  <span className="text-xs text-muted-foreground/70 flex-shrink-0 min-w-[110px]">Mobile</span>
+                  <a href={`tel:${mobile}`} className="text-sm font-medium text-primary hover:underline">{mobile}</a>
                 </div>
               )}
               {email && (
-                <div className="py-2 border-b border-gray-100 last:border-0 flex items-center justify-between gap-4">
-                  <span className="text-xs text-gray-400 flex-shrink-0 min-w-[110px]">Email</span>
-                  <a href={`mailto:${email}`} className="text-sm font-medium text-indigo-600 hover:underline truncate">{email}</a>
+                <div className="py-2 border-b border-border last:border-0 flex items-center justify-between gap-4">
+                  <span className="text-xs text-muted-foreground/70 flex-shrink-0 min-w-[110px]">Email</span>
+                  <a href={`mailto:${email}`} className="text-sm font-medium text-primary hover:underline truncate">{email}</a>
                 </div>
               )}
             </div>
@@ -303,10 +298,10 @@ function DocumentsSection({
   onPreview: (d: { url: string; name: string; docType?: string }) => void;
 }) {
   if (documents.length === 0) return (
-    <div className="py-6 text-center text-sm text-gray-400">No documents uploaded</div>
+    <div className="py-6 text-center text-sm text-muted-foreground/70">No documents uploaded</div>
   );
   return (
-    <div className="divide-y divide-gray-100">
+    <div className="divide-y divide-border">
       {documents.map((doc: any, idx: number) => {
         const docUrl  = doc.document_path || doc.url || '';
         const docName = doc.document_name || doc.filename || `Document ${idx + 1}`;
@@ -317,13 +312,13 @@ function DocumentsSection({
         return (
           <div key={idx} className="py-3 flex items-center gap-3">
             <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-              isImg ? 'bg-violet-100' : isPdf ? 'bg-red-100' : 'bg-gray-100'
+              isImg ? 'bg-violet-100' : isPdf ? 'bg-red-100' : 'bg-muted'
             }`}>
-              <FileText className={`h-4 w-4 ${isImg ? 'text-violet-600' : isPdf ? 'text-red-600' : 'text-gray-500'}`} />
+              <FileText className={`h-4 w-4 ${isImg ? 'text-violet-600' : isPdf ? 'text-red-600' : 'text-muted-foreground'}`} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-800 truncate">{docName}</p>
-              <p className="text-xs text-gray-400">{docType} · {isImg ? 'Image' : isPdf ? 'PDF' : 'File'}</p>
+              <p className="text-sm font-medium text-foreground truncate">{docName}</p>
+              <p className="text-xs text-muted-foreground/70">{docType} · {isImg ? 'Image' : isPdf ? 'PDF' : 'File'}</p>
             </div>
             {docUrl && (
               <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -340,7 +335,7 @@ function DocumentsSection({
                   download={docName}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 h-7 px-2.5 text-xs rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                  className="inline-flex items-center gap-1 h-7 px-2.5 text-xs rounded-md border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
                 >
                   <Download className="h-3 w-3" /> Save
                 </a>
@@ -358,7 +353,7 @@ function DocumentsSection({
 function HistorySection({ history }: { history: any[] }) {
   if (!history.length) return null;
   return (
-    <div className="divide-y divide-gray-100">
+    <div className="divide-y divide-border">
       {history.map((entry: any, idx: number) => (
         <div key={idx} className="py-3 flex items-start gap-3">
           <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -366,16 +361,16 @@ function HistorySection({ history }: { history: any[] }) {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-sm font-semibold text-gray-800">{entry.ename ?? '—'}</p>
+              <p className="text-sm font-semibold text-foreground">{entry.ename ?? '—'}</p>
               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">
                 {entry.status_by}
               </span>
             </div>
             {entry.status_date && (
-              <p className="text-xs text-gray-400 mt-0.5">{formatDate(entry.status_date)}</p>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">{formatDate(entry.status_date)}</p>
             )}
             {entry.commends && (
-              <p className="text-xs text-gray-600 mt-1.5 italic border-l-2 border-green-300 pl-2">"{entry.commends}"</p>
+              <p className="text-xs text-muted-foreground mt-1.5 italic border-l-2 border-green-300 pl-2">"{entry.commends}"</p>
             )}
           </div>
         </div>
@@ -389,22 +384,22 @@ function HistorySection({ history }: { history: any[] }) {
 function StagesSection({ stages, currentApproverId }: { stages: any[]; currentApproverId?: string }) {
   if (!stages.length) return null;
   return (
-    <div className="divide-y divide-gray-100">
+    <div className="divide-y divide-border">
       {stages.map((stage: any, idx: number) => {
         const isCurrent = stage.approver_ecno === currentApproverId;
         return (
           <div key={idx} className="py-3 flex items-center gap-3">
             <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
-              isCurrent ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'
+              isCurrent ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
             }`}>
               {idx + 1}
             </div>
             <div className="flex-1">
-              <p className="text-sm font-medium text-gray-800">{stage.stage ?? `Stage ${idx + 1}`}</p>
-              <p className="text-xs text-gray-400 font-mono">{stage.approver_ecno}</p>
+              <p className="text-sm font-medium text-foreground">{stage.stage ?? `Stage ${idx + 1}`}</p>
+              <p className="text-xs text-muted-foreground/70 font-mono">{stage.approver_ecno}</p>
             </div>
             {isCurrent && (
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
                 Current
               </span>
             )}
@@ -452,22 +447,22 @@ function KYCDetailPanel({
       {/* ── Main scrollable content ───────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
         {/* Company hero bar */}
-        <div className="px-6 py-5 border-b bg-white flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+        <div className="px-6 py-5 border-b bg-card flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg flex-shrink-0">
             {getInitials(kyc.company_name) || '?'}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-bold text-gray-900 capitalize">{kyc.company_name}</h2>
+              <h2 className="text-lg font-bold text-foreground capitalize">{kyc.company_name}</h2>
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${badgeCls}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${dotCls}`} />
                 {statusLabel}
               </span>
             </div>
-            <p className="text-sm text-gray-500 capitalize mt-0.5">{kyc.business_type}</p>
+            <p className="text-sm text-muted-foreground capitalize mt-0.5">{kyc.business_type}</p>
             <div className="flex flex-wrap gap-1.5 mt-2">
               {kyc.supp_code && (
-                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-600">
+                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-muted text-muted-foreground">
                   {kyc.supp_code}
                 </span>
               )}
@@ -504,7 +499,7 @@ function KYCDetailPanel({
         {/* Tabs */}
         <div className="px-6 pt-5">
           <Tabs defaultValue="basic">
-            <TabsList className="h-9 bg-gray-100 border border-gray-200 p-1 rounded-lg mb-5 flex flex-wrap gap-0.5">
+            <TabsList className="h-9 bg-muted border border-border p-1 rounded-lg mb-5 flex flex-wrap gap-0.5">
               {[
                 { value: 'basic',     label: 'Basic Info',  count: null },
                 { value: 'address',   label: 'Address',     count: addresses.length },
@@ -515,11 +510,11 @@ function KYCDetailPanel({
                 <TabsTrigger
                   key={value}
                   value={value}
-                  className="text-xs px-3 py-1.5 rounded-md data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:font-semibold data-[state=active]:shadow-sm"
+                  className="text-xs px-3 py-1.5 rounded-md data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-sm"
                 >
                   {label}
                   {count !== null && (
-                    <span className="ml-1 text-[10px] font-bold text-gray-400">{count}</span>
+                    <span className="ml-1 text-[10px] font-bold text-muted-foreground/70">{count}</span>
                   )}
                 </TabsTrigger>
               ))}
@@ -574,9 +569,9 @@ function KYCDetailPanel({
       </div>
 
       {/* ── Right action panel (sticky on desktop) ───────────────────────── */}
-      <div className="hidden lg:flex w-64 xl:w-72 flex-shrink-0 border-l bg-gray-50 flex-col">
-        <div className="p-5 border-b bg-white">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Review Actions</p>
+      <div className="hidden lg:flex w-64 xl:w-72 flex-shrink-0 border-l bg-muted/40 flex-col">
+        <div className="p-5 border-b bg-card">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Review Actions</p>
           {canEdit('KYCApprovalScreen') ? (
             <div className="space-y-2">
               <Button
@@ -594,12 +589,12 @@ function KYCDetailPanel({
               </Button>
             </div>
           ) : (
-            <p className="text-xs text-gray-400 text-center py-2">View only — no approval permission</p>
+            <p className="text-xs text-muted-foreground/70 text-center py-2">View only — no approval permission</p>
           )}
         </div>
 
         <div className="p-5 flex-1 overflow-y-auto">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Summary</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Summary</p>
           <div className="space-y-0">
             {[
               { label: 'Status',       value: statusLabel },
@@ -611,9 +606,9 @@ function KYCDetailPanel({
               { label: 'Documents',    value: String(documents.length) },
               ...(kyc.current_approver_id ? [{ label: 'Curr. Approver', value: kyc.current_approver_id }] : []),
             ].map(({ label, value }) => (
-              <div key={label} className="flex items-start justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
-                <span className="text-xs text-gray-400 flex-shrink-0">{label}</span>
-                <span className="text-xs font-semibold text-gray-800 text-right capitalize truncate">{value}</span>
+              <div key={label} className="flex items-start justify-between gap-3 py-2 border-b border-border last:border-0">
+                <span className="text-xs text-muted-foreground/70 flex-shrink-0">{label}</span>
+                <span className="text-xs font-semibold text-foreground text-right capitalize truncate">{value}</span>
               </div>
             ))}
           </div>
@@ -622,35 +617,35 @@ function KYCDetailPanel({
 
       {/* ── Document preview drawer ───────────────────────────────────────── */}
       {docPreview && (
-        <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[520px] lg:w-[45%] flex flex-col bg-white border-l shadow-2xl">
-          <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50 flex-shrink-0">
+        <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[520px] lg:w-[45%] flex flex-col bg-card border-l shadow-2xl">
+          <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/40 flex-shrink-0">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
-                <FileText className="h-4 w-4 text-indigo-600" />
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <FileText className="h-4 w-4 text-primary" />
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold truncate">{docPreview.name}</p>
-                <p className="text-xs text-gray-400">{docPreview.docType}</p>
+                <p className="text-xs text-muted-foreground/70">{docPreview.docType}</p>
               </div>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
               <a href={docPreview.url} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 transition-colors">
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">
                 <ExternalLink className="h-3 w-3" /> Open
               </a>
               <a href={docPreview.url} download={docPreview.name} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 transition-colors">
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">
                 <Download className="h-3 w-3" /> Save
               </a>
               <button
                 onClick={() => setDocPreview(null)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground/70 hover:bg-red-50 hover:text-red-500 transition-colors"
               >
                 <XCircle className="h-4 w-4" />
               </button>
             </div>
           </div>
-          <div className="flex-1 overflow-hidden bg-gray-100">
+          <div className="flex-1 overflow-hidden bg-muted">
             {isImageUrl(docPreview.url) ? (
               <div className="h-full flex items-center justify-center p-4">
                 <img src={docPreview.url} alt={docPreview.name} className="max-w-full max-h-full object-contain rounded-lg shadow-md" />
@@ -659,15 +654,15 @@ function KYCDetailPanel({
               <iframe src={docPreview.url} title={docPreview.name} className="w-full h-full border-0" allow="fullscreen" />
             ) : (
               <div className="h-full flex flex-col items-center justify-center gap-4 p-8 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center shadow">
-                  <FileText className="h-8 w-8 text-gray-300" />
+                <div className="w-16 h-16 rounded-2xl bg-card flex items-center justify-center shadow">
+                  <FileText className="h-8 w-8 text-muted-foreground/50" />
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-700">Preview unavailable</p>
-                  <p className="text-sm text-gray-400 mt-1">Use Open or Save to access this file</p>
+                  <p className="font-semibold text-foreground">Preview unavailable</p>
+                  <p className="text-sm text-muted-foreground/70 mt-1">Use Open or Save to access this file</p>
                 </div>
                 <a href={docPreview.url} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors font-medium">
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-sm rounded-lg hover:bg-primary/90 transition-colors font-medium">
                   <ExternalLink className="h-4 w-4" /> Open in new tab
                 </a>
               </div>
@@ -772,15 +767,15 @@ const KYCApprovalScreen: React.FC = () => {
   const sidebarContent = (
     <div className="flex flex-col h-full">
       {/* Stats header */}
-      <div className="px-4 py-3 border-b bg-gray-50 flex items-center gap-3 text-xs font-medium flex-shrink-0">
-        <span className="text-gray-500">{kycList.length} pending</span>
+      <div className="px-4 py-3 border-b bg-muted/40 flex items-center gap-3 text-xs font-medium flex-shrink-0">
+        <span className="text-muted-foreground">{kycList.length} pending</span>
         <span className="text-amber-600">
           {kycList.filter(k => (k.status ?? 'P').toUpperCase() === 'P').length} awaiting action
         </span>
-        {fetchLoading && <Loader2 size={12} className="animate-spin text-gray-400 ml-auto" />}
+        {fetchLoading && <Loader2 size={12} className="animate-spin text-muted-foreground/70 ml-auto" />}
         <button
           onClick={() => setRefreshKey(k => k + 1)}
-          className="ml-auto text-gray-400 hover:text-indigo-600 transition-colors"
+          className="ml-auto text-muted-foreground/70 hover:text-primary transition-colors"
           title="Refresh"
         >
           <RefreshCw size={13} />
@@ -789,19 +784,19 @@ const KYCApprovalScreen: React.FC = () => {
       {/* Search */}
       <div className="px-3 py-2 border-b flex-shrink-0">
         <div className="relative">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
           <Input
             placeholder="Search company…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="pl-8 h-8 text-sm bg-white"
+            className="pl-8 h-8 text-sm bg-card"
           />
         </div>
       </div>
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {filteredList.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-2 text-gray-400">
+          <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground/70">
             <FileText size={24} />
             <span className="text-sm">{search ? 'No matches found' : 'No pending KYC approvals'}</span>
           </div>
@@ -822,13 +817,13 @@ const KYCApprovalScreen: React.FC = () => {
   // ── Error / Loading states ─────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-muted/40 flex items-center justify-center p-4">
         <div className="text-center space-y-4 max-w-sm">
           <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center mx-auto">
             <AlertCircle className="h-7 w-7 text-red-500" />
           </div>
-          <h3 className="text-lg font-bold text-gray-800">Failed to load</h3>
-          <p className="text-sm text-gray-500">{error}</p>
+          <h3 className="text-lg font-bold text-foreground">Failed to load</h3>
+          <p className="text-sm text-muted-foreground">{error}</p>
           <Button onClick={() => setRefreshKey(k => k + 1)} variant="outline" className="gap-2">
             <RefreshCw className="h-4 w-4" /> Retry
           </Button>
@@ -839,10 +834,10 @@ const KYCApprovalScreen: React.FC = () => {
 
   if (fetchLoading && kycList.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-muted/40 flex items-center justify-center p-4">
         <div className="text-center space-y-3">
-          <Loader2 className="h-8 w-8 text-indigo-600 animate-spin mx-auto" />
-          <p className="text-sm font-medium text-gray-600">Loading KYC Approvals…</p>
+          <Loader2 className="h-8 w-8 text-primary animate-spin mx-auto" />
+          <p className="text-sm font-medium text-muted-foreground">Loading KYC Approvals…</p>
         </div>
       </div>
     );
@@ -859,16 +854,16 @@ const KYCApprovalScreen: React.FC = () => {
         </div>
       )}
 
-      <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+      <div className="flex flex-col h-screen bg-muted/40 overflow-hidden">
         {/* Page header */}
-        <div className="bg-white border-b px-4 sm:px-6 py-4 flex items-center justify-between flex-shrink-0">
+        <div className="bg-card border-b px-4 sm:px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
-              <ShieldCheck className="h-5 w-5 text-indigo-600" />
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+              <ShieldCheck className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-base sm:text-lg font-semibold text-gray-900">KYC Approvals</h1>
-              <p className="text-xs text-gray-400">Review and approve supplier KYC submissions</p>
+              <h1 className="text-base sm:text-lg font-semibold text-foreground">KYC Approvals</h1>
+              <p className="text-xs text-muted-foreground/70">Review and approve supplier KYC submissions</p>
             </div>
           </div>
           {/* Mobile list toggle */}
@@ -881,7 +876,7 @@ const KYCApprovalScreen: React.FC = () => {
             <FileText className="h-3.5 w-3.5" />
             KYC List
             {kycList.length > 0 && (
-              <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold">
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-primary/15 text-primary text-[10px] font-bold">
                 {kycList.length}
               </span>
             )}
@@ -891,7 +886,7 @@ const KYCApprovalScreen: React.FC = () => {
         {/* Body */}
         <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
           {/* Desktop sidebar */}
-          <div className="hidden lg:flex w-80 flex-shrink-0 bg-white border-r flex-col overflow-hidden">
+          <div className="hidden lg:flex w-80 flex-shrink-0 bg-card border-r flex-col overflow-hidden">
             {sidebarContent}
           </div>
 
@@ -909,12 +904,12 @@ const KYCApprovalScreen: React.FC = () => {
                 <KYCDetailPanel kyc={selectedKYC} handleAction={handleAction} />
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-400">
-                <div className="bg-gray-100 rounded-full p-6">
+              <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground/70">
+                <div className="bg-muted rounded-full p-6">
                   <ShieldCheck size={40} className="opacity-30" />
                 </div>
                 <div className="text-center">
-                  <p className="text-base font-medium text-gray-500">Select a KYC Submission</p>
+                  <p className="text-base font-medium text-muted-foreground">Select a KYC Submission</p>
                   <p className="text-sm mt-1">Choose from the list on the left to review details</p>
                 </div>
               </div>
@@ -957,13 +952,13 @@ const KYCApprovalScreen: React.FC = () => {
             )}
 
             {selectedKYC && (
-              <div className="p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-1.5 text-xs">
+              <div className="p-3 rounded-lg bg-muted/40 border border-border space-y-1.5 text-xs">
                 <div className="flex justify-between gap-2">
-                  <span className="text-gray-400">Company</span>
+                  <span className="text-muted-foreground/70">Company</span>
                   <span className="font-semibold capitalize">{selectedKYC.company_name}</span>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <span className="text-gray-400">Contact</span>
+                  <span className="text-muted-foreground/70">Contact</span>
                   <span className="font-semibold">{selectedKYC.contact_person}</span>
                 </div>
               </div>

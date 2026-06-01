@@ -20,8 +20,8 @@ const AccountSummaryCard: React.FC<AccountSummaryCardProps> = ({ entries }) => {
       label: 'Total Entries',
       value: entries.length,
       sub: `${posted.length} posted · ${drafts.length} draft`,
-      color: 'text-indigo-600',
-      bg: 'bg-indigo-50',
+      color: 'text-primary',
+      bg: 'bg-primary/10',
     },
     {
       icon: TrendingUp,
@@ -58,9 +58,9 @@ const AccountSummaryCard: React.FC<AccountSummaryCardProps> = ({ entries }) => {
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
-                  <p className="text-xs text-gray-500 font-medium">{stat.label}</p>
+                  <p className="text-xs text-muted-foreground font-medium">{stat.label}</p>
                   <p className={`text-lg font-bold mt-0.5 truncate ${stat.color}`}>{stat.value}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{stat.sub}</p>
+                  <p className="text-xs text-muted-foreground/70 mt-0.5">{stat.sub}</p>
                 </div>
                 <div className={`${stat.bg} p-2 rounded-lg shrink-0 ml-2`}>
                   <Icon size={17} className={stat.color} />

@@ -124,8 +124,8 @@ const PRApprovalScreen: React.FC = () => {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-3">
           <AlertCircle className="h-16 w-16 text-red-500 mx-auto" />
-          <h3 className="text-xl font-semibold text-slate-600 dark:text-slate-400">Error Loading Data</h3>
-          <p className="text-sm text-slate-500">{error}</p>
+          <h3 className="text-xl font-semibold text-muted-foreground dark:text-muted-foreground/70">Error Loading Data</h3>
+          <p className="text-sm text-muted-foreground">{error}</p>
         </div>
       </div>
     );
@@ -135,8 +135,8 @@ const PRApprovalScreen: React.FC = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-3">
-          <Clock className="h-16 w-16 text-slate-300 dark:text-slate-700 mx-auto animate-spin" />
-          <h3 className="text-xl font-semibold text-slate-600 dark:text-slate-400">
+          <Clock className="h-16 w-16 text-slate-300 dark:text-foreground mx-auto animate-spin" />
+          <h3 className="text-xl font-semibold text-muted-foreground dark:text-muted-foreground/70">
             Loading Purchase Requisitions...
           </h3>
         </div>

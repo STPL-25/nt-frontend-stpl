@@ -212,6 +212,8 @@ const PurchaseTeamPage: React.FC = () => {
 
   const handleSplitGroupCreated = async (groupNo: number, items: POConfirmItem[]) => {
     if (!selectedPR?.pr_basic_sno) return;
+
+    console.log(selectedPR)
     try {
       await postSplitGroup(purchaseTeamSaveSplitGroup, {
         pr_basic_sno: selectedPR.pr_basic_sno,
@@ -529,22 +531,22 @@ const PurchaseTeamPage: React.FC = () => {
                 <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border font-medium
                   ${isStep2Unlocked
                     ? 'bg-green-50 border-green-200 text-green-700'
-                    : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                    : 'bg-primary/10 border-primary/20 text-primary'
                   }`}>
                   <span className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold
-                    ${isStep2Unlocked ? 'bg-green-500 text-white' : 'bg-indigo-600 text-white'}`}>
+                    ${isStep2Unlocked ? 'bg-green-500 text-white' : 'bg-primary text-primary-foreground'}`}>
                     {isStep2Unlocked ? '✓' : '1'}
                   </span>
                   Confirm PO Details
                 </div>
-                <div className="h-px w-6 bg-gray-300" />
+                <div className="h-px w-6 bg-border" />
                 <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border font-medium
                   ${isStep2Unlocked
-                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                    : 'bg-gray-50 border-gray-200 text-gray-400'
+                    ? 'bg-primary/10 border-primary/20 text-primary'
+                    : 'bg-muted/40 border-border text-muted-foreground/70'
                   }`}>
                   <span className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold
-                    ${isStep2Unlocked ? 'bg-indigo-600 text-white' : 'bg-gray-300 text-gray-600'}`}>
+                    ${isStep2Unlocked ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
                     2
                   </span>
                   Supplier &amp; Quotation
@@ -564,7 +566,7 @@ const PurchaseTeamPage: React.FC = () => {
 
               {/* ── Sections below are locked until Step 1 is saved ──────── */}
               {!isStep2Unlocked && (
-                <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/60 p-6 text-center text-sm text-gray-400">
+                <div className="rounded-lg border border-dashed border-border bg-muted/40/60 p-6 text-center text-sm text-muted-foreground/70">
                   Complete Step 1 to unlock supplier selection and quotation management.
                 </div>
               )}
@@ -575,9 +577,9 @@ const PurchaseTeamPage: React.FC = () => {
                   <Card>
                     <CardHeader className="pb-3">
                       <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                        <Scissors size={16} className="text-indigo-600" />
+                        <Scissors size={16} className="text-primary" />
                         Split PR into Multiple POs
-                        <span className="text-xs font-normal text-gray-400">(optional)</span>
+                        <span className="text-xs font-normal text-muted-foreground/70">(optional)</span>
                         {confirmedSplitGroups.length > 0 && (
                           <Badge className="text-xs bg-green-100 text-green-700 border-green-200 ml-1">
                             {confirmedSplitGroups.length} split PO(s)

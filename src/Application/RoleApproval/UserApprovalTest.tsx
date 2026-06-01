@@ -339,10 +339,10 @@ export default function PermissionManager() {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-8">
+    <div className="min-h-screen bg-muted/20 p-4 md:p-8">
       <div className="mx-auto max-w-full">
         <Card className="border-0 shadow-sm">
-          <CardContent className="bg-white p-4 md:p-6">
+          <CardContent className="bg-card p-4 md:p-6">
             <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4 md:mb-8">
               <CustomInputField
                 field="user"
@@ -430,7 +430,7 @@ export default function PermissionManager() {
                 permissionDetails={permissionDetailsData?.data ?? []}
               />
             ) : (
-              <div className="text-center py-16 text-slate-400">
+              <div className="text-center py-16 text-muted-foreground/70">
                 <svg
                   className="mx-auto h-12 w-12 mb-4"
                   fill="none"
@@ -455,11 +455,11 @@ export default function PermissionManager() {
             {/* <Dialog open={morePermModal.open} onOpenChange={(v) => setMorePermModal({ open: v })}>
               <DialogContent className="max-w-xs sm:max-w-md w-[95vw]">
                 <DialogHeader>
-                  <DialogTitle className="text-lg font-semibold text-slate-800">Advanced Permissions</DialogTitle>
-                  <p className="text-sm text-slate-500 mt-1">{morePermModal.screen}</p>
+                  <DialogTitle className="text-lg font-semibold text-foreground">Advanced Permissions</DialogTitle>
+                  <p className="text-sm text-muted-foreground mt-1">{morePermModal.screen}</p>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                  <div className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center space-x-3 p-3 rounded-lg hover:bg-muted/40 transition-colors">
                     <Checkbox
                       checked={permHasMore(morePermModal.screen, "email")}
                       onCheckedChange={() => {
@@ -477,15 +477,15 @@ export default function PermissionManager() {
                           };
                         });
                       }}
-                      className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                      className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                     />
                     <div>
-                      <div className="font-medium text-slate-700">Email</div>
-                      <div className="text-xs text-slate-500">Send email notifications</div>
+                      <div className="font-medium text-foreground">Email</div>
+                      <div className="text-xs text-muted-foreground">Send email notifications</div>
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center space-x-3 p-3 rounded-lg hover:bg-muted/40 transition-colors">
                     <Checkbox
                       checked={permHasMore(morePermModal.screen, "editApproved")}
                       onCheckedChange={() => {
@@ -503,17 +503,17 @@ export default function PermissionManager() {
                           };
                         });
                       }}
-                      className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                      className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                     />
                     <div>
-                      <div className="font-medium text-slate-700">Edit Approved Items</div>
-                      <div className="text-xs text-slate-500">Modify approved {morePermModal.screen}</div>
+                      <div className="font-medium text-foreground">Edit Approved Items</div>
+                      <div className="text-xs text-muted-foreground">Modify approved {morePermModal.screen}</div>
                     </div>
                   </div>
                 </div>
                 <DialogFooter className="border-t pt-4">
                   <DialogClose asChild>
-                    <Button variant="outline" className="border-slate-200">Close</Button>
+                    <Button variant="outline" className="border-border">Close</Button>
                   </DialogClose>
                 </DialogFooter>
               </DialogContent>

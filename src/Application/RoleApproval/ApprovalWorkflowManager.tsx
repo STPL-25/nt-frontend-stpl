@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/CustomComponent/PageComponents";
 import {
   Plus,
   Trash2,
@@ -738,21 +739,11 @@ export default function ApprovalFlowDynamic() {
     <div className="flex flex-col h-full bg-muted/30 min-h-screen">
 
       {/* ── Page header ─────────────────────────────────────────────────── */}
-      <div className="bg-background border-b px-6 py-4 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-            <Layers className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">
-              Approval Workflows
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              Configure multi-stage approval chains per entity and branch
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        icon={Layers}
+        title="Approval Workflows"
+        description="Configure multi-stage approval chains per entity and branch"
+      />
 
       {/* ── Body ────────────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden flex-col lg:flex-row" style={{ minHeight: 0 }}>

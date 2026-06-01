@@ -14,7 +14,7 @@ import { formatDate, formatINR, getPRDisplayNo, getQuotationTotal } from './help
 
 // ── Colour palette (mirrors POConfirmStep) ───────────────────────────────────
 const GROUP_COLORS = [
-  { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200',  badge: 'bg-indigo-600'  },
+  { bg: 'bg-primary/10',  text: 'text-primary',  border: 'border-primary/20',  badge: 'bg-primary'  },
   { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', badge: 'bg-emerald-600' },
   { bg: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-200',  badge: 'bg-orange-500'  },
   { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200',  badge: 'bg-purple-600'  },
@@ -63,17 +63,17 @@ const QuotationCard: React.FC<{
                 </Badge>
               )}
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-600">
-              <div><span className="text-gray-400">Ref: </span><span className="font-medium">{q.quotation_ref_no || '—'}</span></div>
-              <div><span className="text-gray-400">Date: </span><span>{formatDate(q.quotation_date)}</span></div>
-              <div><span className="text-gray-400">Valid: </span><span>{formatDate(q.valid_upto)}</span></div>
-              <div><span className="text-gray-400">Delivery: </span><span>{q.delivery_days} days</span></div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-muted-foreground">
+              <div><span className="text-muted-foreground/70">Ref: </span><span className="font-medium">{q.quotation_ref_no || '—'}</span></div>
+              <div><span className="text-muted-foreground/70">Date: </span><span>{formatDate(q.quotation_date)}</span></div>
+              <div><span className="text-muted-foreground/70">Valid: </span><span>{formatDate(q.valid_upto)}</span></div>
+              <div><span className="text-muted-foreground/70">Delivery: </span><span>{q.delivery_days} days</span></div>
             </div>
             <div className="mt-1 text-xs">
-              <span className="text-gray-400">Items: {q.items.length} </span>
-              <span className="font-semibold text-gray-800">Total: {formatINR(total)}</span>
+              <span className="text-muted-foreground/70">Items: {q.items.length} </span>
+              <span className="font-semibold text-foreground">Total: {formatINR(total)}</span>
             </div>
-            {q.payment_terms && <p className="text-xs text-gray-500 mt-1">Terms: {q.payment_terms}</p>}
+            {q.payment_terms && <p className="text-xs text-muted-foreground mt-1">Terms: {q.payment_terms}</p>}
           </div>
           <div className="flex flex-col gap-1">
             {!isSelected && onSelect && (
@@ -82,7 +82,7 @@ const QuotationCard: React.FC<{
               </Button>
             )}
             {onCreatePO && (
-              <Button size="sm" className="text-xs h-7 bg-indigo-600 hover:bg-indigo-700" onClick={() => onCreatePO(q)}>
+              <Button size="sm" className="text-xs h-7 bg-primary hover:bg-primary/90" onClick={() => onCreatePO(q)}>
                 <Package size={12} className="mr-1" /> Generate PO
               </Button>
             )}
@@ -93,7 +93,7 @@ const QuotationCard: React.FC<{
           <div className="mt-3 border rounded overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50/80">
+                <TableRow className="bg-muted/40/80">
                   {viewQuotItemFields.map((f: any) => (
                     <TableHead key={f.field} className={`text-xs ${f.type === 'number' ? 'text-right' : f.field === 'qty' ? 'text-center' : ''}`}>
                       {f.label}
@@ -175,11 +175,11 @@ const GroupPanel: React.FC<{
       <CardHeader className={`pb-3 ${bgClass} rounded-t-lg`}>
         <CardTitle className={`text-sm font-semibold flex items-center gap-2 ${textClass}`}>
           <Badge className={`${badgeClass} text-white border-none text-xs`}>{label}</Badge>
-          <span className="text-gray-700 font-medium">{items.length} item(s) → separate PO</span>
+          <span className="text-foreground font-medium">{items.length} item(s) → separate PO</span>
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 ml-auto text-xs text-gray-500"
+            className="h-6 ml-auto text-xs text-muted-foreground"
             onClick={() => setItemsOpen(v => !v)}
           >
             {itemsOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
@@ -191,10 +191,10 @@ const GroupPanel: React.FC<{
         {itemsOpen && (
           <div className="mt-2 space-y-1">
             {items.map((it, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs bg-white/60 rounded px-2 py-1 border border-white">
-                <span className="text-gray-400 w-4 shrink-0">{i + 1}.</span>
-                <span className="font-medium text-gray-800">{it.prod_name}</span>
-                <span className="text-gray-500 ml-auto shrink-0">{it.qty} {it.unit_name}</span>
+              <div key={i} className="flex items-center gap-2 text-xs bg-card/60 rounded px-2 py-1 border border-white">
+                <span className="text-muted-foreground/70 w-4 shrink-0">{i + 1}.</span>
+                <span className="font-medium text-foreground">{it.prod_name}</span>
+                <span className="text-muted-foreground ml-auto shrink-0">{it.qty} {it.unit_name}</span>
               </div>
             ))}
           </div>
@@ -204,11 +204,11 @@ const GroupPanel: React.FC<{
       <CardContent className="space-y-3 pt-3">
         {/* Vendor search + table */}
         <div>
-          <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1">
+          <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
             <Users size={12} /> Select Supplier &amp; Add Quotation
           </p>
           <div className="relative mb-2">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
             <Input
               placeholder="Search vendors..."
               value={search}
@@ -217,7 +217,7 @@ const GroupPanel: React.FC<{
             />
           </div>
           {loadingVendors ? (
-            <div className="flex items-center gap-2 text-gray-400 py-3 justify-center">
+            <div className="flex items-center gap-2 text-muted-foreground/70 py-3 justify-center">
               <Loader2 size={13} className="animate-spin" />
               <span className="text-xs">Loading vendors…</span>
             </div>
@@ -225,7 +225,7 @@ const GroupPanel: React.FC<{
             <div className="max-h-48 overflow-y-auto border rounded-md">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50">
+                  <TableRow className="bg-muted/40">
                     {viewVendorFields.map((f: any) => (
                       <TableHead key={f.field} className="text-xs py-1.5">{f.label}</TableHead>
                     ))}
@@ -234,9 +234,9 @@ const GroupPanel: React.FC<{
                 </TableHeader>
                 <TableBody>
                   {filtered.slice(0, 15).map(v => (
-                    <TableRow key={v.kyc_basic_info_sno ?? v.vendor_sno} className="hover:bg-indigo-50/50">
+                    <TableRow key={v.kyc_basic_info_sno ?? v.vendor_sno} className="hover:bg-primary/10/50">
                       {viewVendorFields.map((f: any) => (
-                        <TableCell key={f.field} className={`text-xs py-1.5 ${f.field === 'company_name' ? 'font-medium' : 'text-gray-600'}`}>
+                        <TableCell key={f.field} className={`text-xs py-1.5 ${f.field === 'company_name' ? 'font-medium' : 'text-muted-foreground'}`}>
                           {getVendorFieldValue(v, f.field)}
                         </TableCell>
                       ))}
@@ -262,17 +262,17 @@ const GroupPanel: React.FC<{
 
         {/* Quotations for this group */}
         <div>
-          <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1">
+          <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
             <ClipboardCheck size={12} /> Quotations
             <Badge variant="outline" className="text-xs ml-1">{quotations.length}</Badge>
           </p>
           {loadingQuotations ? (
-            <div className="flex items-center gap-2 text-gray-400 py-3 justify-center">
+            <div className="flex items-center gap-2 text-muted-foreground/70 py-3 justify-center">
               <Loader2 size={13} className="animate-spin" />
               <span className="text-xs">Loading…</span>
             </div>
           ) : quotations.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-3">
+            <p className="text-xs text-muted-foreground/70 text-center py-3">
               No quotations yet for this group. Add one using a supplier above.
             </p>
           ) : (
@@ -381,10 +381,10 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
         {(mainPOItems.length > 0 || ungroupedQuotations.length > 0) && (
           <GroupPanel
             label="Main PO"
-            badgeClass="bg-gray-500"
-            borderClass="border-gray-200"
-            bgClass="bg-gray-50"
-            textClass="text-gray-700"
+            badgeClass="bg-muted/400"
+            borderClass="border-border"
+            bgClass="bg-muted/40"
+            textClass="text-foreground"
             items={mainPOItems}
             vendors={vendors}
             loadingVendors={loadingVendors}
@@ -428,15 +428,15 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
           const groupQuotations = existingQuotations.filter(q => q.vendor_sno === group.vendorSno);
 
           return (
-            <Card key={group.id} className="border-indigo-100">
+            <Card key={group.id} className="border-primary/20">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Badge className="bg-indigo-600 text-white border-none">{prNo}/{gIdx + 1}</Badge>
-                    <span className="text-gray-800">
+                    <Badge className="bg-primary text-primary-foreground border-none">{prNo}/{gIdx + 1}</Badge>
+                    <span className="text-foreground">
                       {group.vendorName ?? <span className="text-amber-600 italic font-normal">No vendor assigned</span>}
                     </span>
-                    <span className="text-xs font-normal text-gray-400">• {group.items.length} item(s)</span>
+                    <span className="text-xs font-normal text-muted-foreground/70">• {group.items.length} item(s)</span>
                   </CardTitle>
                   {groupVendor && onOpenQuotation && (
                     <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => onOpenQuotation(groupVendor)}>
@@ -447,11 +447,11 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
               </CardHeader>
               <CardContent>
                 {loadingQuotations ? (
-                  <div className="flex items-center gap-2 text-gray-400 py-4 justify-center">
+                  <div className="flex items-center gap-2 text-muted-foreground/70 py-4 justify-center">
                     <Loader2 size={14} className="animate-spin" /><span className="text-xs">Loading...</span>
                   </div>
                 ) : groupQuotations.length === 0 ? (
-                  <p className="text-xs text-gray-400 text-center py-3">
+                  <p className="text-xs text-muted-foreground/70 text-center py-3">
                     No quotations yet.{!groupVendor && ' Assign a vendor via Split to add quotations.'}
                   </p>
                 ) : (
@@ -493,7 +493,7 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
         </CardHeader>
         <CardContent>
           <div className="relative mb-3">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
             <Input
               placeholder="Search vendors by name, GST..."
               value={searchVendor}
@@ -502,16 +502,16 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
             />
           </div>
           {loadingVendors ? (
-            <div className="flex items-center gap-2 text-gray-400 py-4 justify-center">
+            <div className="flex items-center gap-2 text-muted-foreground/70 py-4 justify-center">
               <Loader2 size={16} className="animate-spin" /><span className="text-sm">Loading vendors...</span>
             </div>
           ) : filteredVendors.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">No vendors found</p>
+            <p className="text-sm text-muted-foreground/70 text-center py-4">No vendors found</p>
           ) : (
             <div className="max-h-60 overflow-y-auto border rounded-md">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50">
+                  <TableRow className="bg-muted/40">
                     {viewVendorFields.map((f: any) => (
                       <TableHead key={f.field} className="text-xs">{f.label}</TableHead>
                     ))}
@@ -520,9 +520,9 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
                 </TableHeader>
                 <TableBody>
                   {filteredVendors.slice(0, 20).map(v => (
-                    <TableRow key={v.kyc_basic_info_sno ?? v.vendor_sno} className="hover:bg-gray-50">
+                    <TableRow key={v.kyc_basic_info_sno ?? v.vendor_sno} className="hover:bg-muted/40">
                       {viewVendorFields.map((f: any) => (
-                        <TableCell key={f.field} className={`text-${f.field === 'company_name' ? 'sm font-medium' : 'xs text-gray-600'}`}>
+                        <TableCell key={f.field} className={`text-${f.field === 'company_name' ? 'sm font-medium' : 'xs text-muted-foreground'}`}>
                           {getVendorFieldValue(v, f.field)}
                         </TableCell>
                       ))}
@@ -564,11 +564,11 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
         </CardHeader>
         <CardContent>
           {loadingQuotations ? (
-            <div className="flex items-center gap-2 text-gray-400 py-6 justify-center">
+            <div className="flex items-center gap-2 text-muted-foreground/70 py-6 justify-center">
               <Loader2 size={16} className="animate-spin" /><span className="text-sm">Loading quotations...</span>
             </div>
           ) : existingQuotations.length === 0 ? (
-            <div className="flex flex-col items-center py-6 text-gray-400 gap-2">
+            <div className="flex flex-col items-center py-6 text-muted-foreground/70 gap-2">
               <ClipboardCheck size={28} />
               <p className="text-sm">No quotations yet. Assign a supplier above to add one.</p>
             </div>

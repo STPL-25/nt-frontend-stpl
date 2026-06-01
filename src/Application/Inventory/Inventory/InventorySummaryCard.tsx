@@ -20,8 +20,8 @@ const InventorySummaryCard: React.FC<InventorySummaryCardProps> = ({ items }) =>
       label: 'Total Items',
       value: totalItems,
       sub: 'Active inventory items',
-      color: 'text-indigo-600',
-      bg: 'bg-indigo-50',
+      color: 'text-primary',
+      bg: 'bg-primary/10',
     },
     {
       icon: Package,
@@ -58,9 +58,9 @@ const InventorySummaryCard: React.FC<InventorySummaryCardProps> = ({ items }) =>
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs text-gray-500 font-medium">{stat.label}</p>
+                  <p className="text-xs text-muted-foreground font-medium">{stat.label}</p>
                   <p className={`text-xl font-bold mt-0.5 ${stat.color}`}>{stat.value}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{stat.sub}</p>
+                  <p className="text-xs text-muted-foreground/70 mt-0.5">{stat.sub}</p>
                 </div>
                 <div className={`${stat.bg} p-2 rounded-lg`}>
                   <Icon size={18} className={stat.color} />

@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 
 import { Badge }  from "@/components/ui/badge";
+import { PageHeader } from "@/CustomComponent/PageComponents";
 import { Button } from "@/components/ui/button";
 import { cn }     from "@/lib/utils";
 
@@ -527,18 +528,13 @@ export default function PermissionManager() {
     <div className="flex flex-col h-full bg-muted/30 min-h-screen">
 
       {/* ── Page header ───────────────────────────────────────────────────── */}
-      <div className="bg-background border-b px-6 py-4 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-            <Shield className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">Role & Permissions</h1>
-            <p className="text-xs text-muted-foreground">Changes reflect on the user's screen instantly</p>
-          </div>
-        </div>
+      <PageHeader
+        icon={Shield}
+        title="Role & Permissions"
+        description="Changes reflect on the user's screen instantly"
+      >
         <LiveBadge connected={isLive} />
-      </div>
+      </PageHeader>
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden flex-col lg:flex-row" style={{ minHeight: 0 }}>

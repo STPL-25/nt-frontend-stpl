@@ -45,7 +45,7 @@ const CompareDialog: React.FC<CompareDialogProps> = ({
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="bg-gray-50">
+              <TableRow className="bg-muted/40">
                 <TableHead className="text-xs font-semibold w-40">Parameter</TableHead>
                 {quotations.map(q => (
                   <TableHead key={q.sq_basic_sno} className="text-xs font-semibold text-center">
@@ -61,7 +61,7 @@ const CompareDialog: React.FC<CompareDialogProps> = ({
               {/* Dynamic parameter rows */}
               {viewFields.map(field => (
                 <TableRow key={field.field}>
-                  <TableCell className="text-xs font-medium text-gray-600">{field.label}</TableCell>
+                  <TableCell className="text-xs font-medium text-muted-foreground">{field.label}</TableCell>
                   {quotations.map((q, qIdx) => {
                     const val = getFieldValue(q, field.field);
                     const isTotal = field.field === 'total_amount';
@@ -81,8 +81,8 @@ const CompareDialog: React.FC<CompareDialogProps> = ({
 
               {/* Per-item price comparison */}
               {getPRItems(selectedPR).map((prItem, prIdx) => (
-                <TableRow key={prIdx} className="bg-gray-50/50">
-                  <TableCell className="text-xs text-gray-500">
+                <TableRow key={prIdx} className="bg-muted/40/50">
+                  <TableCell className="text-xs text-muted-foreground">
                     {prItem.prod_name ?? prItem.item_name} (Unit Price)
                   </TableCell>
                   {quotations.map(q => {

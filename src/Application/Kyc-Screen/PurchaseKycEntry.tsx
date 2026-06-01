@@ -394,7 +394,7 @@ export default function SupplierKYCForm() {
               {additionalAddresses.map((addr, index) => (
                 <div
                   key={index}
-                  className="mb-6 p-4 border rounded-lg bg-slate-50 relative"
+                  className="mb-6 p-4 border rounded-lg bg-muted/40 relative"
                 >
                   <Button
                     type="button"
@@ -539,7 +539,7 @@ export default function SupplierKYCForm() {
   const ModalIcon = getModalIcon();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-muted/20 py-8 px-4 sm:px-6 lg:px-8">
       <div className="mx-auto">
         <div className="space-y-6">
           {/* Validation Errors Display */}
@@ -604,7 +604,7 @@ export default function SupplierKYCForm() {
 
           {/* Additional Sections */}
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-foreground mb-4 flex items-center gap-2">
               <FileText className="h-6 w-6 text-primary" />
               Additional Sections
             </h2>

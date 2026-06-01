@@ -79,7 +79,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Package size={16} className="text-indigo-600" />
+              <Package size={16} className="text-primary" />
               {isAddingNew ? 'New Inventory Item' : `Item — ${selectedItem?.item_code}`}
             </CardTitle>
             <div className="flex items-center gap-2">
@@ -127,18 +127,18 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
                 { label: 'Status', value: selectedItem.status },
               ].map(f => (
                 <div key={f.label}>
-                  <p className="text-xs text-gray-400 font-medium">{f.label}</p>
-                  <p className="text-sm font-medium text-gray-800">{f.value}</p>
+                  <p className="text-xs text-muted-foreground/70 font-medium">{f.label}</p>
+                  <p className="text-sm font-medium text-foreground">{f.value}</p>
                 </div>
               ))}
             </div>
             {selectedItem.description && (
               <div className="mt-3 pt-3 border-t">
-                <p className="text-xs text-gray-400 font-medium">Description</p>
-                <p className="text-sm text-gray-700">{selectedItem.description}</p>
+                <p className="text-xs text-muted-foreground/70 font-medium">Description</p>
+                <p className="text-sm text-foreground">{selectedItem.description}</p>
               </div>
             )}
-            <div className="mt-2 text-xs text-gray-400">Created: {formatDate(selectedItem.created_at)}</div>
+            <div className="mt-2 text-xs text-muted-foreground/70">Created: {formatDate(selectedItem.created_at)}</div>
           </CardContent>
         )}
 
@@ -148,7 +148,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
             {/* Row 1: Code / Name / Status */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Item Code *</Label>
+                <Label className="text-xs text-muted-foreground">Item Code *</Label>
                 <Input
                   value={form.item_code}
                   onChange={e => set('item_code', e.target.value)}
@@ -158,7 +158,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
                 />
               </div>
               <div className="space-y-1 md:col-span-2">
-                <Label className="text-xs text-gray-600">Item Name *</Label>
+                <Label className="text-xs text-muted-foreground">Item Name *</Label>
                 <Input
                   value={form.item_name}
                   onChange={e => set('item_name', e.target.value)}
@@ -171,7 +171,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
             {/* Row 2: Category / Sub-Category / UOM / HSN */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Category *</Label>
+                <Label className="text-xs text-muted-foreground">Category *</Label>
                 <Select value={form.category} onValueChange={v => set('category', v)}>
                   <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
@@ -182,11 +182,11 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Sub-Category</Label>
+                <Label className="text-xs text-muted-foreground">Sub-Category</Label>
                 <Input value={form.sub_category} onChange={e => set('sub_category', e.target.value)} className="h-8 text-sm" placeholder="e.g. Steel" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Unit of Measure *</Label>
+                <Label className="text-xs text-muted-foreground">Unit of Measure *</Label>
                 <Select value={form.uom} onValueChange={v => set('uom', v)}>
                   <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select UOM" /></SelectTrigger>
                   <SelectContent>
@@ -197,14 +197,14 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-gray-600">HSN Code</Label>
+                <Label className="text-xs text-muted-foreground">HSN Code</Label>
                 <Input value={form.hsn_code} onChange={e => set('hsn_code', e.target.value)} className="h-8 text-sm" placeholder="7213" />
               </div>
             </div>
 
             {/* Row 3: Stock Levels */}
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
                 <ArrowUpDown size={12} /> Stock Levels
               </p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -215,7 +215,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
                   { field: 'reorder_qty',   label: 'Reorder Qty *' },
                 ].map(({ field, label }) => (
                   <div key={field} className="space-y-1">
-                    <Label className="text-xs text-gray-600">{label}</Label>
+                    <Label className="text-xs text-muted-foreground">{label}</Label>
                     <Input
                       type="number" min={0}
                       value={(form as any)[field]}
@@ -230,7 +230,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
             {/* Row 4: Location */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Warehouse *</Label>
+                <Label className="text-xs text-muted-foreground">Warehouse *</Label>
                 <Select value={form.warehouse} onValueChange={v => set('warehouse', v)}>
                   <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select Warehouse" /></SelectTrigger>
                   <SelectContent>
@@ -241,11 +241,11 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Location (Bin/Rack)</Label>
+                <Label className="text-xs text-muted-foreground">Location (Bin/Rack)</Label>
                 <Input value={form.location} onChange={e => set('location', e.target.value)} className="h-8 text-sm" placeholder="A-01-R1" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Status</Label>
+                <Label className="text-xs text-muted-foreground">Status</Label>
                 <Select value={form.status} onValueChange={v => set('status', v)}>
                   <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -260,7 +260,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
             {/* Row 5: Pricing */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Cost Price (₹) *</Label>
+                <Label className="text-xs text-muted-foreground">Cost Price (₹) *</Label>
                 <Input
                   type="number" min={0} step={0.01}
                   value={form.cost_price}
@@ -269,7 +269,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Selling Price (₹)</Label>
+                <Label className="text-xs text-muted-foreground">Selling Price (₹)</Label>
                 <Input
                   type="number" min={0} step={0.01}
                   value={form.selling_price}
@@ -281,7 +281,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
 
             {/* Description */}
             <div className="space-y-1">
-              <Label className="text-xs text-gray-600">Description</Label>
+              <Label className="text-xs text-muted-foreground">Description</Label>
               <Textarea
                 rows={2}
                 value={form.description}
@@ -299,7 +299,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({
               {onSave && (
                 <Button
                   size="sm"
-                  className="bg-indigo-600 hover:bg-indigo-700 text-xs"
+                  className="bg-primary hover:bg-primary/90 text-xs"
                   disabled={saving || !form.item_code || !form.item_name || !form.category || !form.uom || !form.warehouse}
                   onClick={handleSubmit}
                 >

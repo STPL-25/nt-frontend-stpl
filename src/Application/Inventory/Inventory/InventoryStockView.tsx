@@ -15,14 +15,14 @@ const movementIcon: Record<string, React.ReactNode> = {
   IN:         <TrendingUp  size={13} className="text-green-600" />,
   OUT:        <TrendingDown size={13} className="text-red-600" />,
   ADJUSTMENT: <SlidersHorizontal size={13} className="text-amber-600" />,
-  TRANSFER:   <ArrowLeftRight size={13} className="text-indigo-600" />,
+  TRANSFER:   <ArrowLeftRight size={13} className="text-primary" />,
 };
 
 const movementBadge: Record<string, string> = {
   IN:         'bg-green-100 text-green-700 border-green-200',
   OUT:        'bg-red-100   text-red-700   border-red-200',
   ADJUSTMENT: 'bg-amber-100 text-amber-700 border-amber-200',
-  TRANSFER:   'bg-indigo-100 text-indigo-700 border-indigo-200',
+  TRANSFER:   'bg-primary/15 text-primary border-primary/20',
 };
 
 // Mock movements for selected item
@@ -60,13 +60,13 @@ const InventoryStockView: React.FC<InventoryStockViewProps> = ({ movements, load
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          <Activity size={15} className="text-indigo-600" />
+          <Activity size={15} className="text-primary" />
           Stock Movement History
         </CardTitle>
       </CardHeader>
       <CardContent>
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-24 gap-2 text-gray-400">
+          <div className="flex flex-col items-center justify-center h-24 gap-2 text-muted-foreground/70">
             <Loader2 size={20} className="animate-spin" />
             <span className="text-sm">Loading movements...</span>
           </div>
@@ -74,7 +74,7 @@ const InventoryStockView: React.FC<InventoryStockViewProps> = ({ movements, load
           <div className="border rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50">
+                <TableRow className="bg-muted/40">
                   <TableHead className="text-xs">#</TableHead>
                   <TableHead className="text-xs">Type</TableHead>
                   <TableHead className="text-xs">Reference</TableHead>
@@ -88,25 +88,25 @@ const InventoryStockView: React.FC<InventoryStockViewProps> = ({ movements, load
               <TableBody>
                 {displayMovements.map((mv, idx) => (
                   <TableRow key={mv.movement_sno ?? idx}>
-                    <TableCell className="text-xs text-gray-400">{idx + 1}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground/70">{idx + 1}</TableCell>
                     <TableCell>
                       <Badge className={`text-xs flex items-center gap-1 w-fit ${movementBadge[mv.movement_type]}`}>
                         {movementIcon[mv.movement_type]}
                         {mv.movement_type}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs font-mono text-indigo-700">{mv.reference_no ?? '—'}</TableCell>
+                    <TableCell className="text-xs font-mono text-primary">{mv.reference_no ?? '—'}</TableCell>
                     <TableCell className="text-xs text-right font-semibold">
                       <span className={mv.movement_type === 'OUT' ? 'text-red-600' : 'text-green-600'}>
                         {mv.movement_type === 'OUT' ? '-' : '+'}{mv.quantity} {mv.uom}
                       </span>
                     </TableCell>
-                    <TableCell className="text-xs text-right font-medium text-gray-800">
+                    <TableCell className="text-xs text-right font-medium text-foreground">
                       {mv.balance_after} {mv.uom}
                     </TableCell>
-                    <TableCell className="text-xs text-gray-600 max-w-[140px] truncate">{mv.reason ?? '—'}</TableCell>
-                    <TableCell className="text-xs text-gray-500">{mv.created_by ?? '—'}</TableCell>
-                    <TableCell className="text-xs text-gray-400 whitespace-nowrap">{formatDate(mv.created_at)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[140px] truncate">{mv.reason ?? '—'}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{mv.created_by ?? '—'}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground/70 whitespace-nowrap">{formatDate(mv.created_at)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

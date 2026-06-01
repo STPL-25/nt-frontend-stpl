@@ -138,11 +138,11 @@ const MergePRTab: React.FC<MergePRTabProps> = ({
       {/* Info banner */}
       <Card>
         <CardContent className="py-3">
-          <div className="flex items-start gap-2 text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded p-3">
+          <div className="flex items-start gap-2 text-xs text-primary bg-primary/10 border border-primary/20 rounded p-3">
             <Info size={16} className="shrink-0 mt-0.5" />
             <div>
               <p className="font-medium mb-1">Merge Multiple PRs into a Single PO</p>
-              <p className="text-gray-600">
+              <p className="text-muted-foreground">
                 1. Select 2+ PRs from the sidebar (checkboxes appear in merge mode)
                 &nbsp;2. Choose which items to include
                 &nbsp;3. Assign a vendor
@@ -166,7 +166,7 @@ const MergePRTab: React.FC<MergePRTabProps> = ({
           <CardContent className="p-0">
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50">
+                <TableRow className="bg-muted/40">
                   {viewPRFields.map(f => (
                     <TableHead key={f.field} className={`text-xs ${f.type === 'number' ? 'text-center' : ''}`}>
                       {f.label}
@@ -179,7 +179,7 @@ const MergePRTab: React.FC<MergePRTabProps> = ({
                 {selectedPRs.map(pr => (
                   <TableRow key={pr.pr_basic_sno}>
                     {viewPRFields.map(f => (
-                      <TableCell key={f.field} className={`text-xs ${f.field === 'pr_no' ? 'font-semibold text-indigo-700' : ''} ${f.type === 'number' ? 'text-center' : ''}`}>
+                      <TableCell key={f.field} className={`text-xs ${f.field === 'pr_no' ? 'font-semibold text-primary' : ''} ${f.type === 'number' ? 'text-center' : ''}`}>
                         {getPRFieldValue(pr, f.field)}
                       </TableCell>
                     ))}
@@ -210,7 +210,7 @@ const MergePRTab: React.FC<MergePRTabProps> = ({
           <CardContent className="p-0">
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50">
+                <TableRow className="bg-muted/40">
                   <TableHead className="text-xs w-8">
                     <Checkbox
                       checked={itemSelection.size === allMergeItems.length}
@@ -235,7 +235,7 @@ const MergePRTab: React.FC<MergePRTabProps> = ({
                         onCheckedChange={() => toggleItem(m.key)}
                       />
                     </TableCell>
-                    <TableCell className="text-xs text-gray-400">{idx + 1}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground/70">{idx + 1}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="text-[10px]">{m.prNo}</Badge>
                     </TableCell>
@@ -271,8 +271,8 @@ const MergePRTab: React.FC<MergePRTabProps> = ({
             {selectedVendor ? (
               <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded p-3">
                 <Badge className="bg-green-600 text-white border-none">{selectedVendor.company_name ?? selectedVendor.vendor_name}</Badge>
-                <span className="text-xs text-gray-600">{selectedVendor.contact_person ?? ''}</span>
-                <span className="text-xs text-gray-400">{selectedVendor.gst_no ?? ''}</span>
+                <span className="text-xs text-muted-foreground">{selectedVendor.contact_person ?? ''}</span>
+                <span className="text-xs text-muted-foreground/70">{selectedVendor.gst_no ?? ''}</span>
                 <Button size="sm" variant="ghost" className="ml-auto text-xs h-6" onClick={() => setSelectedVendor(null)}>
                   Change
                 </Button>
@@ -284,9 +284,9 @@ const MergePRTab: React.FC<MergePRTabProps> = ({
                   {showVendorPicker ? 'Hide Vendors' : 'Select Vendor'}
                 </Button>
                 {showVendorPicker && (
-                  <div className="border rounded p-2 bg-gray-50 space-y-2">
+                  <div className="border rounded p-2 bg-muted/40 space-y-2">
                     <div className="relative">
-                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
                       <Input
                         placeholder="Search vendors..."
                         value={searchVendor}
@@ -296,14 +296,14 @@ const MergePRTab: React.FC<MergePRTabProps> = ({
                       />
                     </div>
                     {loadingVendors ? (
-                      <div className="flex items-center gap-2 text-gray-400 py-2 justify-center">
+                      <div className="flex items-center gap-2 text-muted-foreground/70 py-2 justify-center">
                         <Loader2 size={14} className="animate-spin" /><span className="text-xs">Loading...</span>
                       </div>
                     ) : (
                       <div className="max-h-48 overflow-y-auto">
                         <Table>
                           <TableHeader>
-                            <TableRow className="bg-gray-100">
+                            <TableRow className="bg-muted">
                               {viewVendorFields.map(f => (
                                 <TableHead key={f.field} className="text-[10px] py-1">{f.label}</TableHead>
                               ))}
@@ -313,7 +313,7 @@ const MergePRTab: React.FC<MergePRTabProps> = ({
                           <TableBody>
                             {filteredVendors.slice(0, 15).map(v => (
                               <TableRow key={v.kyc_basic_info_sno ?? v.vendor_sno}
-                                className="hover:bg-indigo-50 cursor-pointer"
+                                className="hover:bg-primary/10 cursor-pointer"
                                 onClick={() => assignVendor(v)}>
                                 {viewVendorFields.map(f => (
                                   <TableCell key={f.field} className="text-[11px] py-1">
@@ -321,7 +321,7 @@ const MergePRTab: React.FC<MergePRTabProps> = ({
                                   </TableCell>
                                 ))}
                                 <TableCell className="py-1">
-                                  <Button size="sm" variant="ghost" className="h-5 text-[10px] text-indigo-600">Select</Button>
+                                  <Button size="sm" variant="ghost" className="h-5 text-[10px] text-primary">Select</Button>
                                 </TableCell>
                               </TableRow>
                             ))}
@@ -339,7 +339,7 @@ const MergePRTab: React.FC<MergePRTabProps> = ({
               <Button
                 onClick={handleConfirm}
                 disabled={!selectedVendor || itemSelection.size === 0 || selectedPRs.length < 2}
-                className="bg-indigo-600 hover:bg-indigo-700"
+                className="bg-primary hover:bg-primary/90"
               >
                 <ArrowRight size={16} className="mr-1" />
                 Confirm Merge &amp; Proceed to Quotations ({itemSelection.size} items)
@@ -352,7 +352,7 @@ const MergePRTab: React.FC<MergePRTabProps> = ({
       {selectedPRs.length < 2 && (
         <Card>
           <CardContent className="py-10">
-            <div className="flex flex-col items-center text-gray-400 gap-3">
+            <div className="flex flex-col items-center text-muted-foreground/70 gap-3">
               <AlertCircle size={32} />
               <p className="text-sm text-center">
                 Select <strong>2 or more PRs</strong> from the sidebar to merge them.
