@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, Loader2, FileText, ChevronRight } from 'lucide-react';
+import { Search, Loader2, FileText, ChevronRight, Scissors } from 'lucide-react';
 import type { PRRecord } from './types';
 import { formatDate, getPRDisplayNo, getPRItemCount } from './helpers';
 
@@ -15,11 +15,14 @@ interface PRListSidebarProps {
   mergeMode?: boolean;
   mergeSelected?: Set<number>;
   onToggleMerge?: (prBasicSno: number) => void;
+  /** Live split-group count per PR (pr_basic_sno → number of split POs). */
+  splitInfo?: Record<number, number>;
 }
 
 const PRListSidebar: React.FC<PRListSidebarProps> = ({
   prList, loading, selectedPR, onSelectPR,
   mergeMode = false, mergeSelected, onToggleMerge,
+  splitInfo,
 }) => {
   const [search, setSearch] = useState('');
 
@@ -78,6 +81,7 @@ const PRListSidebar: React.FC<PRListSidebarProps> = ({
             const prKey = String(pr.pr_no ?? pr.pr_id ?? pr.pr_basic_sno ?? idx);
             const itemCount = getPRItemCount(pr);
             const isMergeChecked = mergeMode && mergeSelected?.has(pr.pr_basic_sno!);
+            const splitCount = pr.pr_basic_sno ? (splitInfo?.[pr.pr_basic_sno] ?? 0) : 0;
 
             return (
               <button
@@ -118,7 +122,18 @@ const PRListSidebar: React.FC<PRListSidebarProps> = ({
                     : ''}
                 </div>
                 <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs text-muted-foreground/70">{itemCount} items</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground/70">{itemCount} items</span>
+                    {splitCount > 0 && (
+                      <Badge
+                        className="text-[10px] gap-0.5 bg-amber-100 text-amber-700 border-amber-200"
+                        title={`Split into ${splitCount} PO${splitCount > 1 ? 's' : ''}`}
+                      >
+                        <Scissors size={10} />
+                        {splitCount} split{splitCount > 1 ? 's' : ''}
+                      </Badge>
+                    )}
+                  </div>
                   {!mergeMode && <ChevronRight size={14} className="text-muted-foreground/70" />}
                 </div>
               </button>

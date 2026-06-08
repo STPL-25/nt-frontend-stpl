@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/select';
 import {
   FileText, Package, Scissors, CheckCircle2,
-  Building2, Calendar, Loader2, Info, CheckSquare, X, Plus, Minus,
+  Building2, Calendar, Loader2, Info, CheckSquare, X,
 } from 'lucide-react';
 import { useAppSelector } from '@/globalState/hooks/useAppState';
 import { selectCompanyHierarchy } from '@/globalState/features/hierarchyCompanyDetailsSlice';
@@ -20,10 +20,11 @@ import type { Company, Division, Branch } from '@/globalState/features/hierarchy
 import { useMasterOptions } from '@/hooks/ReUsableHook/useMasterOptions';
 import type { PRRecord, POConfirmItem, POConfirmationData } from './types';
 import { getPRDisplayNo, getPRItems, formatDate, formatINR, today } from './helpers';
+import { Provider } from 'react-redux';
 
 interface POConfirmStepProps {
   selectedPR: PRRecord;
-  onConfirmed: (data: POConfirmationData) => Promise<void>;
+  onConfirmed: (data: POConfirmationData) => void;
   onSplitGroupCreated?: (groupNo: number, items: POConfirmItem[]) => Promise<void>;
   saving: boolean;
   confirmedData?: POConfirmationData | null;
@@ -90,6 +91,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
       id: nextRowId(),
       pr_item_sno: item.pr_item_sno,
       prod_sno: item.prod_sno,
+      prod_code:item.prod_code ?? '',
       prod_name: item.prod_name ?? item.item_name ?? '',
       specification: item.specification ?? '',
       originalQty: Number(item.qty ?? item.quantity ?? 0) || 1,
@@ -99,12 +101,9 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
       est_cost: item.est_cost ?? item.estimated_price,
       isSplit: false,
       split_group: undefined,
+      pr_no: getPRDisplayNo(selectedPR),
     }))
   );
-
-  const updateRow = useCallback((id: string, qty: number) => {
-    setRows(prev => prev.map(r => r.id === id ? { ...r, qty: Math.max(1, qty) } : r));
-  }, []);
 
   // ── Multi-select + split groups ───────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -119,8 +118,9 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
   };
 
   const toggleSelectAll = () => {
+    const selectable = rows.filter(r => !r.split_group);
     setSelectedIds(prev =>
-      prev.size === rows.length ? new Set() : new Set(rows.map(r => r.id))
+      prev.size === selectable.length ? new Set() : new Set(selectable.map(r => r.id))
     );
   };
 
@@ -159,6 +159,9 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
     return Array.from(nums).sort();
   }, [rows]);
 
+  // Items still available to split (not yet assigned to a group)
+  const selectableCount = useMemo(() => rows.filter(r => !r.split_group).length, [rows]);
+
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!requiredDate) return;
@@ -171,7 +174,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
       billing_dept_sno: globalDeptSno || selectedPR.dept_sno || undefined,
       items: rows,
     };
-    await onConfirmed(confirmData);
+    onConfirmed(confirmData);
   };
 
   const prNo = getPRDisplayNo(selectedPR);
@@ -273,7 +276,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                       <TableCell className="text-xs text-muted-foreground/70 pl-3">{idx + 1}</TableCell>
                       <TableCell>
                         <div className="text-sm font-medium">{row.prod_name}</div>
-                        {row.specification && <div className="text-[11px] text-muted-foreground/70">{row.specification}</div>}
+                        {/* {row.specification && <div className="text-[11px] text-muted-foreground/70">{row.specification}</div>} */}
                       </TableCell>
                       <TableCell className="text-center text-sm font-medium">{row.qty}</TableCell>
                       <TableCell className="text-center text-xs">{row.unit_name}</TableCell>
@@ -303,7 +306,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
     <div className="space-y-4">
 
       {/* Info banner */}
-      <Card>
+      {/* <Card>
         <CardContent className="py-3">
           <div className="flex items-start gap-2 text-xs text-primary bg-primary/10 border border-primary/20 rounded p-3">
             <Info size={16} className="shrink-0 mt-0.5" />
@@ -316,26 +319,22 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
             </div>
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
 
       {/* PR Reference + optional billing org */}
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <FileText size={16} className="text-primary" />
             PR Reference — {prNo}
-            <span className="text-xs font-normal text-muted-foreground/70">
-              (PR date: {formatDate(selectedPR.reg_date ?? selectedPR.request_date ?? selectedPR.req_date)})
-            </span>
+           
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
 
           {/* PR submitted values — read-only */}
           <div className="bg-muted/40 border border-border rounded-lg p-3">
-            <p className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide mb-2">
-              PR Submitted Details (from requester)
-            </p>
+           
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
                 <p className="text-[10px] text-muted-foreground/70">Company</p>
@@ -489,9 +488,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
                   </Badge>
                 )}
               </CardTitle>
-              <p className="text-[11px] text-muted-foreground/70 mt-1 ml-6">
-                Select items with checkboxes then click <strong>"Create Split Group"</strong> — each group becomes a separate PO.
-              </p>
+             
             </div>
 
             {/* Bulk split toolbar (visible when items are checked) */}
@@ -572,12 +569,15 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
               <TableRow className="bg-muted/40">
                 <TableHead className="w-10 pl-3">
                   <Checkbox
-                    checked={rows.length > 0 && selectedIds.size === rows.length}
+                    checked={selectableCount > 0 && selectedIds.size === selectableCount}
+                    disabled={selectableCount === 0}
                     onCheckedChange={toggleSelectAll}
                     aria-label="Select all items"
                   />
                 </TableHead>
                 <TableHead className="text-xs w-8">#</TableHead>
+                     <TableHead className="text-xs min-w-[160px]">Product Code</TableHead>
+
                 <TableHead className="text-xs min-w-[160px]">Item</TableHead>
                 <TableHead className="text-xs w-28 text-center">Qty</TableHead>
                 <TableHead className="text-xs w-16 text-center">UOM</TableHead>
@@ -589,70 +589,49 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
             <TableBody>
               {rows.map((row, idx) => {
                 const isChecked = selectedIds.has(row.id);
+                const isGrouped = !!row.split_group;
                 const col = row.split_group ? gc(row.split_group) : null;
                 return (
                   <TableRow
                     key={row.id}
-                    className={`cursor-pointer select-none ${
+                    className={`select-none ${isGrouped ? 'cursor-default' : 'cursor-pointer'} ${
                       isChecked ? 'bg-primary/10/70' : col ? `${col.bg}/30` : ''
                     }`}
-                    onClick={() => toggleSelect(row.id)}
+                    onClick={() => { if (!isGrouped) toggleSelect(row.id); }}
                   >
-                    {/* Checkbox */}
+                    {/* Checkbox — disabled once the item belongs to a split group */}
                     <TableCell className="pl-3 py-2" onClick={e => e.stopPropagation()}>
                       <Checkbox
                         checked={isChecked}
-                        onCheckedChange={() => toggleSelect(row.id)}
+                        disabled={isGrouped}
+                        onCheckedChange={() => { if (!isGrouped) toggleSelect(row.id); }}
                         aria-label={`Select ${row.prod_name}`}
                       />
                     </TableCell>
 
                     {/* # */}
-                    <TableCell className="text-xs text-muted-foreground/70 pl-3">{idx + 1}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground/70 pl-3">{idx + 1}</TableCell>
 
                     {/* Item */}
+                      <TableCell className="text-sm font-medium leading-tight">{row.prod_code}</TableCell>
+
                     <TableCell className="py-2" onClick={e => e.stopPropagation()}>
                       <div className="text-sm font-medium leading-tight">{row.prod_name || '—'}</div>
-                      {row.specification && (
+                      {/* {row.specification && (
                         <div className="text-[11px] text-muted-foreground/70 truncate max-w-[200px]">
                           {row.specification}
                         </div>
-                      )}
-                      {row.est_cost && (
+                      )} */}
+                      {/* {row.est_cost && (
                         <div className="text-[11px] text-muted-foreground/70">
                           Est: {formatINR(Number(row.est_cost))}
                         </div>
-                      )}
+                      )} */}
                     </TableCell>
 
-                    {/* Qty */}
-                    <TableCell className="text-center py-2" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-center gap-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 w-6 p-0"
-                          onClick={() => updateRow(row.id, Math.max(1, row.qty - 1))}
-                        >
-                          <Minus size={10} />
-                        </Button>
-                        <Input
-                          type="number"
-                          min={1}
-                          value={row.qty}
-                          onChange={e => updateRow(row.id, Number(e.target.value))}
-                          className="h-7 w-14 text-sm text-center"
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 w-6 p-0"
-                          onClick={() => updateRow(row.id, row.qty + 1)}
-                        >
-                          <Plus size={10} />
-                        </Button>
-                      </div>
-                      <div className="text-[10px] text-muted-foreground/70 mt-0.5">orig: {row.originalQty}</div>
+                    {/* Qty (read-only) */}
+                    <TableCell className="text-center py-2">
+                      <div className="text-sm font-medium">{row.qty}</div>
                     </TableCell>
 
                     {/* UOM */}

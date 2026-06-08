@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import axios from 'axios';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,13 +15,19 @@ import {
   purchaseTeamGetQuotations,
   purchaseTeamSelectQuotation,
   purchaseTeamCreatePO,
-  purchaseTeamSavePOConfirmation,
   purchaseTeamGetPOConfirmation,
   purchaseTeamSaveSplitGroup,
+  purchaseTeamGetSplitGroups,
 } from '@/Services/Api';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { encryptFormMeta } from '@/Services/apiCrypto';
+import {
+  socket,
+  SOCKET_JOIN_PURCHASE_TEAM,
+  SOCKET_LEAVE_PURCHASE_TEAM,
+  SOCKET_PT_SPLIT_UPDATED,
+} from '@/Services/Socket';
 import useFetch from '@/hooks/useFetchHook';
 import usePost from '@/hooks/usePostHook';
 
@@ -43,8 +50,31 @@ import CreatePODialog from './PurchaseTeam/CreatePODialog';
 // ── Component ────────────────────────────────────────────────────────────────
 
 const PurchaseTeamPage: React.FC = () => {
-  useAppState(); // keep for auth context + hierarchy prefetch
+  useAppState(); // auth context + hierarchy prefetch side-effect
   const { canCreate, canEdit } = usePermissions();
+
+  // Live split-group count per PR (pr_basic_sno → number of split POs). Kept in
+  // sync by calling the (uncached) getSplitGroups API on every split.
+  const [splitInfo, setSplitInfo] = useState<Record<number, number>>({});
+
+  // Pull the authoritative split-group count for a PR from the server. The GET
+  // route is intentionally uncached so this always reflects the latest save.
+  const refreshSplitInfo = useCallback(async (prSno?: number) => {
+    if (!prSno) return;
+    try {
+      const res = await axios.get(purchaseTeamGetSplitGroups(prSno), { withCredentials: true });
+      const rows: any[] = res.data?.decrypted?.data ?? res.data?.data ?? [];
+      if (!Array.isArray(rows) || rows.length === 0) return; // keep optimistic value
+      const groups = new Set<number>();
+      rows.forEach((r) => {
+        const g = Number(r.group_no ?? r.split_group ?? r.groupNo ?? 0);
+        if (g > 0) groups.add(g);
+      });
+      setSplitInfo((prev) => ({ ...prev, [prSno]: groups.size }));
+    } catch {
+      /* network/SP error — leave the optimistic badge in place */
+    }
+  }, []);
 
   // ── Refresh keys ──────────────────────────────────────────────────────────
   const [prRefreshKey, setPrRefreshKey] = useState(0);
@@ -54,6 +84,8 @@ const PurchaseTeamPage: React.FC = () => {
   // ── State ──────────────────────────────────────────────────────────────────
 
   const [selectedPR, setSelectedPR] = useState<PRRecord | null>(null);
+  const selectedPRRef = useRef<PRRecord | null>(null);
+  useEffect(() => { selectedPRRef.current = selectedPR; }, [selectedPR]);
 
   // Step 1 — PO Confirmation
   const [confirmedData, setConfirmedData] = useState<POConfirmationData | null>(null);
@@ -85,8 +117,9 @@ const PurchaseTeamPage: React.FC = () => {
     purchaseTeamGetVendors, '', null, vendorRefreshKey,
   );
 
+  console.log('Selected PR for quotations:', selectedPR);
   const quotationsUrl = selectedPR?.pr_basic_sno
-    ? purchaseTeamGetQuotations(selectedPR.pr_basic_sno)
+    ? purchaseTeamGetQuotations(selectedPR.pr_basic_sno, btoa(selectedPR.pr_no ?? ""))
     : null;
   const { data: quotationsRaw, loading: loadingQuotations } = useFetch(
     quotationsUrl, '', null, quotationsRefreshKey,
@@ -99,7 +132,7 @@ const PurchaseTeamPage: React.FC = () => {
 
   // ── Post hooks ────────────────────────────────────────────────────────────
 
-  const { postData: postPOConfirmation, loading: savingConfirm } = usePost();
+  const { loading: savingConfirm } = usePost();
   const { postData: postSplitGroup } = usePost();
   const { postData: postQuotation } = usePost();
   const { postData: postSelectQuotation } = usePost();
@@ -107,9 +140,20 @@ const PurchaseTeamPage: React.FC = () => {
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
-  const prList = useMemo<PRRecord[]>(() => {
+  // PR list is held in state (not a plain useMemo) so the real-time
+  // `pt:split:updated` socket event can replace it live with the fresh
+  // approvedPRs list the backend pushes after a split is saved.
+  const [prList, setPrList] = useState<PRRecord[]>([]);
+
+  useEffect(() => {
     const rows: PRRecord[] = (prRaw as any)?.decrypted?.data ?? (prRaw as any)?.data ?? [];
-    return normalisePRRows(rows);
+    const normalised = normalisePRRows(rows);
+    setPrList(normalised);
+    const current = selectedPRRef.current;
+    if (current?.pr_basic_sno) {
+      const updated = normalised.find(p => p.pr_basic_sno === current.pr_basic_sno);
+      setSelectedPR(updated ?? null);
+    }
   }, [prRaw]);
 
   const vendors = useMemo<Vendor[]>(() => {
@@ -128,8 +172,8 @@ const PurchaseTeamPage: React.FC = () => {
             prod_sno: it.prod_sno,
             prod_name: it.prod_name ?? it.item_name ?? '',
             specification: it.specification ?? '',
-            qty: Number(it.qty ?? it.quantity ?? it.req_qty ?? 0),
-            unit: it.unit ?? it.uom_sno ?? it.unit_sno ?? 0,
+            qty: Number(it.qty ?? it.unit ?? it.quantity ?? it.req_qty ?? 0),
+            unit: it.uom_sno ?? it.unit_sno ?? 0,
             unit_name: it.unit_name ?? it.uom_name ?? it.uom_code ?? '',
             unit_price: Number(it.unit_price ?? 0),
             discount_pct: Number(it.discount_pct ?? 0),
@@ -174,6 +218,36 @@ const PurchaseTeamPage: React.FC = () => {
     }
   }, [poConfirmRaw]);
 
+  // ── Real-time: PR split updates on the sidebar ─────────────────────────────
+  // Join the purchase-team room and update the per-PR split badge live whenever
+  // anyone (this user or a teammate) creates a split group.
+  useEffect(() => {
+    socket.emit(SOCKET_JOIN_PURCHASE_TEAM);
+
+    // The backend pushes the full, freshly-queried approvedPRs list as
+    // { data: approvedPRs } whenever any teammate saves a split group. Replace
+    // the sidebar list live so every connected client stays in sync without a
+    // manual refresh.
+    const onSplitUpdated = (payload: { data?: any[] }) => {
+      if (!Array.isArray(payload?.data)) return;
+      const normalised = normalisePRRows(payload.data);
+      setPrList(normalised);
+      const current = selectedPRRef.current;
+      if (current?.pr_basic_sno) {
+        const updated = normalised.find(p => p.pr_basic_sno === current.pr_basic_sno);
+        setSelectedPR(updated ?? null);
+      }
+      toast.info('Purchase requisitions updated');
+    };
+
+    socket.on(SOCKET_PT_SPLIT_UPDATED, onSplitUpdated);
+
+    return () => {
+      socket.emit(SOCKET_LEAVE_PURCHASE_TEAM);
+      socket.off(SOCKET_PT_SPLIT_UPDATED, onSplitUpdated);
+    };
+  }, []);
+
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleSelectPR = (pr: PRRecord) => {
@@ -186,26 +260,10 @@ const PurchaseTeamPage: React.FC = () => {
 
   // ── Step 1: PO Confirmation ────────────────────────────────────────────────
 
-  const handlePOConfirmed = async (data: POConfirmationData) => {
-    try {
-      await postPOConfirmation(purchaseTeamSavePOConfirmation, data, { withCredentials: true });
-      setConfirmedData(data);
-      setEditingConfirm(false);
-      toast.success('PO details confirmed. You can now select a supplier and add quotations.');
-    } catch (err: any) {
-      const status = err?.response?.status;
-      // 401 = session expired; global interceptor in main.tsx already redirects to login
-      if (status === 401) return;
-      const msg = err?.response?.data?.error ?? 'Failed to save PO confirmation';
-      if (msg.toLowerCase().includes('database error')) {
-        // SP not deployed yet — still let UX advance so team can continue
-        toast.warning('Confirmation recorded locally. SP may not be deployed yet.');
-        setConfirmedData(data);
-        setEditingConfirm(false);
-      } else {
-        toast.error(msg);
-      }
-    }
+  const handlePOConfirmed = (data: POConfirmationData) => {
+    setConfirmedData(data);
+    setEditingConfirm(false);
+    toast.success('PO details confirmed. You can now select a supplier and add quotations.');
   };
 
   // ── Split group created immediately when user clicks "Create Split Group" ──
@@ -213,7 +271,11 @@ const PurchaseTeamPage: React.FC = () => {
   const handleSplitGroupCreated = async (groupNo: number, items: POConfirmItem[]) => {
     if (!selectedPR?.pr_basic_sno) return;
 
-    console.log(selectedPR)
+    // Optimistic sidebar badge for the user performing the split (the socket
+    // echo confirms it; this avoids waiting on the round-trip).
+    const prSno = selectedPR.pr_basic_sno;
+    setSplitInfo(prev => ({ ...prev, [prSno]: Math.max(prev[prSno] ?? 0, groupNo) }));
+
     try {
       await postSplitGroup(purchaseTeamSaveSplitGroup, {
         pr_basic_sno: selectedPR.pr_basic_sno,
@@ -233,6 +295,8 @@ const PurchaseTeamPage: React.FC = () => {
         })),
       }, { withCredentials: true });
       toast.success(`Split Group ${groupNo} saved`);
+      // Call the (uncached) API to confirm the split count from the server.
+      refreshSplitInfo(prSno);
     } catch (err: any) {
       const msg = err?.response?.data?.error ?? 'Failed to save split group';
       if (msg.toLowerCase().includes('database error')) {
@@ -264,6 +328,7 @@ const PurchaseTeamPage: React.FC = () => {
       prod_sno: it.prod_sno,
       prod_name: it.prod_name,
       specification: it.specification,
+      pr_no:it.pr_no,
       qty: it.qty,
       unit: it.unit,
       unit_name: it.unit_name,
@@ -311,7 +376,12 @@ const PurchaseTeamPage: React.FC = () => {
 
     const payload = {
       pr_basic_sno: prBasicSno,
+      pr_no: selectedPR ? getPRDisplayNo(selectedPR) : undefined,
       vendor_sno: selectedVendor.kyc_basic_info_sno ?? selectedVendor.vendor_sno,
+      com_sno: selectedPR?.com_sno,
+      div_sno: selectedPR?.div_sno,
+      brn_sno: selectedPR?.brn_sno,
+      dept_sno: selectedPR?.dept_sno,
       ...form,
       items,
       ...(quotationSplitGroup !== undefined && { split_group: quotationSplitGroup }),
@@ -351,6 +421,8 @@ const PurchaseTeamPage: React.FC = () => {
   const handleSelectQuotation = async (q: Quotation) => {
     if (!q.sq_basic_sno) return;
     try {
+      q.pr_no = selectedPR?.pr_no ?? q.pr_no; // ensure pr_no is sent for legacy quotations created without a PR context
+
       await postSelectQuotation(purchaseTeamSelectQuotation, { selectedQuotation: q }, { withCredentials: true });
       toast.success('Quotation selected');
       setQuotationsRefreshKey(k => k + 1);
@@ -367,6 +439,7 @@ const PurchaseTeamPage: React.FC = () => {
 
     try {
       if (q.is_selected !== 'Y') {
+        q.pr_no = selectedPR?.pr_no ?? q.pr_no; // ensure pr_no is sent for legacy quotations created without a PR context
         await postSelectQuotation(purchaseTeamSelectQuotation, { selectedQuotation: q }, { withCredentials: true });
         setQuotationsRefreshKey(k => k + 1);
       }
@@ -469,6 +542,17 @@ const PurchaseTeamPage: React.FC = () => {
       .map(([groupNum, items]) => ({ groupNum, items }));
   }, [confirmedData]);
 
+  // Seed the sidebar split badge for the active PR from its persisted groups so
+  // the count survives a reload (the real-time event keeps it fresh after that).
+  useEffect(() => {
+    if (!selectedPR?.pr_basic_sno || confirmedSplitGroups.length === 0) return;
+    const prSno = selectedPR.pr_basic_sno;
+    const maxGroup = confirmedSplitGroups[confirmedSplitGroups.length - 1].groupNum;
+    setSplitInfo(prev => (
+      (prev[prSno] ?? 0) >= maxGroup ? prev : { ...prev, [prSno]: maxGroup }
+    ));
+  }, [confirmedSplitGroups, selectedPR]);
+
   // ── Whether Step 2 (supplier/quotation) is unlocked ───────────────────────
   const isStep2Unlocked = !!confirmedData && !editingConfirm;
 
@@ -492,6 +576,7 @@ const PurchaseTeamPage: React.FC = () => {
           loading={loadingPR}
           selectedPR={selectedPR}
           onSelectPR={(pr) => { handleSelectPR(pr); setSidebarOpen(false); }}
+          splitInfo={splitInfo}
         />
       }
       headerChildren={
@@ -555,7 +640,7 @@ const PurchaseTeamPage: React.FC = () => {
 
               {/* ── Section 1: PO Confirmation ───────────────────────────── */}
               <POConfirmStep
-                key={selectedPR.pr_basic_sno}
+                key={`${selectedPR.pr_basic_sno}-${selectedPR.pr_no ?? selectedPR.pr_id ?? ''}`}
                 selectedPR={selectedPR}
                 onConfirmed={handlePOConfirmed}
                 onSplitGroupCreated={handleSplitGroupCreated}
@@ -574,7 +659,7 @@ const PurchaseTeamPage: React.FC = () => {
               {isStep2Unlocked && (
                 <>
                   {/* ── Section 2: Split PR ───────────────────────────────── */}
-                  <Card>
+                  {/* <Card>
                     <CardHeader className="pb-3">
                       <CardTitle className="text-sm font-semibold flex items-center gap-2">
                         <Scissors size={16} className="text-primary" />
@@ -595,7 +680,7 @@ const PurchaseTeamPage: React.FC = () => {
                         onGroupPersist={handleSplitGroupCreated}
                       />
                     </CardContent>
-                  </Card>
+                  </Card> */}
 
                   {/* ── Section 3: Supplier & Quotation ───────────────────── */}
                   <QuotationsTab
@@ -633,6 +718,7 @@ const PurchaseTeamPage: React.FC = () => {
         onOpenChange={setShowCompareDialog}
         quotations={existingQuotations}
         selectedPR={selectedPR}
+        onSelectQuotation={handleSelectQuotation}
       />
 
       <CreatePODialog

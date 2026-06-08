@@ -48,6 +48,11 @@ export const SOCKET_MASTER_UPDATED = "master:updated";
 // ── Notification events ───────────────────────────────────────────────────────
 export const SOCKET_NOTIFICATION_NEW = "notification:new";
 
+// ── Purchase Team room + real-time events ─────────────────────────────────────
+export const SOCKET_JOIN_PURCHASE_TEAM  = "join-purchase-team";
+export const SOCKET_LEAVE_PURCHASE_TEAM = "leave-purchase-team";
+export const SOCKET_PT_SPLIT_UPDATED    = "pt:split:updated";
+
 // ── User / permission events ──────────────────────────────────────────────────
 export const SOCKET_PERMISSIONS_UPDATED          = "permissions:updated";
 export const SOCKET_USER_NEW                     = "user:new";

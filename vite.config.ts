@@ -44,12 +44,12 @@ export default defineConfig({
     //   key: fs.readFileSync('./certs/local-key.pem'),
     //   cert: fs.readFileSync('./certs/local-cert.pem'),
     // },
-    proxy: {
-      "/api": {
-        target: "http://10.0.20.4:8081",
-        changeOrigin: true,
-        secure: false,
-      },
-    },
+    // proxy: {
+    //   "/api": {
+    //     target: "http://10.0.20.4:8081",
+    //     changeOrigin: true,
+    //     secure: false,
+    //   },
+    // },
   },
 })

@@ -23,7 +23,7 @@ export const useMasterOptions = (masterFields: string[]) => {
       setError(null);
 
       try {
-        const response = await axios.post(getAllRequiredMasterForOptions,  {masterFields: masterFields});
+        const response = await axios.post(getAllRequiredMasterForOptions, { masterFields: masterFields }, { withCredentials: true });
           setOptions(response?.data?.data);
       } catch (err) {
         setError('Failed to fetch master options');

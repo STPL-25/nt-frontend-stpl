@@ -1,16 +1,119 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
+import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Separator } from '@/components/ui/separator';
 import {
   Search, Users, Plus, Loader2, ClipboardCheck, RefreshCw,
-  Eye, CheckCircle2, Package, Award, ChevronDown, ChevronUp,
+  Eye, CheckCircle2, Package, ChevronDown, ChevronUp,
+  FileText, Download, X,
+  ShoppingCart,
 } from 'lucide-react';
 import { useVendorFields, useQuotationItemFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
 import type { PRRecord, Vendor, Quotation, POGroup, POConfirmItem } from './types';
 import { formatDate, formatINR, getPRDisplayNo, getQuotationTotal } from './helpers';
+
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+function resolveFileUrl(path: string): string {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  return `${API_BASE}/${path.replace(/^\//, '')}`;
+}
+
+function isImage(path: string): boolean {
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(path);
+}
+
+// ── File viewer dialog ────────────────────────────────────────────────────────
+// Fetches the file as a blob (with auth cookies) so X-Frame-Options and
+// cross-origin restrictions don't block display.
+const FileViewerDialog: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  fileUrl: string;
+  fileName: string;
+}> = ({ open, onClose, fileUrl, fileName }) => {
+  const img = isImage(fileUrl);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
+
+  useEffect(() => {
+    if (!open || !fileUrl) return;
+    let objectUrl: string;
+    setLoading(true);
+    setFetchError(false);
+    setBlobUrl(null);
+    axios
+      .get(fileUrl, { responseType: 'blob', withCredentials: true })
+      .then(res => {
+        objectUrl = URL.createObjectURL(res.data);
+        setBlobUrl(objectUrl);
+      })
+      .catch(() => setFetchError(true))
+      .finally(() => setLoading(false));
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [open, fileUrl]);
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-4xl w-full p-0 overflow-hidden">
+        <DialogHeader className="flex flex-row items-center justify-between px-4 py-3 border-b bg-muted/40">
+          <DialogTitle className="text-sm font-semibold flex items-center gap-2 truncate">
+            <FileText size={15} className="shrink-0 text-primary" />
+            <span className="truncate">{fileName}</span>
+          </DialogTitle>
+          <div className="flex items-center gap-2 shrink-0">
+            {blobUrl && (
+              <a href={blobUrl} download={fileName}>
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
+                  <Download size={13} /> Download
+                </Button>
+              </a>
+            )}
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={onClose}>
+              <X size={14} />
+            </Button>
+          </div>
+        </DialogHeader>
+
+        <div className="w-full flex items-center justify-center" style={{ height: '75vh' }}>
+          {loading && (
+            <div className="flex flex-col items-center gap-2 text-muted-foreground">
+              <Loader2 size={24} className="animate-spin" />
+              <span className="text-sm">Loading file…</span>
+            </div>
+          )}
+          {fetchError && (
+            <p className="text-sm text-destructive">Failed to load file. Check your connection or permissions.</p>
+          )}
+          {blobUrl && !loading && (
+            img ? (
+              <div className="flex items-center justify-center h-full w-full bg-muted/20 p-4">
+                <img
+                  src={blobUrl}
+                  alt={fileName}
+                  className="max-h-full max-w-full object-contain rounded shadow"
+                />
+              </div>
+            ) : (
+              <iframe
+                src={blobUrl}
+                title={fileName}
+                className="w-full h-full border-0"
+              />
+            )
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 // ── Colour palette (mirrors POConfirmStep) ───────────────────────────────────
 const GROUP_COLORS = [
@@ -49,81 +152,194 @@ const QuotationCard: React.FC<{
 }> = ({ q, viewQuotItemFields, onSelect, onCreatePO }) => {
   const total = getQuotationTotal(q.items);
   const isSelected = q.is_selected === 'Y';
+  const [fileOpen, setFileOpen] = useState(false);
+  const [itemsOpen, setItemsOpen] = useState(true);
+
+  const tableFields = viewQuotItemFields.filter((f: any) => f.field !== 'unit_name');
+
+  const fileUrl = q.sq_quotation_file ? resolveFileUrl(q.sq_quotation_file) : '';
+  const fileName = q.sq_quotation_file
+    ? q.sq_quotation_file.split('/').pop() ?? q.sq_quotation_file
+    : '';
 
   return (
-    <Card className={`border ${isSelected ? 'border-green-400 bg-green-50/30' : ''}`}>
-      <CardContent className="pt-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm font-semibold">{q.vendor_name || q.company_name}</span>
+    <>
+      {fileUrl && (
+        <FileViewerDialog
+          open={fileOpen}
+          onClose={() => setFileOpen(false)}
+          fileUrl={fileUrl}
+          fileName={fileName}
+        />
+      )}
+      <Card className={`overflow-hidden border transition-colors ${
+        isSelected
+          ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/20'
+          : 'border-border bg-card hover:border-muted-foreground/30'
+      }`}>
+        {/* Header */}
+        <div className={`px-4 py-3 flex flex-col gap-3 border-b sm:flex-row sm:items-start sm:justify-between ${
+          isSelected ? 'bg-emerald-100/60 dark:bg-emerald-900/20' : 'bg-muted/20'
+        }`}>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold text-foreground truncate">
+                {q.vendor_name || q.company_name}
+              </span>
               {isSelected && (
-                <Badge className="text-xs bg-green-100 text-green-700 border-green-200">
-                  <Award size={10} className="mr-1" /> Selected
+                <Badge variant="outline" className="text-[11px] font-medium text-emerald-700 border-emerald-300 bg-emerald-50 gap-1">
+                  <CheckCircle2 size={10} /> Selected
                 </Badge>
               )}
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-muted-foreground">
-              <div><span className="text-muted-foreground/70">Ref: </span><span className="font-medium">{q.quotation_ref_no || '—'}</span></div>
-              <div><span className="text-muted-foreground/70">Date: </span><span>{formatDate(q.quotation_date)}</span></div>
-              <div><span className="text-muted-foreground/70">Valid: </span><span>{formatDate(q.valid_upto)}</span></div>
-              <div><span className="text-muted-foreground/70">Delivery: </span><span>{q.delivery_days} days</span></div>
-            </div>
-            <div className="mt-1 text-xs">
-              <span className="text-muted-foreground/70">Items: {q.items.length} </span>
-              <span className="font-semibold text-foreground">Total: {formatINR(total)}</span>
-            </div>
-            {q.payment_terms && <p className="text-xs text-muted-foreground mt-1">Terms: {q.payment_terms}</p>}
+
+            {/* Meta info — label / value rows */}
+            <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
+              {q.quotation_ref_no && (
+                <div className="min-w-0">
+                  <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Reference</dt>
+                  <dd className="text-xs font-medium text-foreground truncate">{q.quotation_ref_no}</dd>
+                </div>
+              )}
+              <div className="min-w-0">
+                <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Quote Date</dt>
+                <dd className="text-xs font-medium text-foreground truncate">{formatDate(q.quotation_date) || '—'}</dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Valid Until</dt>
+                <dd className="text-xs font-medium text-foreground truncate">{formatDate(q.valid_upto) || '—'}</dd>
+              </div>
+              {q.delivery_days && (
+                <div className="min-w-0">
+                  <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Delivery</dt>
+                  <dd className="text-xs font-medium text-foreground truncate">
+                    {q.delivery_days} day{Number(q.delivery_days) !== 1 ? 's' : ''}
+                  </dd>
+                </div>
+              )}
+              {q.payment_terms && (
+                <div className="min-w-0">
+                  <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Payment Terms</dt>
+                  <dd className="text-xs font-medium text-foreground truncate">{q.payment_terms}</dd>
+                </div>
+              )}
+            </dl>
           </div>
-          <div className="flex flex-col gap-1">
-            {!isSelected && onSelect && (
-              <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => onSelect(q)}>
-                <CheckCircle2 size={12} className="mr-1" /> Select
-              </Button>
-            )}
-            {onCreatePO && (
-              <Button size="sm" className="text-xs h-7 bg-primary hover:bg-primary/90" onClick={() => onCreatePO(q)}>
-                <Package size={12} className="mr-1" /> Generate PO
-              </Button>
-            )}
+
+          {/* Total + actions */}
+          <div className="flex flex-col gap-2 sm:items-end sm:shrink-0 sm:text-right">
+            <div className="sm:border-l sm:pl-4">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Total Amount</div>
+              <div className="text-lg font-semibold tabular-nums text-foreground leading-tight">{formatINR(total)}</div>
+            </div>
+            <div className="flex flex-wrap gap-1.5 sm:justify-end">
+              {fileUrl && (
+                <Button size="sm" variant="outline" className="text-xs h-7 gap-1 flex-1 sm:flex-none" onClick={() => setFileOpen(true)}>
+                  <FileText size={11} />
+                  {isImage(fileUrl) ? 'Image' : 'PDF'}
+                </Button>
+              )}
+              {!isSelected && onSelect && (
+                <Button size="sm" variant="outline" className="text-xs h-7 flex-1 sm:flex-none" onClick={() => onSelect(q)}>
+                  <CheckCircle2 size={11} className="mr-1" /> Select
+                </Button>
+              )}
+              {/* {onCreatePO && (
+                <Button size="sm" className="text-xs h-7 flex-1 sm:flex-none" onClick={() => onCreatePO(q)}>
+                  <Package size={11} className="mr-1" /> Generate PO
+                </Button>
+              )} */}
+            </div>
           </div>
         </div>
 
+        {/* Items section */}
         {q.items.length > 0 && (
-          <div className="mt-3 border rounded overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40/80">
-                  {viewQuotItemFields.map((f: any) => (
-                    <TableHead key={f.field} className={`text-xs ${f.type === 'number' ? 'text-right' : f.field === 'qty' ? 'text-center' : ''}`}>
-                      {f.label}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {q.items.map((it, iIdx) => (
-                  <TableRow key={iIdx}>
-                    {viewQuotItemFields.map((f: any) => {
-                      const val = (it as any)[f.field];
-                      if (f.field === 'qty') return <TableCell key={f.field} className="text-xs text-center">{it.qty} {it.unit_name}</TableCell>;
-                      if (f.field === 'unit_name') return null;
-                      if (f.field === 'unit_price' || f.field === 'total_amount') {
-                        return <TableCell key={f.field} className="text-xs text-right font-medium">{formatINR(f.field === 'total_amount' ? (it.total_amount || it.qty * it.unit_price) : val)}</TableCell>;
-                      }
-                      if (f.field === 'discount_pct' || f.field === 'tax_pct') {
-                        return <TableCell key={f.field} className="text-xs text-right">{val}%</TableCell>;
-                      }
-                      return <TableCell key={f.field} className="text-xs">{val ?? '—'}</TableCell>;
-                    })}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <>
+            <Separator />
+            <div className="px-4 py-2 bg-background">
+              <button
+                className="w-full flex items-center justify-between text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors py-1"
+                onClick={() => setItemsOpen(v => !v)}
+              >
+                <span className="flex items-center gap-1.5">
+                  <ShoppingCart size={12} />
+                  Items
+                  <Badge variant="secondary" className="text-xs h-4 px-1.5 font-medium">{q.items.length}</Badge>
+                </span>
+                <span className="flex items-center gap-1 text-muted-foreground/60">
+                  {itemsOpen ? <><ChevronUp size={13} /> Hide</> : <><ChevronDown size={13} /> Show</>}
+                </span>
+              </button>
+
+              {itemsOpen && (
+                <div className="mt-2 rounded-md border overflow-hidden">
+                  <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="text-xs py-2 w-6 text-center">#</TableHead>
+                        {tableFields.map((f: any) => (
+                          <TableHead
+                            key={f.field}
+                            className={`text-xs py-2 whitespace-nowrap ${
+                              f.field === 'qty' ? 'text-center' : f.type === 'number' ? 'text-right' : ''
+                            }`}
+                          >
+                            {f.label}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {q.items.map((it, iIdx) => {
+                        const rowTotal = it.total_amount || it.qty * it.unit_price;
+                        return (
+                          <TableRow key={iIdx} className={iIdx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
+                            <TableCell className="text-xs text-center text-muted-foreground py-2 font-medium">{iIdx + 1}</TableCell>
+                            {tableFields.map((f: any) => {
+                              const val = (it as any)[f.field];
+                              if (f.field === 'qty') {
+                                return (
+                                  <TableCell key={f.field} className="text-xs text-center whitespace-nowrap py-2 font-medium">
+                                    {it.qty}{it.unit_name ? ` ${it.unit_name}` : ''}
+                                  </TableCell>
+                                );
+                              }
+                              if (f.field === 'unit_price') {
+                                return <TableCell key={f.field} className="text-xs text-right font-medium whitespace-nowrap py-2">{formatINR(val)}</TableCell>;
+                              }
+                              if (f.field === 'total_amount') {
+                                return (
+                                  <TableCell key={f.field} className="text-xs text-right font-semibold whitespace-nowrap py-2 text-foreground">
+                                    {formatINR(rowTotal)}
+                                  </TableCell>
+                                );
+                              }
+                              if (f.field === 'discount_pct' || f.field === 'tax_pct') {
+                                return <TableCell key={f.field} className="text-xs text-right py-2">{val ?? 0}%</TableCell>;
+                              }
+                              return <TableCell key={f.field} className="text-xs py-2">{val ?? '—'}</TableCell>;
+                            })}
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                  </div>
+
+                  {/* Items footer total */}
+                  <div className="flex items-center justify-end gap-2 px-3 py-2 bg-muted/30 border-t">
+                    <span className="text-xs text-muted-foreground">Grand Total</span>
+                    <span className="text-sm font-semibold tabular-nums text-foreground">{formatINR(total)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
         )}
-      </CardContent>
-    </Card>
+      </Card>
+    </>
   );
 };
 

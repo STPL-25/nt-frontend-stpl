@@ -100,8 +100,8 @@ export const storePOSubmitDraft = (draftId: string) => `${baseUrl}/api/store_po/
 export const purchaseTeamGetApprovedPRs = baseUrl + "/api/purchase_team/getApprovedPRs";
 export const purchaseTeamGetVendors = baseUrl + "/api/purchase_team/getApprovedVendors";
 export const purchaseTeamCreateQuotation = baseUrl + "/api/purchase_team/createSupplierQuotation";
-export const purchaseTeamGetQuotations = (prBasicSno: number) =>
-  `${baseUrl}/api/purchase_team/getSupplierQuotations/${prBasicSno}`;
+export const purchaseTeamGetQuotations = (prBasicSno: number,pr_no: string) =>
+  `${baseUrl}/api/purchase_team/getSupplierQuotations/${prBasicSno}/${pr_no}`;
 export const purchaseTeamSelectQuotation = baseUrl + "/api/purchase_team/selectQuotation";
 export const purchaseTeamCreatePO = baseUrl + "/api/purchase_team/createPOFromQuotation";
 export const purchaseTeamUpdateItemQty = baseUrl + "/api/purchase_team/updateItemQuantity";

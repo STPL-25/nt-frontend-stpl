@@ -3,6 +3,7 @@
 export interface PRItem {
   pr_item_sno?: number;
   prod_sno?: number;
+  prod_code?: string;
   prod_name?: string;
   item_name?: string;
   specification?: string;
@@ -88,7 +89,8 @@ export interface QuotationItem {
   total_amount: number;
   delivery_days: number;
   remarks: string;
-  buyback_value?: number;     // trade-in credit from supplier for existing asset
+  buyback_value?: number;   
+  pr_no?: string;    // trade-in credit from supplier for existing asset
 }
 
 export interface Quotation {
@@ -111,6 +113,23 @@ export interface Quotation {
   split_group?: number;       // which confirmed split group this quotation belongs to
   advance_payment_required?: boolean;
   advance_payment_pct?: number;
+  pr_no?: string;
+}
+
+export interface AdvancePaymentStage {
+  id: string;
+  stage_no: number;
+  amount: number;
+  due_days: number;
+}
+
+export interface AdvancePaymentData {
+  advance_pct: number;
+  gst_applicable: boolean;
+  gst_pct: number;
+  reason: string;
+  note: string;
+  stages: AdvancePaymentStage[];
 }
 
 export interface QuotationFormState {
@@ -121,8 +140,11 @@ export interface QuotationFormState {
   payment_terms: string;
   delivery_days: number;
   remarks: string;
+  buyback_available: boolean;
+  buyback_value: number;
   advance_payment_required: boolean;
   advance_payment_pct: number;
+  advance_payment_data?: AdvancePaymentData;
 }
 
 export interface POFormState {
@@ -183,7 +205,9 @@ export interface POConfirmItem {
   dept_name?: string;
   isSplit: boolean;
   parentItemSno?: number;
-  split_group?: number;       // which split PO group (1, 2, 3…). undefined = main PO
+  split_group?: number;   
+  prod_code?:string; 
+  pr_no?: string;    // which split PO group (1, 2, 3…). undefined = main PO
 }
 
 export interface POConfirmationData {
