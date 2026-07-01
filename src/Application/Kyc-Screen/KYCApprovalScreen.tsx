@@ -817,7 +817,7 @@ const KYCApprovalScreen: React.FC = () => {
   // ── Error / Loading states ─────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="min-h-screen bg-muted/40 flex items-center justify-center p-4">
+      <div className="min-h-full bg-muted/40 flex items-center justify-center p-4">
         <div className="text-center space-y-4 max-w-sm">
           <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center mx-auto">
             <AlertCircle className="h-7 w-7 text-red-500" />
@@ -834,7 +834,7 @@ const KYCApprovalScreen: React.FC = () => {
 
   if (fetchLoading && kycList.length === 0) {
     return (
-      <div className="min-h-screen bg-muted/40 flex items-center justify-center p-4">
+      <div className="min-h-full bg-muted/40 flex items-center justify-center p-4">
         <div className="text-center space-y-3">
           <Loader2 className="h-8 w-8 text-primary animate-spin mx-auto" />
           <p className="text-sm font-medium text-muted-foreground">Loading KYC Approvals…</p>
@@ -854,7 +854,7 @@ const KYCApprovalScreen: React.FC = () => {
         </div>
       )}
 
-      <div className="flex flex-col h-screen bg-muted/40 overflow-hidden">
+      <div className="flex flex-col h-full bg-muted/40 overflow-hidden">
         {/* Page header */}
         <div className="bg-card border-b px-4 sm:px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">

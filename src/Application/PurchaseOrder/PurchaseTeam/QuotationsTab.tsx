@@ -11,10 +11,10 @@ import {
   Search, Users, Plus, Loader2, ClipboardCheck, RefreshCw,
   Eye, CheckCircle2, Package, ChevronDown, ChevronUp,
   FileText, Download, X,
-  ShoppingCart,
+  ShoppingCart, CreditCard,
 } from 'lucide-react';
 import { useVendorFields, useQuotationItemFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
-import type { PRRecord, Vendor, Quotation, POGroup, POConfirmItem } from './types';
+import type { PRRecord, Vendor, Quotation, POGroup, POConfirmItem, SupplierAdvance, SupplierAdvanceStage } from './types';
 import { formatDate, formatINR, getPRDisplayNo, getQuotationTotal } from './helpers';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -154,8 +154,24 @@ const QuotationCard: React.FC<{
   const isSelected = q.is_selected === 'Y';
   const [fileOpen, setFileOpen] = useState(false);
   const [itemsOpen, setItemsOpen] = useState(true);
+  const [advanceOpen, setAdvanceOpen] = useState(false);
 
   const tableFields = viewQuotItemFields.filter((f: any) => f.field !== 'unit_name');
+
+  const advanceData = useMemo(() => {
+    if (!q.supplier_advance) return [];
+    try {
+      const raw: any[] = typeof q.supplier_advance === 'string'
+        ? JSON.parse(q.supplier_advance)
+        : (q.supplier_advance as any[]);
+      return raw.map((adv: any) => ({
+        ...adv,
+        adv_issue_stages: typeof adv.adv_issue_stages === 'string'
+          ? JSON.parse(adv.adv_issue_stages)
+          : (adv.adv_issue_stages ?? []),
+      })) as (SupplierAdvance & { adv_issue_stages: SupplierAdvanceStage[] })[];
+    } catch { return []; }
+  }, [q.supplier_advance]);
 
   const fileUrl = q.sq_quotation_file ? resolveFileUrl(q.sq_quotation_file) : '';
   const fileName = q.sq_quotation_file
@@ -221,6 +237,14 @@ const QuotationCard: React.FC<{
                 <div className="min-w-0">
                   <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Payment Terms</dt>
                   <dd className="text-xs font-medium text-foreground truncate">{q.payment_terms}</dd>
+                </div>
+              )}
+              {q.advance_payment_required && (
+                <div className="min-w-0">
+                  <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Advance</dt>
+                  <dd className="text-xs font-medium text-amber-600 truncate">
+                    {Number(q.advance_payment_pct ?? 0).toFixed(2)}%
+                  </dd>
                 </div>
               )}
             </dl>
@@ -338,6 +362,87 @@ const QuotationCard: React.FC<{
             </div>
           </>
         )}
+
+        {/* Advance Payment section */}
+        {advanceData.length > 0 && (
+          <>
+            <Separator />
+            <div className="px-4 py-2 bg-background">
+              <button
+                className="w-full flex items-center justify-between text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors py-1"
+                onClick={() => setAdvanceOpen(v => !v)}
+              >
+                <span className="flex items-center gap-1.5">
+                  <CreditCard size={12} />
+                  Advance Payment
+                  <Badge className="text-xs h-4 px-1.5 font-medium bg-amber-100 text-amber-700 border border-amber-200">
+                    {advanceData[0].advance_payment_pct.toFixed(2)}%
+                  </Badge>
+                </span>
+                <span className="flex items-center gap-1 text-muted-foreground/60">
+                  {advanceOpen ? <><ChevronUp size={13} /> Hide</> : <><ChevronDown size={13} /> Show</>}
+                </span>
+              </button>
+
+              {advanceOpen && advanceData.map((adv, aIdx) => (
+                <div key={aIdx} className="mt-2 rounded-md border overflow-hidden">
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4 px-3 py-2 bg-muted/20 border-b text-xs">
+                    <div>
+                      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Advance %</dt>
+                      <dd className="font-medium text-amber-600">{adv.advance_payment_pct.toFixed(2)}%</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">GST Applicable</dt>
+                      <dd className="font-medium">{adv.gst_applicable === 'Y' ? `Yes (${adv.gst_pct}%)` : 'No'}</dd>
+                    </div>
+                    {adv.reason && (
+                      <div>
+                        <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Reason</dt>
+                        <dd className="font-medium">{adv.reason}</dd>
+                      </div>
+                    )}
+                    {adv.note && (
+                      <div>
+                        <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Note</dt>
+                        <dd className="font-medium">{adv.note}</dd>
+                      </div>
+                    )}
+                  </dl>
+
+                  {adv.adv_issue_stages.length > 0 && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/30">
+                          <TableHead className="text-xs py-1.5 w-16 text-center">Stage</TableHead>
+                          <TableHead className="text-xs py-1.5 text-right">Amount</TableHead>
+                          <TableHead className="text-xs py-1.5 text-right">Due (Days)</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {adv.adv_issue_stages.map((stage: SupplierAdvanceStage, sIdx: number) => (
+                          <TableRow key={stage.id ?? sIdx} className={sIdx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
+                            <TableCell className="text-xs text-center py-1.5 font-medium">{stage.stage_no}</TableCell>
+                            <TableCell className="text-xs text-right py-1.5 font-medium">{formatINR(stage.amount)}</TableCell>
+                            <TableCell className="text-xs text-right py-1.5 text-muted-foreground">
+                              {stage.due_days} day{stage.due_days !== 1 ? 's' : ''}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2 px-3 py-2 bg-muted/30 border-t">
+                    <span className="text-xs text-muted-foreground">Total Advance</span>
+                    <span className="text-sm font-semibold tabular-nums text-foreground">
+                      {formatINR(adv.adv_issue_stages.reduce((s: number, st: SupplierAdvanceStage) => s + st.amount, 0))}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </Card>
     </>
   );
@@ -381,8 +486,8 @@ const GroupPanel: React.FC<{
   }, [vendors, search]);
 
   const getVendorFieldValue = (vendor: Vendor, field: string): string => {
+    if (field === 'kyc_basic_info_sno') return String(vendor.kyc_basic_info_sno ?? vendor.vendor_sno ?? '—');
     if (field === 'company_name') return vendor.company_name ?? vendor.vendor_name ?? '—';
-    if (field === 'mobile_number') return vendor.mobile_number ?? vendor.mobile ?? vendor.phone ?? vendor.email ?? '—';
     return (vendor as any)[field] ?? '—';
   };
 
@@ -538,8 +643,8 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
   }, [vendors, searchVendor]);
 
   const getVendorFieldValue = (vendor: Vendor, field: string): string => {
+    if (field === 'kyc_basic_info_sno') return String(vendor.kyc_basic_info_sno ?? vendor.vendor_sno ?? '—');
     if (field === 'company_name') return vendor.company_name ?? vendor.vendor_name ?? '—';
-    if (field === 'mobile_number') return vendor.mobile_number ?? vendor.mobile ?? vendor.phone ?? vendor.email ?? '—';
     return (vendor as any)[field] ?? '—';
   };
 

@@ -38,7 +38,7 @@ const POListSidebar: React.FC<POListSidebarProps> = ({
   const partialCount   = poList.filter(p => p.grn_status === 'Partial').length;
 
   return (
-    <div className="w-80 flex-shrink-0 bg-card border-r flex flex-col overflow-hidden">
+    <div className="w-80 flex-shrink-0 bg-card border-r flex flex-col overflow-hidden h-full">
       {/* Stats */}
       <div className="px-4 py-3 border-b bg-muted/40 flex gap-3 text-xs font-medium flex-wrap">
         <span className="text-muted-foreground">{poList.length} POs</span>

@@ -608,7 +608,7 @@ const KYCDataView = () => {
   if (!apiData.data.success) return <ErrorState message="Failed to load KYC data" fullPage />;
 
   return (
-    <div className="h-screen bg-muted/20 dark:from-slate-950 dark:to-slate-900 overflow-hidden flex">
+    <div className="h-full bg-muted/20 dark:from-slate-950 dark:to-slate-900 overflow-hidden flex">
       {/* Desktop sidebar */}
       <div className="hidden lg:flex w-80 xl:w-96 flex-shrink-0 border-r border-border bg-card flex-col h-full">
         <KYCListContent

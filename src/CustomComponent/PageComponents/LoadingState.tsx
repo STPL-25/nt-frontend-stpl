@@ -17,7 +17,7 @@ export function LoadingState({ message = "Loading...", fullPage = false }: Loadi
 
   if (fullPage) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/20">
+      <div className="min-h-full flex items-center justify-center bg-muted/20">
         {inner}
       </div>
     );

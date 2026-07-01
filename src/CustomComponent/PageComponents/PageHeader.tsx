@@ -34,16 +34,16 @@ export function PageHeader({
   children,
 }: PageHeaderProps) {
   return (
-    <div className={cn("bg-primary text-primary-foreground px-4 sm:px-6 lg:px-8 py-6 shadow-sm", className)}>
+    <div className={cn("bg-primary text-primary-foreground px-4 sm:px-6 lg:px-8 py-4 sm:py-6 shadow-sm", className)}>
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-primary-foreground/15 rounded-xl">
-            <Icon className="h-6 w-6" />
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="shrink-0 p-2 sm:p-2.5 bg-primary-foreground/15 rounded-xl">
+            <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
           </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">{title}</h1>
+          <div className="min-w-0">
+            <h1 className="truncate text-lg sm:text-2xl font-bold tracking-tight">{title}</h1>
             {description && (
-              <p className="text-primary-foreground/70 text-sm mt-0.5">{description}</p>
+              <p className="text-primary-foreground/70 text-xs sm:text-sm mt-0.5 line-clamp-2">{description}</p>
             )}
           </div>
         </div>

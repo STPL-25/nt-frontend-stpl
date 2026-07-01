@@ -384,7 +384,7 @@ const StorePOGeneratePage: React.FC = () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex flex-col h-full bg-muted/40 min-h-screen">
+    <div className="flex flex-col h-full bg-muted/40 min-h-full">
       {/* ── Page Header ── */}
       <PageHeader
         icon={ShoppingCart}

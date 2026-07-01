@@ -16,6 +16,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { usePermissions } from '@/globalState/hooks/usePermissions';
+import { useAppState } from '@/imports';
 import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
 
 // ─── SP response mapping ──────────────────────────────────────────────────────
@@ -345,6 +346,9 @@ function ApprovalStages({ stages, currentApproverId }: { stages: any[]; currentA
 
 function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction: (a: string) => void; fieldDatas: FieldType[] }) {
   const { canEdit } = usePermissions();
+  const { userData } = useAppState();
+  const userEcno = userData[0]?.ecno;
+  const isCurrentApprover = pr.current_approver_id && userEcno && String(pr.current_approver_id).trim() === String(userEcno).trim();
   const { parsedItems, totalCost } = useMemo(() => parsePrItems(pr), [pr]);
   const stages = useMemo(() => parseStages(pr), [pr]);
   const history = useMemo(() => parseHistory(pr), [pr]);
@@ -531,7 +535,7 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
             </CardHeader>
 
             <CardContent className="p-4 sm:p-6 pt-0 space-y-3 sm:space-y-4">
-              {canEdit("PRApprovalScreen") ? (
+              {canEdit("PRApprovalScreen") && isCurrentApprover ? (
                 <>
                   <Button
                     onClick={() => handleAction('approve')}

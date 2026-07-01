@@ -590,7 +590,7 @@ export default function KycEntryForm() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-muted/20 py-6 px-4 lg:px-8">
+    <div className="min-h-full bg-muted/20 py-6 px-4 lg:px-8">
       <div className="mx-auto space-y-6">
         {hierarchyError && (
           <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg text-sm">

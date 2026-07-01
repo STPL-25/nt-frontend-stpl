@@ -31,7 +31,7 @@ export function ErrorState({
 
   if (fullPage) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/20">
+      <div className="min-h-full flex items-center justify-center bg-muted/20">
         {inner}
       </div>
     );

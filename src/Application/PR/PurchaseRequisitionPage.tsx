@@ -26,6 +26,7 @@ import {
   prDeleteDraft,
   prSaveDeptDraft,
   prUpdateDeptDraft,
+  getAllRequiredMasterForOptions,
 } from '@/Services/Api';
 
 import { SOCKET_JOIN_PR_SCOPE, SOCKET_LEAVE_PR_SCOPE } from '@/Services/Socket';
@@ -133,9 +134,29 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
 
   // ── Excel helpers ─────────────────────────────────────────────────────────
 
-  const handleDownloadItemTemplate = () => {
-    downloadExcelTemplate(excelItemFields, 'PR_Items');
-    toast.success('Item template downloaded — fill it and import back');
+  const handleDownloadItemTemplate = async () => {
+    try {
+      const res = await axios.post(
+        getAllRequiredMasterForOptions,
+        { masterFields: ['ProductMaster', 'UomMaster'] },
+        { withCredentials: true }
+      );
+      const masterOptions = res?.data?.data ?? {};
+      const productOptions: { label: string; value: any }[] = masterOptions?.ProductMaster ?? [];
+      const uomOptions: { label: string; value: any }[] = masterOptions?.UomMaster ?? [];
+
+      const enrichedFields = excelItemFields.map((f) => {
+        if (f.field === 'prod_sno') return { ...f, type: 'select', options: productOptions };
+        if (f.field === 'unit_sno') return { ...f, type: 'select', options: uomOptions };
+        if (f.type === 'search-select') return { ...f, type: 'select' };
+        return f;
+      });
+
+      await downloadExcelTemplate(enrichedFields, 'PR_Items');
+      toast.success('Item template downloaded — fill it and import back');
+    } catch {
+      toast.error('Failed to download template. Please try again.');
+    }
   };
 
   const handleImportItems = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -156,9 +177,20 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
 
       const newItems = rows.map((row) => {
         const qty = parseFloat(String(row.qty)) || 1;
+
+        // Resolve _name display fields from options so the table shows labels, not raw IDs
+        const resolvedNames: Record<string, any> = {};
+        excelItemFields.forEach((f) => {
+          if (f.options && f.options.length > 0 && row[f.field] !== undefined && row[f.field] !== '') {
+            const match = f.options.find((o) => String(o.value) === String(row[f.field]));
+            if (match) resolvedNames[resolveNameField(f.field)] = match.label;
+          }
+        });
+
         return {
           ...buildEmptyItem(),
           ...row,
+          ...resolvedNames,
           qty,
           id: Date.now().toString() + Math.random().toString(36).slice(2),
         };
@@ -694,7 +726,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
       (canCreate('PurchaseRequisitionPage') || canEdit('PurchaseRequisitionPage')));
 
   return (
-    <div className="flex flex-col h-full bg-muted/30 min-h-screen">
+    <div className="flex flex-col h-full bg-muted/30 min-h-full">
       {/* Page Header */}
       <PageHeader icon={FileText} title={pageTitle} description={pageSubtitle}>
         <div className="flex items-center gap-2 flex-wrap">

@@ -96,6 +96,7 @@ const PurchaseTeamPage: React.FC = () => {
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [quotationItems, setQuotationItems] = useState<QuotationItem[]>([]);
   const [quotationSplitGroup, setQuotationSplitGroup] = useState<number | undefined>(undefined);
+  const [defaultQuotationRefNo, setDefaultQuotationRefNo] = useState('');
 
   // Compare dialog
   const [showCompareDialog, setShowCompareDialog] = useState(false);
@@ -202,6 +203,11 @@ const PurchaseTeamPage: React.FC = () => {
         items: parsedItems,
         sq_quotation_file: row.sq_quotation_file,
         split_group: row.split_group ?? undefined,
+        advance_payment_required: row.advance_payment_required ?? false,
+        advance_payment_pct: Number(row.advance_payment_pct ?? 0),
+        buyback_available: row.buyback_available ?? false,
+        buyback_value: Number(row.buyback_value ?? 0),
+        supplier_advance: row.supplier_advance,
       } as Quotation;
     });
   }, [quotationsRaw]);
@@ -322,6 +328,12 @@ const PurchaseTeamPage: React.FC = () => {
     if (!selectedPR && poGroups.length === 0) { toast.error('Select a PR first'); return; }
     setSelectedVendor(vendor);
     setQuotationSplitGroup(splitGroup);
+
+    const prDisplayNo = selectedPR ? getPRDisplayNo(selectedPR) : '';
+    const filteredCount = splitGroup !== undefined
+      ? existingQuotations.filter(q => q.split_group === splitGroup).length
+      : existingQuotations.length;
+    setDefaultQuotationRefNo(`${prDisplayNo}-${filteredCount + 1}`);
 
     const toQuotItem = (it: POConfirmItem): QuotationItem => ({
       pr_item_sno: it.pr_item_sno,
@@ -710,6 +722,7 @@ const PurchaseTeamPage: React.FC = () => {
         open={showQuotationDialog}
         onOpenChange={setShowQuotationDialog}
         quotationItems={quotationItems}
+        defaultQuotationRefNo={defaultQuotationRefNo}
         onSubmit={handleSubmitQuotation}
       />
 

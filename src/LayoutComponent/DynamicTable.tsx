@@ -347,7 +347,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
       <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
 
         {/* ── Toolbar ── */}
-        <div className="border-b bg-card px-5 py-4">
+        <div className="border-b bg-card px-4 py-4 sm:px-5">
           <Button
             variant="ghost"
             size="sm"
@@ -369,11 +369,11 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
 
             <div className="flex flex-wrap items-center gap-2">
               {searchable && (
-                <div className="relative">
+                <div className="relative w-full sm:w-auto">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                   <Input
                     placeholder="Search records…"
-                    className="pl-9 h-9 w-52 sm:w-60 text-sm"
+                    className="pl-9 h-9 w-full sm:w-60 text-sm"
                     value={searchTerm}
                     onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                   />
@@ -551,7 +551,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
 
         {/* ── Pagination ── */}
         {totalPages > 1 && paginatedData.length > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-t px-5 py-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-t px-4 py-3.5 sm:px-5">
             <p className="text-xs text-muted-foreground">
               Showing{" "}
               <span className="font-medium text-foreground">{startIndex + 1}</span>

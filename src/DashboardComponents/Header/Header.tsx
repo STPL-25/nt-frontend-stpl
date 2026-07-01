@@ -126,10 +126,10 @@ const Header: React.FC = () => {
           isFullscreen ? "shadow-lg" : "shadow-sm"
         }`}
       >
-        <div className="flex items-center justify-between px-4 py-2 lg:px-6">
+        <div className="flex items-center justify-between gap-2 px-4 py-2 lg:px-6">
 
           {/* ── Left ─────────────────────────────────────────────────── */}
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             {/* Mobile hamburger */}
             <div className="lg:hidden">
               <Button
@@ -155,23 +155,23 @@ const Header: React.FC = () => {
             <div className="hidden h-5 w-px bg-border lg:block" />
 
             {/* Page title */}
-            <div className="flex items-center gap-2">
-              <div className="hidden h-1.5 w-1.5 rounded-full bg-primary lg:block" />
-              <span className="text-sm font-semibold tracking-wide text-primary">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="hidden h-1.5 w-1.5 shrink-0 rounded-full bg-primary lg:block" />
+              <span className="truncate text-sm font-semibold tracking-wide text-primary">
                 {(headerComponentRender as string)?.toUpperCase?.() || "DASHBOARD"}
               </span>
             </div>
           </div>
 
           {/* ── Right ────────────────────────────────────────────────── */}
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
 
-            {/* Fullscreen */}
+            {/* Fullscreen — hidden on phones to save space */}
             <Button
               variant="ghost"
               size="sm"
               onClick={handleFullscreenToggle}
-              className="h-8 px-2.5 text-muted-foreground hover:text-primary"
+              className="hidden h-8 px-2.5 text-muted-foreground hover:text-primary sm:inline-flex"
             >
               {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
               <span className="ml-1.5 hidden text-xs xl:inline">

@@ -121,7 +121,7 @@ const PRApprovalScreen: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-full bg-background flex items-center justify-center">
         <div className="text-center space-y-3">
           <AlertCircle className="h-16 w-16 text-red-500 mx-auto" />
           <h3 className="text-xl font-semibold text-muted-foreground dark:text-muted-foreground/70">Error Loading Data</h3>
@@ -133,7 +133,7 @@ const PRApprovalScreen: React.FC = () => {
 
   if (fetchLoading && prList.length === 0) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-full bg-background flex items-center justify-center">
         <div className="text-center space-y-3">
           <Clock className="h-16 w-16 text-slate-300 dark:text-foreground mx-auto animate-spin" />
           <h3 className="text-xl font-semibold text-muted-foreground dark:text-muted-foreground/70">

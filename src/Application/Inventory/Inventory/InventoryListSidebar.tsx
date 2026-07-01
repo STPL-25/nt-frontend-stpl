@@ -47,7 +47,7 @@ const InventoryListSidebar: React.FC<InventoryListSidebarProps> = ({
   const outOfStockCount = items.filter(i => i.current_stock <= 0).length;
 
   return (
-    <div className="w-72 flex-shrink-0 bg-card border-r flex flex-col overflow-hidden">
+    <div className="w-72 flex-shrink-0 bg-card border-r flex flex-col overflow-hidden h-full">
       {/* Header */}
       <div className="px-3 py-2.5 border-b flex items-center justify-between">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Items ({items.length})</span>

@@ -539,7 +539,7 @@ export default function SupplierKYCForm() {
   const ModalIcon = getModalIcon();
 
   return (
-    <div className="min-h-screen bg-muted/20 py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-full bg-muted/20 py-8 px-4 sm:px-6 lg:px-8">
       <div className="mx-auto">
         <div className="space-y-6">
           {/* Validation Errors Display */}

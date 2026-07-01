@@ -135,7 +135,7 @@ const Sidebar: React.FC = () => {
       <div
         className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r bg-background/95 backdrop-blur-xl shadow-lg transition-transform duration-300 lg:translate-x-0
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
-        style={{ width: isCollapsed ? "80px" : `${sidebarWidth}px` }}
+        style={{ width: isCollapsed ? "80px" : `${sidebarWidth}px`, maxWidth: "85vw" }}
       >
         {/* ── Brand / collapse row ────────────────────────────────────── */}
         <div className="relative flex items-center justify-between px-4 py-3 border-b border-border/60 bg-gradient-to-r from-muted/40 to-transparent">

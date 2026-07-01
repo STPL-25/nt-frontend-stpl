@@ -38,7 +38,7 @@ const PRListSidebar: React.FC<PRListSidebarProps> = ({
   }, [prList, search]);
 
   return (
-    <div className="w-80 flex-shrink-0 bg-card border-r flex flex-col overflow-hidden">
+    <div className="w-80 flex-shrink-0 bg-card border-r flex flex-col overflow-hidden h-full">
       {/* Header stats */}
       <div className="px-4 py-3 border-b bg-muted/40 flex gap-3 text-xs font-medium">
         <span className="text-muted-foreground">{prList.length} PRs</span>

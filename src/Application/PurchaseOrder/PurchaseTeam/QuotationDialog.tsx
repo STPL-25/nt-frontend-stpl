@@ -9,7 +9,9 @@ import {
 import {
   Users, Send, Loader2, CreditCard, RefreshCcw, Paperclip,
   FileText, X, ChevronRight, CheckCircle2, Lock, Info,
+  Download, Upload, AlertCircle,
 } from 'lucide-react';
+import { downloadQuotationItemsExcel, parseQuotationItemsExcel } from '@/utils/excelUtils';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { useQuotationHeaderFields, useQuotationItemFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
 import type { QuotationItem, QuotationFormState, AdvancePaymentData } from './types';
@@ -20,6 +22,7 @@ interface QuotationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   quotationItems: QuotationItem[];
+  defaultQuotationRefNo?: string;
   onSubmit: (form: QuotationFormState, items: QuotationItem[], file: File | null) => Promise<void>;
 }
 
@@ -41,7 +44,7 @@ const INITIAL_FORM: QuotationFormState = {
 };
 
 const QuotationDialog: React.FC<QuotationDialogProps> = ({
-  open, onOpenChange, quotationItems: initialItems, onSubmit,
+  open, onOpenChange, quotationItems: initialItems, defaultQuotationRefNo, onSubmit,
 }) => {
   const headerFields = useQuotationHeaderFields();
   const itemFields = useQuotationItemFields();
@@ -50,6 +53,21 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
   const gridHeaderFields = inputHeaderFields.filter(f => f.type !== 'textarea');
   const textareaHeaderFields = inputHeaderFields.filter(f => f.type === 'textarea');
   const viewItemFields = itemFields.filter(f => f.view);
+  // Editable value fields shown in the mobile card layout (qty, unit price, disc, tax)
+  const inputItemFields = viewItemFields.filter(f => f.input);
+  // Per-column widths so numeric fields (esp. Qty) stay clearly visible on desktop
+  const colWidth: Record<string, string> = {
+    prod_name: 'min-w-[180px]',
+    qty: 'w-28',
+    unit_name: 'w-20',
+    unit_price: 'w-36',
+    discount_pct: 'w-24',
+    tax_pct: 'w-24',
+    total_amount: 'w-32',
+  };
+  // Hide native number spinner arrows so values aren't clipped in narrow columns
+  const noSpin =
+    '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
 
   const [form, setForm] = useState<QuotationFormState>(INITIAL_FORM);
   const [items, setItems] = useState<QuotationItem[]>(initialItems);
@@ -58,17 +76,62 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string>('');
   const [showAdvanceDialog, setShowAdvanceDialog] = useState(false);
+  const [excelErrors, setExcelErrors] = useState<string[]>([]);
+  const [excelUploading, setExcelUploading] = useState(false);
 
   React.useEffect(() => {
     if (open) {
       setItems(initialItems);
       setItemSelection(new Set(initialItems.map((_, i) => i)));
-      setForm(INITIAL_FORM);
+      setForm({ ...INITIAL_FORM, quotation_ref_no: defaultQuotationRefNo ?? '' });
       setFile(null);
       setFileError('');
       setShowAdvanceDialog(false);
     }
-  }, [open, initialItems]);
+  }, [open, initialItems, defaultQuotationRefNo]);
+
+  const handleDownloadExcel = () => {
+    downloadQuotationItemsExcel(
+      items.map(it => ({
+        prod_name:     it.prod_name,
+        specification: it.specification,
+        qty:           it.qty,
+        unit_name:     it.unit_name,
+        unit_price:    it.unit_price,
+        discount_pct:  it.discount_pct,
+        tax_pct:       it.tax_pct,
+        delivery_days: it.delivery_days,
+        remarks:       it.remarks,
+      })),
+      'quotation_items'
+    );
+  };
+
+  const handleExcelUpload = async (f: File | null) => {
+    if (!f) return;
+    setExcelErrors([]);
+    setExcelUploading(true);
+    try {
+      const { items: parsed, errors } = await parseQuotationItemsExcel(f);
+      if (errors.length > 0) {
+        setExcelErrors(errors);
+        return;
+      }
+      if (parsed.length !== items.length) {
+        setExcelErrors([`Row count mismatch: uploaded file has ${parsed.length} rows but ${items.length} items expected.`]);
+        return;
+      }
+      setItems(prev =>
+        prev.map((item, i) => {
+          const p = parsed[i];
+          const updated = { ...item, ...p };
+          return recalcItemTotal(updated);
+        })
+      );
+    } finally {
+      setExcelUploading(false);
+    }
+  };
 
   const handlePickFile = (f: File | null) => {
     setFileError('');
@@ -139,7 +202,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-y-auto min-w-5xl w-full">
+      <DialogContent className="w-[95vw] md:w-[90vw] lg:w-[85vw] xl:w-[80vw] !max-w-[1600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users size={18} className="text-green-600" />
@@ -325,8 +388,51 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
           )}
         </div>
 
-        {/* ── Quotation items table ─────────────────────────────────────────── */}
-        <div className="border rounded overflow-x-auto">
+        {/* ── Excel import/export toolbar ───────────────────────────────────── */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-xs text-muted-foreground">
+            {items.length} item{items.length !== 1 ? 's' : ''} — fill unit price, discount &amp; tax below
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1.5"
+              onClick={handleDownloadExcel}
+            >
+              <Download size={13} />
+              Download Excel
+            </Button>
+            <label className={`inline-flex items-center gap-1.5 h-7 px-2.5 text-xs rounded border font-medium cursor-pointer transition-colors
+              ${excelUploading
+                ? 'border-amber-300 bg-amber-50 text-amber-700'
+                : 'border-input bg-background hover:bg-accent hover:text-accent-foreground'}`}
+            >
+              {excelUploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+              Upload Filled Excel
+              <input
+                type="file"
+                accept=".xlsx"
+                className="hidden"
+                onChange={e => { handleExcelUpload(e.target.files?.[0] ?? null); e.target.value = ''; }}
+              />
+            </label>
+          </div>
+        </div>
+        {excelErrors.length > 0 && (
+          <div className="rounded border border-red-200 bg-red-50 p-2.5 space-y-1">
+            {excelErrors.map((err, i) => (
+              <p key={i} className="flex items-start gap-1.5 text-xs text-red-600">
+                <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                {err}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {/* ── Quotation items — desktop table ───────────────────────────────── */}
+        <div className="hidden md:block border rounded overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40">
@@ -342,10 +448,9 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
                 {viewItemFields.map(f => (
                   <TableHead
                     key={f.field}
-                    className={`text-xs ${
-                      f.type === 'number' && !f.input ? 'text-right'
-                      : f.field === 'qty' ? 'text-center'
-                      : f.input && f.type === 'number' ? 'text-right'
+                    className={`text-xs ${colWidth[f.field] ?? ''} ${
+                      f.field === 'qty' ? 'text-center'
+                      : f.type === 'number' ? 'text-right'
                       : ''
                     }`}
                   >
@@ -399,12 +504,22 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
                             value={val || ''}
                             onChange={(e) => updateItem(idx, f.field as keyof QuotationItem, e.target.value)}
                             placeholder="0"
-                            className={`h-7 text-xs ${f.field === 'qty' ? 'text-center' : 'text-right'} ${
+                            className={`h-8 text-sm ${noSpin} ${f.field === 'qty' ? 'text-center font-semibold' : 'text-right'} ${
                               f.field === 'unit_price' && item.unit_price <= 0 ? 'border-amber-400 bg-amber-50' : ''
                             } ${
                               f.field === 'tax_pct' && item.tax_pct <= 0 ? 'border-amber-400 bg-amber-50' : ''
                             }`}
                           />
+                          {f.field === 'discount_pct' && item.discount_pct > 0 && item.unit_price > 0 && (
+                            <p className="text-[10px] text-right text-red-500 mt-0.5 leading-none">
+                              -{formatINR(item.qty * item.unit_price * (item.discount_pct / 100))}
+                            </p>
+                          )}
+                          {f.field === 'tax_pct' && item.tax_pct > 0 && item.unit_price > 0 && (
+                            <p className="text-[10px] text-right text-blue-500 mt-0.5 leading-none">
+                              +{formatINR(item.qty * item.unit_price * (1 - item.discount_pct / 100) * (item.tax_pct / 100))}
+                            </p>
+                          )}
                         </TableCell>
                       );
                     })}
@@ -413,6 +528,81 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
               })}
             </TableBody>
           </Table>
+        </div>
+
+        {/* ── Quotation items — mobile cards ────────────────────────────────── */}
+        <div className="md:hidden space-y-3">
+          {items.map((item, idx) => {
+            const included = itemSelection.has(idx);
+            return (
+              <div
+                key={idx}
+                className={`rounded-lg border p-3 ${included ? 'bg-card' : 'bg-muted/30 opacity-60'}`}
+              >
+                {/* Card header: select + name + total */}
+                <div className="flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={included}
+                    onChange={() => setItemSelection(prev => {
+                      const next = new Set(prev);
+                      if (next.has(idx)) next.delete(idx); else next.add(idx);
+                      return next;
+                    })}
+                    className="mt-0.5 cursor-pointer shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground break-words leading-tight">
+                      {item.prod_name ?? '—'}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      #{idx + 1}{item.unit_name ? ` · ${item.unit_name}` : ''}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[10px] text-muted-foreground">Total</p>
+                    <p className="text-sm font-semibold text-primary">{formatINR(item.total_amount)}</p>
+                  </div>
+                </div>
+
+                {/* Editable values: qty, unit price, disc, tax */}
+                <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5">
+                  {inputItemFields.map(f => {
+                    const val = (item as any)[f.field];
+                    const amber =
+                      (f.field === 'unit_price' && item.unit_price <= 0) ||
+                      (f.field === 'tax_pct' && item.tax_pct <= 0);
+                    return (
+                      <div key={f.field} className="space-y-1">
+                        <label className="block text-[11px] font-medium text-muted-foreground">
+                          {f.label} {f.require && <span className="text-red-500">*</span>}
+                        </label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step={f.field === 'discount_pct' || f.field === 'tax_pct' ? 0.5 : 1}
+                          value={val || ''}
+                          onChange={(e) => updateItem(idx, f.field as keyof QuotationItem, e.target.value)}
+                          placeholder="0"
+                          className={`h-9 text-sm text-right ${noSpin} ${amber ? 'border-amber-400 bg-amber-50' : ''}`}
+                        />
+                        {f.field === 'discount_pct' && item.discount_pct > 0 && item.unit_price > 0 && (
+                          <p className="text-[10px] text-right text-red-500 leading-none">
+                            -{formatINR(item.qty * item.unit_price * (item.discount_pct / 100))}
+                          </p>
+                        )}
+                        {f.field === 'tax_pct' && item.tax_pct > 0 && item.unit_price > 0 && (
+                          <p className="text-[10px] text-right text-blue-500 leading-none">
+                            +{formatINR(item.qty * item.unit_price * (1 - item.discount_pct / 100) * (item.tax_pct / 100))}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Hint when advance is locked */}

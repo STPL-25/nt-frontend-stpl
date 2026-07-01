@@ -536,7 +536,7 @@ const StoreRequisitionPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-muted/20">
+    <div className="flex flex-col min-h-full bg-muted/20">
       <PageHeader
         icon={Package}
         title="Store Requisitions"

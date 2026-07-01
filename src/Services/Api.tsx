@@ -76,6 +76,10 @@ export const createPrRecord = baseUrl + "/api/pr/createPrRecords";
 export const getPrRecords = baseUrl + "/api/pr/getPrRecords";
 export const prApproveAction = baseUrl + "/api/pr/approvePr";
 
+// Purchase Order — Approval
+export const getPoRecords = baseUrl + "/api/po/getPoRecords";
+export const poApproveAction = baseUrl + "/api/po/approvePo";
+
 // Purchase Requisition — Draft (Redis, per-user)
 export const prSaveDraft = baseUrl + "/api/pr/saveDraft";
 export const prGetDrafts = baseUrl + "/api/pr/getDrafts";

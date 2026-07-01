@@ -70,7 +70,7 @@ const MasterScreen: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-muted/20">
+    <div className="min-h-full bg-muted/20">
       <DynamicTable
         headers={headerData}
         data={datas?.data || []}
@@ -137,7 +137,7 @@ const MasterItemsGrid: React.FC = () => {
   };
 
   const MainGrid: React.FC = () => (
-    <div className="min-h-screen bg-muted/20">
+    <div className="min-h-full bg-muted/20">
       <div className="mx-auto px-2 py-3">
         <div className="mb-8">
           <div className="flex flex-wrap gap-2">

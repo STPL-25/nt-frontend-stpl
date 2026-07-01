@@ -146,7 +146,7 @@ export default function SupplierKYCEntry() {
   const meta = SECTION_META[currentSection];
 
   return (
-    <div className="min-h-screen bg-muted/20">
+    <div className="min-h-full bg-muted/20">
       {/* Page Header */}
       <PageHeader
         icon={Building2}

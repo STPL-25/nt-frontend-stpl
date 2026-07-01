@@ -25,9 +25,14 @@ export const SOCKET_JOIN_PR_SCOPE = "join-pr-scope";
 export const SOCKET_LEAVE_PR_SCOPE = "leave-pr-scope";
 export const SOCKET_JOIN_PR_APPROVAL = "join-pr-approval";
 export const SOCKET_LEAVE_PR_APPROVAL = "leave-pr-approval";
+export const SOCKET_JOIN_PO_APPROVAL = "join-po-approval";
+export const SOCKET_LEAVE_PO_APPROVAL = "leave-po-approval";
 
 // ── PR approval real-time events ─────────────────────────────────────────────
 export const SOCKET_PR_APPROVAL_UPDATED = "pr:approval:updated";
+
+// ── PO approval real-time events ─────────────────────────────────────────────
+export const SOCKET_PO_APPROVAL_UPDATED = "po:approval:updated";
 
 // ── KYC room + real-time events ───────────────────────────────────────────────
 export const SOCKET_JOIN_KYC_APPROVAL    = "join-kyc-approval";

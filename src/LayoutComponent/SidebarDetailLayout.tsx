@@ -84,7 +84,7 @@ export default function SidebarDetailLayout({
         </div>
       )}
 
-      <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 overflow-hidden flex">
+      <div className="h-full bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 overflow-hidden flex">
         {/* Desktop sidebar */}
         <div className="hidden lg:flex w-80 xl:w-96 flex-shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex-col h-full">
           {sidebarBody}

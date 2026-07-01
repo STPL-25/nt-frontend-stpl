@@ -337,7 +337,7 @@ const CompareDialog: React.FC<CompareDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="min-w-5xl max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent className="w-[95vw] max-w-5xl max-h-[90vh] overflow-y-auto p-0">
         {/* Header */}
         <DialogHeader className="px-5 pt-5 pb-3 border-b sticky top-0 bg-background z-10">
           <DialogTitle className="flex items-center gap-2 text-base">

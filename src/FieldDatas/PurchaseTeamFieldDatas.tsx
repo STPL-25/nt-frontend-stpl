@@ -9,6 +9,11 @@ const PAYMENT_TERMS = [
 
 const paymentTermOptions = PAYMENT_TERMS.map(t => ({ value: t, label: t }));
 
+const ynOptions = [
+  { value: 'Y', label: 'Y' },
+  { value: 'N', label: 'N' },
+];
+
 // ── PR Summary Fields (view-only display) ────────────────────────────────────
 export const usePRSummaryFields = (): FieldType[] => {
   return useMemo<FieldType[]>(() => [
@@ -37,10 +42,9 @@ export const usePRItemFields = (): FieldType[] => {
 // ── Vendor Table Fields ──────────────────────────────────────────────────────
 export const useVendorFields = (): FieldType[] => {
   return useMemo<FieldType[]>(() => [
-    { field: 'company_name',   label: 'Vendor Name',      type: 'text', view: true, input: false },
-    { field: 'contact_person', label: 'Contact Person',   type: 'text', view: true, input: false },
-    { field: 'gst_no',         label: 'GST No',           type: 'text', view: true, input: false },
-    { field: 'mobile_number',  label: 'Mobile / Email',   type: 'text', view: true, input: false },
+    { field: 'supp_code', label: 'Supplier Code', type: 'number', view: true, input: false },
+    { field: 'company_name',       label: 'Vendor Name',   type: 'text',   view: true, input: false },
+    { field: 'gst_no',             label: 'GST No',        type: 'text',   view: false, input: false },
   ], []);
 };
 
@@ -53,6 +57,7 @@ export const useQuotationHeaderFields = (): FieldType[] => {
     { field: 'payment_terms',    label: 'Payment Terms',    type: 'select', require: false, input: true, view: true, options: paymentTermOptions },
     { field: 'delivery_days',    label: 'Delivery Days',    type: 'number', require: false, input: true, view: true, placeholder: 'e.g. 15' },
     { field: 'currency_code',    label: 'Currency',         type: 'text',   require: false, input: true, view: true  },
+   
     { field: 'remarks',          label: 'Remarks',          type: 'textarea', require: false, input: true, view: true, placeholder: 'Additional notes...' },
   ], []);
 };

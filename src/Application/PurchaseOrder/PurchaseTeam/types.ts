@@ -113,6 +113,9 @@ export interface Quotation {
   split_group?: number;       // which confirmed split group this quotation belongs to
   advance_payment_required?: boolean;
   advance_payment_pct?: number;
+  buyback_available?: boolean;
+  buyback_value?: number;
+  supplier_advance?: string | SupplierAdvance[];
   pr_no?: string;
 }
 
@@ -121,6 +124,29 @@ export interface AdvancePaymentStage {
   stage_no: number;
   amount: number;
   due_days: number;
+}
+
+export interface SupplierAdvanceStage {
+  id: string;
+  stage_no: number;
+  amount: number;
+  due_days: number;
+}
+
+export interface SupplierAdvance {
+  sq_adv_sno?: number;
+  sq_basic_sno?: number;
+  quotation_ref_no?: string;
+  payment_terms?: string;
+  advance_payment_pct: number;
+  gst_applicable: string;
+  gst_pct: number;
+  reason: string;
+  note: string;
+  adv_issue_stages: string | SupplierAdvanceStage[];
+  is_active?: string;
+  created_by?: string;
+  created_date?: string;
 }
 
 export interface AdvancePaymentData {

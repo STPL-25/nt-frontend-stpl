@@ -736,7 +736,7 @@ export default function ApprovalFlowDynamic() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full bg-muted/30 min-h-screen">
+    <div className="flex flex-col h-full bg-muted/30 min-h-full">
 
       {/* ── Page header ─────────────────────────────────────────────────── */}
       <PageHeader

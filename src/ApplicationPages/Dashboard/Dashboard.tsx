@@ -49,14 +49,14 @@ const Dashboard: React.FC = () => {
       {/* Fixed left sidebar */}
       <Sidebar />
 
-      {/* Scrollable main content — offset by sidebar width */}
+      {/* Main content area — offset by sidebar width, fixed to viewport height */}
       <div
-        className="flex min-h-screen flex-col"
+        className="flex h-screen flex-col overflow-hidden"
         style={getMainContentStyle(isMobile, sidebarWidth)}
       >
         <Header />
 
-        <main className="flex-1 px-2 pb-4 pt-3 lg:px-4 lg:pt-4">
+        <main className="flex-1 overflow-y-auto px-2 pb-4 pt-3 lg:px-4 lg:pt-4">
           <div className={`h-full w-full ${isFullscreen ? "mt-4" : ""}`}>
             <Suspense
               fallback={
@@ -66,7 +66,7 @@ const Dashboard: React.FC = () => {
               }
             >
               {ActiveComponent ? (
-                <div className="w-full">
+                <div className="h-full w-full">
                   <ActiveComponent />
                 </div>
               ) : (

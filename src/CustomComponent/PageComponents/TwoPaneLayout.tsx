@@ -46,7 +46,7 @@ export function TwoPaneLayout({
   className,
 }: TwoPaneLayoutProps) {
   return (
-    <div className={cn("flex flex-col h-full min-h-screen bg-muted/20", className)}>
+    <div className={cn("flex flex-col h-full overflow-hidden bg-muted/20", className)}>
       <PageHeader
         icon={icon}
         title={title}

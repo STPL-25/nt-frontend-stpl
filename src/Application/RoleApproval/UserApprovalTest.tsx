@@ -339,7 +339,7 @@ export default function PermissionManager() {
 
 
   return (
-    <div className="min-h-screen bg-muted/20 p-4 md:p-8">
+    <div className="min-h-full bg-muted/20 p-4 md:p-8">
       <div className="mx-auto max-w-full">
         <Card className="border-0 shadow-sm">
           <CardContent className="bg-card p-4 md:p-6">
