@@ -1,6 +1,648 @@
-import spaceLogo from '@/assets/space.png';
+// import { jsPDF } from 'jspdf';
+// import { autoTable } from 'jspdf-autotable';
+
+// type AnyRecord = Record<string, unknown>;
+
+// type DetailRow = {
+//   label: string;
+//   value: string;
+// };
+
+// const PAGE_WIDTH = 210;
+// const PAGE_HEIGHT = 297;
+// const PAGE_MARGIN = 12;
+// const CONTENT_WIDTH = PAGE_WIDTH - (PAGE_MARGIN * 2);
+// const NAVY: [number, number, number] = [30, 58, 95];
+// const MUTED: [number, number, number] = [107, 114, 128];
+// const BORDER: [number, number, number] = [209, 213, 219];
+// const LIGHT_BG: [number, number, number] = [248, 250, 252];
+
+// function parseJSON<T>(raw: unknown, fallback: T): T {
+//   if (raw == null || raw === '') return fallback;
+//   if (typeof raw !== 'string') return raw as T;
+//   try {
+//     return JSON.parse(raw) as T;
+//   } catch {
+//     return fallback;
+//   }
+// }
+
+// function toNumber(value: unknown): number {
+//   const parsed = Number.parseFloat(String(value ?? 0));
+//   return Number.isFinite(parsed) ? parsed : 0;
+// }
+
+// function firstValue(records: AnyRecord[], keys: string[]): unknown {
+//   for (const record of records) {
+//     for (const key of keys) {
+//       const value = record[key];
+//       if (value != null && String(value).trim() !== '') return value;
+//     }
+//   }
+//   return '';
+// }
+
+// function formatAddressValue(value: unknown): string {
+//   if (value == null || value === '') return '';
+
+//   let parsed: unknown = value;
+//   if (typeof value === 'string') {
+//     try {
+//       parsed = JSON.parse(value) as unknown;
+//     } catch {
+//       return value.trim();
+//     }
+//   }
+
+//   if (Array.isArray(parsed)) {
+//     const addresses = parsed.filter(
+//       (address): address is AnyRecord => Boolean(address) && typeof address === 'object',
+//     );
+//     const primary = addresses.find((address) => {
+//       const type = String(address.address_type ?? '').toUpperCase();
+//       return type === 'PRIMARY' || type === 'BILLING' || type === 'REGISTERED';
+//     }) ?? addresses[0];
+//     return primary ? formatAddressValue(primary) : '';
+//   }
+
+//   if (typeof parsed !== 'object' || parsed == null) return String(parsed).trim();
+
+//   const address = parsed as AnyRecord;
+//   const fullAddress = firstValue([address], [
+//     'full_address',
+//     'address',
+//     'address_text',
+//     'formatted_address',
+//   ]);
+//   if (fullAddress) return formatAddressValue(fullAddress);
+
+//   const gstNo = firstValue([address], ['add_gst', 'gst_no', 'gstin']);
+//   const doorNo = address.door_no
+//     ?? address.building_no
+//     ?? address.add_door_no
+//     ?? address.add_reg_door_no;
+
+//   return [
+//     String(doorNo ?? '').trim() === String(gstNo ?? '').trim() ? '' : doorNo,
+//     address.address_line_1 ?? address.address_line1,
+//     address.address_line_2 ?? address.address_line2,
+//     address.street ?? address.add_street ?? address.add_reg_street,
+//     address.area ?? address.locality,
+//     address.city ?? address.add_city ?? address.add_reg_city,
+//     address.taluk ?? address.district,
+//     address.state ?? address.add_state ?? address.add_reg_state,
+//     address.country,
+//     address.pincode
+//       ?? address.pin_code
+//       ?? address.postal_code
+//       ?? address.add_pin_code
+//       ?? address.add_reg_pincode,
+//   ].filter((part) => part != null && String(part).trim() !== '').join(', ');
+// }
+
+// function addressField(value: unknown, keys: string[]): unknown {
+//   if (value == null || value === '') return '';
+//   const parsed = typeof value === 'string'
+//     ? parseJSON<unknown>(value, value)
+//     : value;
+
+//   if (Array.isArray(parsed)) {
+//     for (const item of parsed) {
+//       const found = addressField(item, keys);
+//       if (found != null && String(found).trim() !== '') return found;
+//     }
+//     return '';
+//   }
+
+//   if (typeof parsed !== 'object' || parsed == null) return '';
+//   return firstValue([parsed as AnyRecord], keys);
+// }
+
+// function companyAddressValue(pr: AnyRecord, poHeader: AnyRecord): unknown {
+//   return firstValue([poHeader, pr], [
+//     'com_address',
+//     'company_address',
+//     'com_full_address',
+//   ]);
+// }
+
+// function branchAddressValue(pr: AnyRecord, poHeader: AnyRecord): unknown {
+//   return firstValue([poHeader, pr], [
+//     'brn_address',
+//     'branch_address',
+//     'brn_full_address',
+//     'delivery_address',
+//   ]);
+// }
+
+// function formatCompanyAddress(pr: AnyRecord, poHeader: AnyRecord): string {
+//   const formatted = formatAddressValue(companyAddressValue(pr, poHeader));
+//   if (formatted) return formatted;
+
+//   return [
+//     poHeader.com_door_no ?? pr.com_door_no,
+//     poHeader.com_street ?? pr.com_street,
+//     poHeader.com_area ?? pr.com_area,
+//     poHeader.com_city ?? pr.com_city,
+//     poHeader.com_state ?? pr.com_state,
+//     poHeader.com_pincode ?? pr.com_pincode,
+//   ].filter(Boolean).join(', ');
+// }
+
+// function formatBranchAddress(pr: AnyRecord, poHeader: AnyRecord): string {
+//   const formatted = formatAddressValue(branchAddressValue(pr, poHeader));
+//   if (formatted) return formatted;
+
+//   return [
+//     poHeader.brn_door_no ?? poHeader.branch_door_no ?? pr.brn_door_no ?? pr.branch_door_no,
+//     poHeader.brn_street ?? poHeader.branch_street ?? pr.brn_street ?? pr.branch_street,
+//     poHeader.brn_area ?? poHeader.branch_area ?? pr.brn_area ?? pr.branch_area,
+//     poHeader.brn_city ?? poHeader.branch_city ?? pr.brn_city ?? pr.branch_city,
+//     poHeader.brn_state ?? poHeader.branch_state ?? pr.brn_state ?? pr.branch_state,
+//     poHeader.brn_pincode ?? poHeader.branch_pincode ?? pr.brn_pincode ?? pr.branch_pincode,
+//   ].filter(Boolean).join(', ');
+// }
+
+// function formatVendorAddress(vendor: AnyRecord, quotation: AnyRecord): string {
+//   return formatAddressValue(firstValue([vendor, quotation], [
+//     'vendor_address',
+//     'kyc_address',
+//     'address',
+//   ]));
+// }
+
+// function formatDate(value?: unknown): string {
+//   if (!value) return '-';
+//   const stringValue = String(value);
+//   const date = new Date(stringValue);
+//   if (Number.isNaN(date.getTime())) return stringValue;
+//   return date.toLocaleDateString('en-IN', {
+//     day: '2-digit',
+//     month: 'short',
+//     year: 'numeric',
+//   });
+// }
+
+// function formatMoney(value: number): string {
+//   return `INR ${value.toLocaleString('en-IN', {
+//     minimumFractionDigits: 2,
+//     maximumFractionDigits: 2,
+//   })}`;
+// }
+
+// function formatQuantity(value: unknown): string {
+//   return toNumber(value).toLocaleString('en-IN', { maximumFractionDigits: 3 });
+// }
+
+// function itemUnitPrice(item: AnyRecord): number {
+//   return toNumber(item.agreed_unit_price ?? item.unit_price);
+// }
+
+// function itemBase(item: AnyRecord): number {
+//   return toNumber(item.qty) * itemUnitPrice(item);
+// }
+
+// function itemDiscount(item: AnyRecord): number {
+//   return itemBase(item) * (toNumber(item.discount_pct) / 100);
+// }
+
+// function calculatedTotalCost(item: AnyRecord): number {
+//   return itemBase(item) - itemDiscount(item);
+// }
+
+// function itemTotalCost(item: AnyRecord): number {
+//   return item.total_cost != null
+//     ? toNumber(item.total_cost)
+//     : calculatedTotalCost(item);
+// }
+
+// function itemNetCost(item: AnyRecord): number {
+//   if (item.net_cost != null) return toNumber(item.net_cost);
+//   if (item.total_amount != null) return toNumber(item.total_amount);
+//   return itemTotalCost(item) * (1 + (toNumber(item.tax_pct) / 100));
+// }
+
+// function itemTaxValue(item: AnyRecord): number {
+//   return Math.max(0, itemNetCost(item) - itemTotalCost(item));
+// }
+
+// function cleanFileName(value: string): string {
+//   const cleaned = value.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim();
+//   return cleaned || 'Purchase-Order';
+// }
+
+// function detailBoxHeight(doc: jsPDF, rows: DetailRow[], boxWidth: number): number {
+//   const valueWidth = boxWidth - 31;
+//   const contentHeight = rows.reduce((height, row) => {
+//     const lines = doc.splitTextToSize(row.value || '-', valueWidth) as string[];
+//     return height + Math.max(4.5, lines.length * 3.5);
+//   }, 0);
+//   return Math.max(30, 14 + contentHeight);
+// }
+
+// function drawDetailBox(
+//   doc: jsPDF,
+//   x: number,
+//   y: number,
+//   width: number,
+//   height: number,
+//   title: string,
+//   rows: DetailRow[],
+// ): void {
+//   doc.setFillColor(...LIGHT_BG);
+//   doc.setDrawColor(...BORDER);
+//   doc.roundedRect(x, y, width, height, 1.5, 1.5, 'FD');
+
+//   doc.setFont('helvetica', 'bold');
+//   doc.setFontSize(8);
+//   doc.setTextColor(...NAVY);
+//   doc.text(title.toUpperCase(), x + 3, y + 5.5);
+//   doc.setDrawColor(229, 231, 235);
+//   doc.line(x + 3, y + 8, x + width - 3, y + 8);
+
+//   let cursorY = y + 13;
+//   const valueWidth = width - 31;
+//   for (const row of rows) {
+//     const lines = doc.splitTextToSize(row.value || '-', valueWidth) as string[];
+//     doc.setFont('helvetica', 'normal');
+//     doc.setFontSize(7.5);
+//     doc.setTextColor(...MUTED);
+//     doc.text(row.label, x + 3, cursorY);
+//     doc.setFont('helvetica', 'bold');
+//     doc.setTextColor(17, 24, 39);
+//     doc.text(lines, x + 27, cursorY);
+//     cursorY += Math.max(4.5, lines.length * 3.5);
+//   }
+// }
+
+// function drawHeader(
+//   doc: jsPDF,
+//   companyName: string,
+//   companyAddress: string,
+//   companyGstNo: string,
+//   poNo: string,
+//   poDate: unknown,
+//   logoDataUrl?: string,
+// ): number {
+//   const startY = 12;
+//   let cursorY = startY;
+
+//   if (logoDataUrl) {
+//     try {
+//       const properties = doc.getImageProperties(logoDataUrl);
+//       const maxWidth = 42;
+//       const maxHeight = 17;
+//       const ratio = properties.width / properties.height;
+//       const width = Math.min(maxWidth, maxHeight * ratio);
+//       const height = width / ratio;
+//       doc.addImage(logoDataUrl, PAGE_MARGIN, cursorY, width, height, undefined, 'FAST');
+//       cursorY += height + 2.5;
+//     } catch {
+//       // The company text still identifies the issuer if the image is invalid.
+//     }
+//   }
+
+//   doc.setFont('helvetica', 'bold');
+//   doc.setFontSize(11);
+//   doc.setTextColor(...NAVY);
+//   doc.text(companyName, PAGE_MARGIN, cursorY);
+//   cursorY += 4.5;
+
+//   if (companyAddress) {
+//     doc.setFont('helvetica', 'normal');
+//     doc.setFontSize(7.5);
+//     doc.setTextColor(55, 65, 81);
+//     const addressLines = doc.splitTextToSize(companyAddress, 108) as string[];
+//     doc.text(addressLines, PAGE_MARGIN, cursorY);
+//     cursorY += addressLines.length * 3.3;
+//   }
+
+//   if (companyGstNo) {
+//     doc.setFont('helvetica', 'bold');
+//     doc.setFontSize(7.5);
+//     doc.setTextColor(55, 65, 81);
+//     doc.text(`GST No.: ${companyGstNo}`, PAGE_MARGIN, cursorY);
+//     cursorY += 3.5;
+//   }
+
+//   const rightX = PAGE_WIDTH - PAGE_MARGIN;
+//   doc.setFont('helvetica', 'bold');
+//   doc.setFontSize(9);
+//   doc.setTextColor(...MUTED);
+//   doc.text('PURCHASE ORDER', rightX, startY + 1, { align: 'right' });
+//   doc.setFontSize(14);
+//   doc.setTextColor(...NAVY);
+//   doc.text(poNo, rightX, startY + 7, { align: 'right' });
+//   doc.setFont('helvetica', 'normal');
+//   doc.setFontSize(8);
+//   doc.setTextColor(75, 85, 99);
+//   doc.text(`PO Date: ${formatDate(poDate)}`, rightX, startY + 12, { align: 'right' });
+
+//   const headerBottom = Math.max(cursorY, startY + 17) + 3;
+//   doc.setDrawColor(...NAVY);
+//   doc.setLineWidth(0.8);
+//   doc.line(PAGE_MARGIN, headerBottom, PAGE_WIDTH - PAGE_MARGIN, headerBottom);
+//   return headerBottom + 5;
+// }
+
+// function addFooters(doc: jsPDF): void {
+//   const pageCount = doc.getNumberOfPages();
+//   const generatedOn = new Date().toLocaleString('en-IN');
+
+//   for (let page = 1; page <= pageCount; page += 1) {
+//     doc.setPage(page);
+//     doc.setDrawColor(229, 231, 235);
+//     doc.setLineWidth(0.2);
+//     doc.line(PAGE_MARGIN, PAGE_HEIGHT - 12, PAGE_WIDTH - PAGE_MARGIN, PAGE_HEIGHT - 12);
+//     doc.setFont('helvetica', 'normal');
+//     doc.setFontSize(7);
+//     doc.setTextColor(156, 163, 175);
+//     doc.text(`System-generated Purchase Order | Generated on ${generatedOn}`, PAGE_MARGIN, PAGE_HEIGHT - 8);
+//     doc.text(`Page ${page} of ${pageCount}`, PAGE_WIDTH - PAGE_MARGIN, PAGE_HEIGHT - 8, { align: 'right' });
+//   }
+// }
+
+// function ensurePageSpace(doc: jsPDF, y: number, requiredHeight: number): number {
+//   if (y + requiredHeight <= PAGE_HEIGHT - 17) return y;
+//   doc.addPage();
+//   return 15;
+// }
+
+// export function createPOApprovalPdfDocument(
+//   pr: AnyRecord,
+//   quotation: AnyRecord,
+//   approvalData?: AnyRecord,
+//   logoDataUrl?: string,
+// ): { doc: jsPDF; fileName: string } {
+//   const poHeader = parseJSON<AnyRecord>(approvalData?.po_header, {});
+//   const vendor = parseJSON<AnyRecord>(approvalData?.vendor, {});
+//   const approvedItems = parseJSON<AnyRecord[]>(approvalData?.po_items, []);
+//   const quotationItems = parseJSON<AnyRecord[]>(
+//     quotation?.quotation_item_details ?? quotation?.items,
+//     [],
+//   );
+//   const items = Array.isArray(approvedItems) && approvedItems.length > 0
+//     ? approvedItems
+//     : Array.isArray(quotationItems) ? quotationItems : [];
+
+//   const totalCost = items.reduce((sum, item) => sum + itemTotalCost(item), 0);
+//   const grandTotal = items.reduce((sum, item) => sum + itemNetCost(item), 0);
+//   const taxTotal = grandTotal - totalCost;
+
+//   const poNo = String(poHeader.po_df_no
+//     ?? approvalData?.po_no
+//     ?? `PO-${String(pr?.pr_no ?? '').replace(/^PR-?/, '')}-${Date.now().toString().slice(-4)}`);
+//   const poDate = poHeader.po_date ?? approvalData?.final_approved_on ?? new Date().toISOString();
+//   const companyName = String(poHeader.com_name ?? pr?.com_name ?? 'Company Name');
+//   const branchName = String(poHeader.brn_name ?? pr?.brn_name ?? '-');
+//   const companyAddress = formatCompanyAddress(pr ?? {}, poHeader);
+//   const branchAddress = formatBranchAddress(pr ?? {}, poHeader);
+//   const vendorAddress = formatVendorAddress(vendor, quotation ?? {});
+//   const vendorName = String(vendor.vendor_name ?? vendor.company_name ?? quotation?.company_name ?? '-');
+//   const vendorGstNo = String(vendor.gst_no ?? quotation?.gst_no ?? '');
+//   const rawCompanyAddress = companyAddressValue(pr ?? {}, poHeader);
+//   const rawBranchAddress = branchAddressValue(pr ?? {}, poHeader);
+//   const companyGstNo = String(firstValue([poHeader, pr ?? {}], [
+//     'com_gst_no',
+//     'company_gst_no',
+//     'com_gstin',
+//     'company_gstin',
+//   ]) || addressField(rawCompanyAddress, ['add_gst', 'gst_no', 'gstin']));
+//   const branchGstNo = String(firstValue([poHeader, pr ?? {}], [
+//     'brn_gst_no',
+//     'branch_gst_no',
+//     'brn_gstin',
+//     'branch_gstin',
+//   ]) || addressField(rawBranchAddress, ['add_gst', 'gst_no', 'gstin']) || companyGstNo);
+
+//   const doc = new jsPDF({
+//     orientation: 'portrait',
+//     unit: 'mm',
+//     format: 'a4',
+//     compress: true,
+//   });
+//   doc.setProperties({
+//     title: `Purchase Order - ${poNo}`,
+//     subject: 'Purchase Order',
+//     author: companyName,
+//     creator: 'Non-Trade Purchase Order System',
+//   });
+
+//   let cursorY = drawHeader(
+//     doc,
+//     companyName,
+//     companyAddress,
+//     companyGstNo,
+//     poNo,
+//     poDate,
+//     logoDataUrl,
+//   );
+
+//   const boxGap = 6;
+//   const boxWidth = (CONTENT_WIDTH - boxGap) / 2;
+//   const deliveryRows: DetailRow[] = [
+//     { label: 'Branch', value: branchName },
+//     { label: 'Address', value: branchAddress || '-' },
+//     { label: 'GST No.', value: branchGstNo || '-' },
+//   ];
+//   const vendorRows: DetailRow[] = [
+//     { label: 'Vendor', value: vendorName },
+//     { label: 'Address', value: vendorAddress || '-' },
+//     { label: 'GST No.', value: vendorGstNo || '-' },
+//   ];
+//   const boxHeight = Math.max(
+//     detailBoxHeight(doc, deliveryRows, boxWidth),
+//     detailBoxHeight(doc, vendorRows, boxWidth),
+//   );
+//   drawDetailBox(doc, PAGE_MARGIN, cursorY, boxWidth, boxHeight, 'Delivery Details', deliveryRows);
+//   drawDetailBox(
+//     doc,
+//     PAGE_MARGIN + boxWidth + boxGap,
+//     cursorY,
+//     boxWidth,
+//     boxHeight,
+//     'Vendor Details',
+//     vendorRows,
+//   );
+//   cursorY += boxHeight + 7;
+
+//   doc.setFont('helvetica', 'bold');
+//   doc.setFontSize(9);
+//   doc.setTextColor(...NAVY);
+//   doc.text('ITEMS ORDERED', PAGE_MARGIN, cursorY);
+//   cursorY += 2;
+
+//   const itemRows = items.map((item, index) => {
+//     const itemDescription = [item.prod_name ?? item.item_name ?? '-', item.prod_code, item.specification]
+//       .filter((value) => value != null && String(value).trim() !== '')
+//       .map(String)
+//       .join('\n');
+//     return [
+//       String(index + 1),
+//       itemDescription,
+//       formatQuantity(item.qty ?? item.quantity),
+//       String(item.uom_name ?? item.unit_name ?? '-'),
+//       formatMoney(itemUnitPrice(item)),
+//       `${formatQuantity(item.discount_pct)}%\n${formatMoney(itemDiscount(item))}`,
+//       `${formatQuantity(item.tax_pct)}%\n${formatMoney(itemTaxValue(item))}`,
+//       formatMoney(itemTotalCost(item)),
+//       formatMoney(itemNetCost(item)),
+//     ];
+//   });
+
+//   autoTable(doc, {
+//     startY: cursorY,
+//     head: [[
+//       '#',
+//       'Item / Product',
+//       'Qty',
+//       'Unit',
+//       'Unit Price',
+//       'Discount',
+//       'Tax',
+//       'Total Cost',
+//       'Net Cost',
+//     ]],
+//     body: itemRows.length > 0
+//       ? itemRows
+//       : [['', 'No items', '', '', '', '', '', '', '']],
+//     theme: 'grid',
+//     margin: { left: PAGE_MARGIN, right: PAGE_MARGIN, bottom: 18 },
+//     styles: {
+//       font: 'helvetica',
+//       fontSize: 6.8,
+//       cellPadding: 1.5,
+//       lineColor: [229, 231, 235],
+//       lineWidth: 0.15,
+//       textColor: [31, 41, 55],
+//       valign: 'middle',
+//       overflow: 'linebreak',
+//     },
+//     headStyles: {
+//       fillColor: NAVY,
+//       textColor: [255, 255, 255],
+//       fontStyle: 'bold',
+//       fontSize: 6.4,
+//       halign: 'left',
+//     },
+//     alternateRowStyles: { fillColor: [249, 250, 251] },
+//     columnStyles: {
+//       0: { cellWidth: 7, halign: 'center' },
+//       1: { cellWidth: 42 },
+//       2: { cellWidth: 11, halign: 'right' },
+//       3: { cellWidth: 14 },
+//       4: { cellWidth: 22, halign: 'right' },
+//       5: { cellWidth: 20, halign: 'right' },
+//       6: { cellWidth: 20, halign: 'right' },
+//       7: { cellWidth: 24, halign: 'right' },
+//       8: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
+//     },
+//   });
+
+//   const tableDoc = doc as jsPDF & { lastAutoTable?: { finalY: number } };
+//   cursorY = (tableDoc.lastAutoTable?.finalY ?? cursorY) + 7;
+//   cursorY = ensurePageSpace(doc, cursorY, 25);
+
+//   const totalsWidth = 70;
+//   const totalsX = PAGE_WIDTH - PAGE_MARGIN - totalsWidth;
+//   const totalRows = [
+//     ['Total Cost', formatMoney(totalCost)],
+//     ['Tax', formatMoney(taxTotal)],
+//   ];
+//   doc.setDrawColor(...BORDER);
+//   doc.setLineWidth(0.2);
+//   doc.rect(totalsX, cursorY, totalsWidth, 18, 'S');
+//   totalRows.forEach(([label, value], index) => {
+//     const rowY = cursorY + 4.5 + (index * 5);
+//     doc.setFont('helvetica', 'normal');
+//     doc.setFontSize(8);
+//     doc.setTextColor(...MUTED);
+//     doc.text(label, totalsX + 3, rowY);
+//     doc.setTextColor(31, 41, 55);
+//     doc.text(value, totalsX + totalsWidth - 3, rowY, { align: 'right' });
+//   });
+//   doc.setFillColor(...NAVY);
+//   doc.rect(totalsX, cursorY + 12, totalsWidth, 8, 'F');
+//   doc.setFont('helvetica', 'bold');
+//   doc.setFontSize(9);
+//   doc.setTextColor(255, 255, 255);
+//   doc.text('Grand Total', totalsX + 3, cursorY + 17);
+//   doc.text(formatMoney(grandTotal), totalsX + totalsWidth - 3, cursorY + 17, { align: 'right' });
+
+//   addFooters(doc);
+//   return { doc, fileName: `${cleanFileName(poNo)}.pdf` };
+// }
+
+// async function blobToDataUrl(blob: Blob): Promise<string> {
+//   return new Promise((resolve, reject) => {
+//     const reader = new FileReader();
+//     reader.onload = () => resolve(String(reader.result));
+//     reader.onerror = () => reject(reader.error ?? new Error('Unable to read company logo'));
+//     reader.readAsDataURL(blob);
+//   });
+// }
+
+// async function loadLogoDataUrl(url: string): Promise<string | undefined> {
+//   if (!url) return undefined;
+//   if (url.startsWith('data:')) return url;
+
+//   const controller = new AbortController();
+//   const timeout = window.setTimeout(() => controller.abort(), 4000);
+//   try {
+//     const response = await fetch(url, { signal: controller.signal });
+//     if (!response.ok) return undefined;
+//     return await blobToDataUrl(await response.blob());
+//   } catch {
+//     return undefined;
+//   } finally {
+//     window.clearTimeout(timeout);
+//   }
+// }
+
+// /**
+//  * Creates and directly downloads the final approved Purchase Order as a PDF.
+//  * API PO data is preferred, with the PR and quotation retained as fallbacks.
+//  */
+// export async function generatePOApprovalPdf(
+//   pr: AnyRecord,
+//   quotation: AnyRecord,
+//   approvalData?: AnyRecord,
+// ): Promise<void> {
+//   try {
+//     const poHeader = parseJSON<AnyRecord>(approvalData?.po_header, {});
+//     const logoUrl = String(firstValue([poHeader, pr ?? {}], ['com_logo', 'company_logo']));
+//     const logoDataUrl = await loadLogoDataUrl(logoUrl);
+//     const { doc, fileName } = createPOApprovalPdfDocument(
+//       pr,
+//       quotation,
+//       approvalData,
+//       logoDataUrl,
+//     );
+//     doc.save(fileName);
+//   } catch (error) {
+//     console.error('Unable to generate Purchase Order PDF:', error);
+//     alert('Unable to download the Purchase Order PDF. Please try again.');
+//   }
+// }
+import { jsPDF } from 'jspdf';
+import { autoTable } from 'jspdf-autotable';
 
 type AnyRecord = Record<string, unknown>;
+
+type DetailRow = {
+  label: string;
+  value: string;
+};
+
+const PAGE_WIDTH = 210;
+const PAGE_HEIGHT = 297;
+const PAGE_MARGIN = 12;
+const CONTENT_WIDTH = PAGE_WIDTH - (PAGE_MARGIN * 2);
+const NAVY: [number, number, number] = [30, 58, 95];
+const ACCENT: [number, number, number] = [16, 118, 110];
+const MUTED: [number, number, number] = [107, 114, 128];
+const BORDER: [number, number, number] = [209, 213, 219];
+const LIGHT_BG: [number, number, number] = [248, 250, 252];
 
 function parseJSON<T>(raw: unknown, fallback: T): T {
   if (raw == null || raw === '') return fallback;
@@ -17,9 +659,112 @@ function toNumber(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function firstValue(records: AnyRecord[], keys: string[]): unknown {
+  for (const record of records) {
+    for (const key of keys) {
+      const value = record[key];
+      if (value != null && String(value).trim() !== '') return value;
+    }
+  }
+  return '';
+}
+
+function formatAddressValue(value: unknown): string {
+  if (value == null || value === '') return '';
+
+  let parsed: unknown = value;
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value) as unknown;
+    } catch {
+      return value.trim();
+    }
+  }
+
+  if (Array.isArray(parsed)) {
+    const addresses = parsed.filter(
+      (address): address is AnyRecord => Boolean(address) && typeof address === 'object',
+    );
+    const primary = addresses.find((address) => {
+      const type = String(address.address_type ?? '').toUpperCase();
+      return type === 'PRIMARY' || type === 'BILLING' || type === 'REGISTERED';
+    }) ?? addresses[0];
+    return primary ? formatAddressValue(primary) : '';
+  }
+
+  if (typeof parsed !== 'object' || parsed == null) return String(parsed).trim();
+
+  const address = parsed as AnyRecord;
+  const fullAddress = firstValue([address], [
+    'full_address',
+    'address',
+    'address_text',
+    'formatted_address',
+  ]);
+  if (fullAddress) return formatAddressValue(fullAddress);
+
+  const gstNo = firstValue([address], ['add_gst', 'gst_no', 'gstin']);
+  const doorNo = address.door_no
+    ?? address.building_no
+    ?? address.add_door_no
+    ?? address.add_reg_door_no;
+
+  return [
+    String(doorNo ?? '').trim() === String(gstNo ?? '').trim() ? '' : doorNo,
+    address.address_line_1 ?? address.address_line1,
+    address.address_line_2 ?? address.address_line2,
+    address.street ?? address.add_street ?? address.add_reg_street,
+    address.area ?? address.locality,
+    address.city ?? address.add_city ?? address.add_reg_city,
+    address.taluk ?? address.district,
+    address.state ?? address.add_state ?? address.add_reg_state,
+    address.country,
+    address.pincode
+      ?? address.pin_code
+      ?? address.postal_code
+      ?? address.add_pin_code
+      ?? address.add_reg_pincode,
+  ].filter((part) => part != null && String(part).trim() !== '').join(', ');
+}
+
+function addressField(value: unknown, keys: string[]): unknown {
+  if (value == null || value === '') return '';
+  const parsed = typeof value === 'string'
+    ? parseJSON<unknown>(value, value)
+    : value;
+
+  if (Array.isArray(parsed)) {
+    for (const item of parsed) {
+      const found = addressField(item, keys);
+      if (found != null && String(found).trim() !== '') return found;
+    }
+    return '';
+  }
+
+  if (typeof parsed !== 'object' || parsed == null) return '';
+  return firstValue([parsed as AnyRecord], keys);
+}
+
+function companyAddressValue(pr: AnyRecord, poHeader: AnyRecord): unknown {
+  return firstValue([poHeader, pr], [
+    'com_address',
+    'company_address',
+    'com_full_address',
+  ]);
+}
+
+function branchAddressValue(pr: AnyRecord, poHeader: AnyRecord): unknown {
+  return firstValue([poHeader, pr], [
+    'brn_address',
+    'branch_address',
+    'brn_full_address',
+    'delivery_address',
+  ]);
+}
+
 function formatCompanyAddress(pr: AnyRecord, poHeader: AnyRecord): string {
-  const raw = poHeader.com_address ?? pr.com_address ?? '';
-  if (raw) return String(raw);
+  const formatted = formatAddressValue(companyAddressValue(pr, poHeader));
+  if (formatted) return formatted;
 
   return [
     poHeader.com_door_no ?? pr.com_door_no,
@@ -31,27 +776,26 @@ function formatCompanyAddress(pr: AnyRecord, poHeader: AnyRecord): string {
   ].filter(Boolean).join(', ');
 }
 
-function formatVendorAddress(vendor: AnyRecord, quotation: AnyRecord): string {
-  const addresses = parseJSON<AnyRecord[]>(
-    vendor.vendor_address ?? quotation.kyc_address,
-    [],
-  );
-  if (!Array.isArray(addresses) || addresses.length === 0) return '';
-
-  const primary = addresses.find((address) => {
-    const type = String(address.address_type ?? '').toUpperCase();
-    return type === 'PRIMARY' || type === 'BILLING';
-  }) ?? addresses[0];
+function formatBranchAddress(pr: AnyRecord, poHeader: AnyRecord): string {
+  const formatted = formatAddressValue(branchAddressValue(pr, poHeader));
+  if (formatted) return formatted;
 
   return [
-    primary.door_no,
-    primary.street,
-    primary.area,
-    primary.city,
-    primary.taluk,
-    primary.state,
-    primary.pincode,
+    poHeader.brn_door_no ?? poHeader.branch_door_no ?? pr.brn_door_no ?? pr.branch_door_no,
+    poHeader.brn_street ?? poHeader.branch_street ?? pr.brn_street ?? pr.branch_street,
+    poHeader.brn_area ?? poHeader.branch_area ?? pr.brn_area ?? pr.branch_area,
+    poHeader.brn_city ?? poHeader.branch_city ?? pr.brn_city ?? pr.branch_city,
+    poHeader.brn_state ?? poHeader.branch_state ?? pr.brn_state ?? pr.branch_state,
+    poHeader.brn_pincode ?? poHeader.branch_pincode ?? pr.brn_pincode ?? pr.branch_pincode,
   ].filter(Boolean).join(', ');
+}
+
+function formatVendorAddress(vendor: AnyRecord, quotation: AnyRecord): string {
+  return formatAddressValue(firstValue([vendor, quotation], [
+    'vendor_address',
+    'kyc_address',
+    'address',
+  ]));
 }
 
 function formatDate(value?: unknown): string {
@@ -66,40 +810,15 @@ function formatDate(value?: unknown): string {
   });
 }
 
-function formatDateTime(value?: unknown): string {
-  if (!value) return '-';
-  const stringValue = String(value);
-  const date = new Date(stringValue);
-  if (Number.isNaN(date.getTime())) return stringValue;
-  return date.toLocaleString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function formatINR(value: number): string {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
+function formatMoney(value: number): string {
+  return `INR ${value.toLocaleString('en-IN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(value);
+  })}`;
 }
 
 function formatQuantity(value: unknown): string {
   return toNumber(value).toLocaleString('en-IN', { maximumFractionDigits: 3 });
-}
-
-function escapeHtml(value: unknown): string {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 }
 
 function itemUnitPrice(item: AnyRecord): number {
@@ -134,246 +853,468 @@ function itemTaxValue(item: AnyRecord): number {
   return Math.max(0, itemNetCost(item) - itemTotalCost(item));
 }
 
-/**
- * Opens the browser print dialog for the final Purchase Order returned by the
- * approval API. The API's po_header, vendor and po_items values are the source
- * of truth; the PR/quotation records are retained as a legacy fallback.
- */
-export function generatePOApprovalPdf(
+function cleanFileName(value: string): string {
+  const cleaned = value.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim();
+  return cleaned || 'Purchase-Order';
+}
+
+function detailBoxHeight(doc: jsPDF, rows: DetailRow[], boxWidth: number): number {
+  const valueWidth = boxWidth - 31;
+  const contentHeight = rows.reduce((height, row) => {
+    const lines = doc.splitTextToSize(row.value || '-', valueWidth) as string[];
+    return height + Math.max(4.5, lines.length * 3.5);
+  }, 0);
+  return Math.max(30, 14 + contentHeight);
+}
+
+function drawDetailBox(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  title: string,
+  rows: DetailRow[],
+): void {
+  doc.setFillColor(...LIGHT_BG);
+  doc.setDrawColor(...BORDER);
+  doc.roundedRect(x, y, width, height, 1.5, 1.5, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...NAVY);
+  doc.text(title.toUpperCase(), x + 3, y + 5.5);
+  doc.setDrawColor(229, 231, 235);
+  doc.line(x + 3, y + 8, x + width - 3, y + 8);
+
+  let cursorY = y + 13;
+  const valueWidth = width - 31;
+  for (const row of rows) {
+    const lines = doc.splitTextToSize(row.value || '-', valueWidth) as string[];
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...MUTED);
+    doc.text(row.label, x + 3, cursorY);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(17, 24, 39);
+    doc.text(lines, x + 27, cursorY);
+    cursorY += Math.max(4.5, lines.length * 3.5);
+  }
+}
+
+function ensurePageSpace(doc: jsPDF, y: number, requiredHeight: number): number {
+  if (y + requiredHeight <= PAGE_HEIGHT - 17) return y;
+  doc.addPage();
+  return 15;
+}
+
+function drawWatermark(doc: jsPDF, text: string): void {
+  const pageCount = doc.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page);
+    doc.saveGraphicsState();
+    doc.setGState(new (doc as any).GState({ opacity: 0.08 }));
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(70);
+    doc.setTextColor(...NAVY);
+    doc.text(text, PAGE_WIDTH / 2, PAGE_HEIGHT / 2, {
+      align: 'center',
+      angle: 35,
+    });
+    doc.restoreGraphicsState();
+  }
+}
+
+function drawTermsBlock(doc: jsPDF, y: number, terms: string[]): number {
+  const height = 8 + terms.length * 4;
+  doc.setFillColor(...LIGHT_BG);
+  doc.setDrawColor(...BORDER);
+  doc.roundedRect(PAGE_MARGIN, y, CONTENT_WIDTH, height, 1.5, 1.5, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...NAVY);
+  doc.text('TERMS & CONDITIONS', PAGE_MARGIN + 3, y + 5);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.2);
+  doc.setTextColor(55, 65, 81);
+  terms.forEach((line, i) => {
+    doc.text(`\u2022 ${line}`, PAGE_MARGIN + 3, y + 9 + i * 4);
+  });
+  return y + height + 6;
+}
+
+function drawSignatureBlock(doc: jsPDF, y: number): number {
+  const colWidth = CONTENT_WIDTH / 3;
+  const labels = ['Prepared By', 'Checked By', 'Approved By'];
+  doc.setDrawColor(...BORDER);
+  labels.forEach((label, i) => {
+    const x = PAGE_MARGIN + i * colWidth;
+    doc.line(x + 5, y + 12, x + colWidth - 5, y + 12);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...MUTED);
+    doc.text(label, x + 5, y + 16);
+  });
+  return y + 22;
+}
+
+function drawHeader(
+  doc: jsPDF,
+  companyName: string,
+  companyAddress: string,
+  companyGstNo: string,
+  poNo: string,
+  poDate: unknown,
+  logoDataUrl?: string,
+): number {
+  const startY = 12;
+  let cursorY = startY;
+
+  if (logoDataUrl) {
+    try {
+      const properties = doc.getImageProperties(logoDataUrl);
+      const maxWidth = 60;
+      const maxHeight = 40;
+      const ratio = properties.width / properties.height;
+      const width = Math.min(maxWidth, maxHeight * ratio);
+      const height = width / ratio;
+      doc.addImage(logoDataUrl, PAGE_MARGIN, cursorY, width, height, undefined, 'FAST');
+      cursorY += height + 2.5;
+    } catch {
+      // Company text still identifies the issuer if the image is invalid.
+    }
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...NAVY);
+  doc.text(companyName, PAGE_MARGIN, cursorY);
+  cursorY += 4.5;
+
+  if (companyAddress) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(55, 65, 81);
+    const addressLines = doc.splitTextToSize(companyAddress, 108) as string[];
+    doc.text(addressLines, PAGE_MARGIN, cursorY);
+    cursorY += addressLines.length * 3.3;
+  }
+
+  if (companyGstNo) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(55, 65, 81);
+    doc.text(`GST No.: ${companyGstNo}`, PAGE_MARGIN, cursorY);
+    cursorY += 3.5;
+  }
+
+  const rightX = PAGE_WIDTH - PAGE_MARGIN;
+  doc.setFillColor(...ACCENT);
+  doc.roundedRect(rightX - 55, startY - 2, 55, 15, 1.5, 1.5, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(255, 255, 255);
+  doc.text('PURCHASE ORDER', rightX - 2, startY + 3, { align: 'right' });
+  doc.setFontSize(13);
+  doc.text(poNo, rightX - 2, startY + 9, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.text(`PO Date: ${formatDate(poDate)}`, rightX - 2, startY + 12.5, { align: 'right' });
+
+  const headerBottom = Math.max(cursorY, startY + 17) + 3;
+  doc.setDrawColor(...NAVY);
+  doc.setLineWidth(0.8);
+  doc.line(PAGE_MARGIN, headerBottom, PAGE_WIDTH - PAGE_MARGIN, headerBottom);
+  return headerBottom + 5;
+}
+
+function addFooters(doc: jsPDF): void {
+  const pageCount = doc.getNumberOfPages();
+  const generatedOn = new Date().toLocaleString('en-IN');
+
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page);
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.2);
+    doc.line(PAGE_MARGIN, PAGE_HEIGHT - 12, PAGE_WIDTH - PAGE_MARGIN, PAGE_HEIGHT - 12);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(156, 163, 175);
+    doc.text(`System-generated Purchase Order | Generated on ${generatedOn}`, PAGE_MARGIN, PAGE_HEIGHT - 8);
+    doc.text(`Page ${page} of ${pageCount}`, PAGE_WIDTH - PAGE_MARGIN, PAGE_HEIGHT - 8, { align: 'right' });
+  }
+}
+
+export function createPOApprovalPdfDocument(
   pr: AnyRecord,
   quotation: AnyRecord,
   approvalData?: AnyRecord,
-): void {
+  logoDataUrl?: string,
+  terms: string[] = [
+    'Payment Terms: As per agreed vendor contract.',
+    'Delivery must be completed within the agreed lead time.',
+    'This PO is valid for 30 days from the date of issue.',
+  ],
+): { doc: jsPDF; fileName: string } {
   const poHeader = parseJSON<AnyRecord>(approvalData?.po_header, {});
   const vendor = parseJSON<AnyRecord>(approvalData?.vendor, {});
   const approvedItems = parseJSON<AnyRecord[]>(approvalData?.po_items, []);
-  const quotationItems = parseJSON<AnyRecord[]>(quotation?.quotation_item_details, []);
+  const quotationItems = parseJSON<AnyRecord[]>(
+    quotation?.quotation_item_details ?? quotation?.items,
+    [],
+  );
   const items = Array.isArray(approvedItems) && approvedItems.length > 0
     ? approvedItems
-    : quotationItems;
+    : Array.isArray(quotationItems) ? quotationItems : [];
 
   const totalCost = items.reduce((sum, item) => sum + itemTotalCost(item), 0);
   const grandTotal = items.reduce((sum, item) => sum + itemNetCost(item), 0);
   const taxTotal = grandTotal - totalCost;
+  const discountTotal = items.reduce((sum, item) => sum + itemDiscount(item), 0);
 
   const poNo = String(poHeader.po_df_no
     ?? approvalData?.po_no
     ?? `PO-${String(pr?.pr_no ?? '').replace(/^PR-?/, '')}-${Date.now().toString().slice(-4)}`);
   const poDate = poHeader.po_date ?? approvalData?.final_approved_on ?? new Date().toISOString();
-  const prNo = poHeader.source_pr_no ?? approvalData?.pr_no ?? pr?.pr_no;
-  const companyName = poHeader.com_name ?? pr?.com_name ?? 'Company Name';
-  const divisionName = poHeader.div_name ?? pr?.div_name;
-  const branchName = poHeader.brn_name ?? pr?.brn_name;
-  const departmentName = poHeader.dept_name ?? pr?.dept_name;
+  const companyName = String(poHeader.com_name ?? pr?.com_name ?? 'Company Name');
+  const branchName = String(poHeader.brn_name ?? pr?.brn_name ?? '-');
   const companyAddress = formatCompanyAddress(pr ?? {}, poHeader);
+  const branchAddress = formatBranchAddress(pr ?? {}, poHeader);
   const vendorAddress = formatVendorAddress(vendor, quotation ?? {});
-  const vendorName = vendor.vendor_name ?? quotation?.company_name;
-  const vendorCode = vendor.vendor_code ?? quotation?.supp_code;
-  const contactPerson = vendor.contact_person ?? quotation?.contact_person;
-  const vendorMobile = vendor.vendor_mobile ?? quotation?.mobile_number;
-  const vendorEmail = vendor.vendor_email ?? quotation?.email;
-  const gstNo = vendor.gst_no ?? quotation?.gst_no;
-  const panNo = vendor.pan_no ?? quotation?.pan_no;
-  const terms = poHeader.terms_conditions ?? quotation?.payment_terms;
-  const approvedByName = approvalData?.final_approved_by_name;
-  const approvedBy = approvalData?.final_approved_by;
-  const approvedOn = approvalData?.final_approved_on;
+  const vendorName = String(vendor.vendor_name ?? vendor.company_name ?? quotation?.company_name ?? '-');
+  const vendorGstNo = String(vendor.gst_no ?? quotation?.gst_no ?? '');
+  const rawCompanyAddress = companyAddressValue(pr ?? {}, poHeader);
+  const rawBranchAddress = branchAddressValue(pr ?? {}, poHeader);
+  const companyGstNo = String(firstValue([poHeader, pr ?? {}], [
+    'com_gst_no',
+    'company_gst_no',
+    'com_gstin',
+    'company_gstin',
+  ]) || addressField(rawCompanyAddress, ['add_gst', 'gst_no', 'gstin']));
+  const branchGstNo = String(firstValue([poHeader, pr ?? {}], [
+    'brn_gst_no',
+    'branch_gst_no',
+    'brn_gstin',
+    'branch_gstin',
+  ]) || addressField(rawBranchAddress, ['add_gst', 'gst_no', 'gstin']) || companyGstNo);
 
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+    compress: true,
+  });
+  doc.setProperties({
+    title: `Purchase Order - ${poNo}`,
+    subject: 'Purchase Order',
+    author: companyName,
+    creator: 'Non-Trade Purchase Order System',
+  });
 
-  const itemRows = items.map((item, index) => `
-    <tr>
-      <td class="c">${index + 1}</td>
-      <td>
-        <strong>${escapeHtml(item.prod_name)}</strong>
-        ${item.prod_code ? `<br/><span class="sub">${escapeHtml(item.prod_code)}</span>` : ''}
-        ${item.specification ? `<br/><span class="sub">${escapeHtml(item.specification)}</span>` : ''}
-      </td>
-      <td class="r">${formatQuantity(item.qty)}</td>
-      <td>${escapeHtml(item.uom_name ?? item.unit_name ?? '-')}</td>
-      <td class="r">${formatINR(itemUnitPrice(item))}</td>
-      <td class="r disc">
-        <span class="rate-percent">${formatQuantity(item.discount_pct)}%</span>
-        <span class="rate-value">${formatINR(itemDiscount(item))}</span>
-      </td>
-      <td class="r tax">
-        <span class="rate-percent">${formatQuantity(item.tax_pct)}%</span>
-        <span class="rate-value">${formatINR(itemTaxValue(item))}</span>
-      </td>
-      <td class="r">${formatINR(itemTotalCost(item))}</td>
-      <td class="r bold">${formatINR(itemNetCost(item))}</td>
-    </tr>`).join('');
+  let cursorY = drawHeader(
+    doc,
+    companyName,
+    companyAddress,
+    companyGstNo,
+    poNo,
+    poDate,
+    logoDataUrl,
+  );
 
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<title>Purchase Order - ${escapeHtml(poNo)}</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#1a1a1a;background:#fff}
-  .page{width:210mm;min-height:297mm;margin:0 auto;padding:14mm 13mm}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:12px;margin-bottom:14px}
-  .company-block{display:flex;flex-direction:column;gap:4px;max-width:62%}
-  .company-block .logo-row{display:flex;align-items:center;gap:10px}
-  .company-block .logo-row img{height:48px;width:auto;object-fit:contain}
-  .company-block h1{font-size:18px;font-weight:800;color:#1e3a5f}
-  .company-block p{font-size:10px;color:#555;margin-top:2px}
-  .badge{display:inline-block;background:#16a34a;color:#fff;font-size:9px;font-weight:700;padding:3px 8px;border-radius:10px;text-transform:uppercase;margin-top:4px}
-  .po-meta{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
-  .po-meta .doc-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:600}
-  .po-meta .doc-no{font-size:17px;font-weight:800;color:#1e3a5f}
-  .po-meta .qr-wrap{margin-top:4px;border:1px solid #e5e7eb;border-radius:4px;padding:3px;background:#fff;display:inline-block}
-  .po-meta .doc-date{font-size:10px;color:#555}
-  .com-addr{font-size:9px;color:#374151;margin-top:3px;line-height:1.5;max-width:300px}
-  .qr-po-no{font-size:8px;color:#444;text-align:center;margin-top:3px;font-family:monospace;font-weight:700;letter-spacing:.3px}
-  .vendor-addr{font-size:9px;color:#374151;margin-top:2px;line-height:1.5}
-  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
-  .box{border:1px solid #d1d5db;border-radius:4px;padding:9px 11px}
-  .box-title{font-size:9px;font-weight:700;text-transform:uppercase;color:#1e3a5f;border-bottom:1px solid #e5e7eb;padding-bottom:4px;margin-bottom:7px;letter-spacing:.4px}
-  .ir{display:flex;gap:6px;margin-bottom:3px;font-size:10px;line-height:1.35}
-  .ir label{color:#6b7280;min-width:90px;flex-shrink:0}
-  .ir span{font-weight:600;color:#111;overflow-wrap:anywhere}
-  .items-title{font-size:10px;font-weight:700;text-transform:uppercase;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:4px;margin-bottom:10px;letter-spacing:.4px}
-  table{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:9px}
-  thead tr{background:#1e3a5f;color:#fff}
-  th{padding:6px 4px;font-weight:700;font-size:8px;text-align:left;white-space:nowrap;text-transform:uppercase}
-  td{padding:6px 4px;border-bottom:1px solid #eee;vertical-align:middle}
-  tbody tr:nth-child(even){background:#f9fafb}
-  .sub{font-size:8px;color:#6b7280}
-  .c{text-align:center}.r{text-align:right}.bold{font-weight:700}
-  .disc{color:#d97706}.tax{color:#2563eb}
-  .rate-percent{display:block;font-weight:700}
-  .rate-value{display:block;margin-top:2px;font-size:7px;white-space:nowrap;color:#4b5563}
-  .totals-wrap{display:flex;justify-content:flex-end;margin-bottom:14px}
-  .totals{width:270px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;font-size:10px}
-  .t-row{display:flex;justify-content:space-between;padding:5px 11px;border-bottom:1px solid #eee}
-  .t-row.grand{background:#1e3a5f;color:#fff;font-size:12px;font-weight:700;border-bottom:none}
-  .t-row.grand label,.t-row.grand span{color:#fff}
-  .trail{border:1px solid #bbf7d0;background:#f0fdf4;border-radius:4px;padding:8px 11px;margin-bottom:14px}
-  .trail-title{font-size:9px;font-weight:700;text-transform:uppercase;color:#166534;border-bottom:1px solid #bbf7d0;padding-bottom:4px;margin-bottom:6px;letter-spacing:.4px}
-  .trail-row{display:flex;flex-wrap:wrap;gap:14px;font-size:10px;color:#374151}
-  .trail-row strong{color:#111}
-  .sig-footer{margin-top:28px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:28px}
-  .sig-block{padding-top:28px;border-top:1px solid #9ca3af;text-align:center;font-size:9px;color:#6b7280}
-  .sig-name{display:block;color:#111;font-weight:700;margin-bottom:2px}
-  @media print{
-    body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    .page{padding:8mm 10mm}
-    @page{size:A4;margin:8mm}
+  const boxGap = 6;
+  const boxWidth = (CONTENT_WIDTH - boxGap) / 2;
+  const deliveryRows: DetailRow[] = [
+    { label: 'Branch', value: branchName },
+    { label: 'Address', value: branchAddress || '-' },
+    { label: 'GST No.', value: branchGstNo || '-' },
+  ];
+  const vendorRows: DetailRow[] = [
+    { label: 'Vendor', value: vendorName },
+    { label: 'Address', value: vendorAddress || '-' },
+    { label: 'GST No.', value: vendorGstNo || '-' },
+  ];
+  const boxHeight = Math.max(
+    detailBoxHeight(doc, deliveryRows, boxWidth),
+    detailBoxHeight(doc, vendorRows, boxWidth),
+  );
+  cursorY = ensurePageSpace(doc, cursorY, boxHeight);
+  drawDetailBox(doc, PAGE_MARGIN, cursorY, boxWidth, boxHeight, 'Delivery Details', deliveryRows);
+  drawDetailBox(
+    doc,
+    PAGE_MARGIN + boxWidth + boxGap,
+    cursorY,
+    boxWidth,
+    boxHeight,
+    'Vendor Details',
+    vendorRows,
+  );
+  cursorY += boxHeight + 7;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...NAVY);
+  doc.text('ITEMS ORDERED', PAGE_MARGIN, cursorY);
+  cursorY += 2;
+
+  const itemRows = items.map((item, index) => {
+    const itemDescription = [item.prod_name ?? item.item_name ?? '-', item.prod_code, item.specification]
+      .filter((value) => value != null && String(value).trim() !== '')
+      .map(String)
+      .join('\n');
+    return [
+      String(index + 1),
+      itemDescription,
+      formatQuantity(item.qty ?? item.quantity),
+      String(item.uom_name ?? item.unit_name ?? '-'),
+      formatMoney(itemUnitPrice(item)),
+      `${formatQuantity(item.discount_pct)}%\n${formatMoney(itemDiscount(item))}`,
+      `${formatQuantity(item.tax_pct)}%\n${formatMoney(itemTaxValue(item))}`,
+      formatMoney(itemTotalCost(item)),
+      formatMoney(itemNetCost(item)),
+    ];
+  });
+
+  autoTable(doc, {
+    startY: cursorY,
+    head: [[
+      '#',
+      'Item / Product',
+      'Qty',
+      'Unit',
+      'Unit Price',
+      'Discount',
+      'Tax',
+      'Total Cost',
+      'Net Cost',
+    ]],
+    body: itemRows.length > 0
+      ? itemRows
+      : [['', 'No items', '', '', '', '', '', '', '']],
+    theme: 'grid',
+    margin: { left: PAGE_MARGIN, right: PAGE_MARGIN, bottom: 30 },
+    styles: {
+      font: 'helvetica',
+      fontSize: 6.8,
+      cellPadding: 1.5,
+      lineColor: [229, 231, 235],
+      lineWidth: 0.15,
+      textColor: [31, 41, 55],
+      valign: 'middle',
+      overflow: 'linebreak',
+    },
+    headStyles: {
+      fillColor: NAVY,
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 6.4,
+      halign: 'left',
+    },
+    alternateRowStyles: { fillColor: [249, 250, 251] },
+    columnStyles: {
+      0: { cellWidth: 7, halign: 'center' },
+      1: { cellWidth: 42 },
+      2: { cellWidth: 11, halign: 'right' },
+      3: { cellWidth: 14 },
+      4: { cellWidth: 22, halign: 'right' },
+      5: { cellWidth: 20, halign: 'right' },
+      6: { cellWidth: 20, halign: 'right' },
+      7: { cellWidth: 24, halign: 'right' },
+      8: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
+    },
+  });
+
+  const tableDoc = doc as jsPDF & { lastAutoTable?: { finalY: number } };
+  cursorY = (tableDoc.lastAutoTable?.finalY ?? cursorY) + 7;
+  cursorY = ensurePageSpace(doc, cursorY, 30);
+
+  const totalsWidth = 78;
+  const totalsX = PAGE_WIDTH - PAGE_MARGIN - totalsWidth;
+  const totalRows = [
+    ['Total Cost', formatMoney(totalCost)],
+    ['Discount', `- ${formatMoney(discountTotal)}`],
+    ['Tax', formatMoney(taxTotal)],
+  ];
+  doc.setDrawColor(...BORDER);
+  doc.setLineWidth(0.2);
+  doc.rect(totalsX, cursorY, totalsWidth, 4.5 + totalRows.length * 5, 'S');
+  totalRows.forEach(([label, value], index) => {
+    const rowY = cursorY + 4.5 + (index * 5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...MUTED);
+    doc.text(label, totalsX + 3, rowY);
+    doc.setTextColor(31, 41, 55);
+    doc.text(value, totalsX + totalsWidth - 3, rowY, { align: 'right' });
+  });
+  const grandY = cursorY + 4.5 + totalRows.length * 5;
+  doc.setFillColor(...ACCENT);
+  doc.rect(totalsX, grandY, totalsWidth, 8, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(255, 255, 255);
+  doc.text('Grand Total', totalsX + 3, grandY + 5.5);
+  doc.text(formatMoney(grandTotal), totalsX + totalsWidth - 3, grandY + 5.5, { align: 'right' });
+
+  cursorY = grandY + 14;
+  cursorY = ensurePageSpace(doc, cursorY, 40);
+  cursorY = drawTermsBlock(doc, cursorY, terms);
+  cursorY = ensurePageSpace(doc, cursorY, 25);
+  drawSignatureBlock(doc, cursorY);
+
+  addFooters(doc);
+  if (approvalData?.final_approved_on) drawWatermark(doc, 'APPROVED');
+
+  return { doc, fileName: `${cleanFileName(poNo)}.pdf` };
+}
+
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error('Unable to read company logo'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function loadLogoDataUrl(url: string): Promise<string | undefined> {
+  if (!url) return undefined;
+  if (url.startsWith('data:')) return url;
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 4000);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) return undefined;
+    return await blobToDataUrl(await response.blob());
+  } catch {
+    return undefined;
+  } finally {
+    window.clearTimeout(timeout);
   }
-</style>
-</head>
-<body>
-<div class="page">
-  <div class="header">
-    <div class="company-block">
-      <div class="logo-row">
-        <img src="${spaceLogo}" alt="Logo"/>
-        <h1>${escapeHtml(companyName)}</h1>
-      </div>
-      ${companyAddress ? `<p class="com-addr">${escapeHtml(companyAddress)}</p>` : ''}
-      <p>${escapeHtml([divisionName, branchName].filter(Boolean).join(' | '))}</p>
-      <p>${escapeHtml(departmentName ?? '')}</p>
-    </div>
-    <div class="po-meta">
-      <div class="doc-label">Purchase Order</div>
-      <div class="doc-no">${escapeHtml(poNo)}</div>
-      <div class="qr-wrap">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&amp;data=${encodeURIComponent(poNo)}" alt="QR ${escapeHtml(poNo)}" width="80" height="80"/>
-        <div class="qr-po-no">${escapeHtml(poNo)}</div>
-      </div>
-      <div class="doc-date">PO Date: ${formatDate(poDate)}</div>
-    </div>
-  </div>
+}
 
-  <div class="grid-2">
-    <div class="box">
-      <div class="box-title">Vendor Details</div>
-      <div class="ir"><label>Vendor</label><span>${escapeHtml(vendorName ?? '-')}</span></div>
-      ${vendorCode ? `<div class="ir"><label>Vendor Code</label><span>${escapeHtml(vendorCode)}</span></div>` : ''}
-      ${contactPerson ? `<div class="ir"><label>Contact Person</label><span>${escapeHtml(contactPerson)}</span></div>` : ''}
-      ${vendorMobile ? `<div class="ir"><label>Mobile</label><span>${escapeHtml(vendorMobile)}</span></div>` : ''}
-      ${vendorEmail ? `<div class="ir"><label>Email</label><span>${escapeHtml(vendorEmail)}</span></div>` : ''}
-      ${gstNo ? `<div class="ir"><label>GST No.</label><span>${escapeHtml(gstNo)}</span></div>` : ''}
-      ${panNo ? `<div class="ir"><label>PAN No.</label><span>${escapeHtml(panNo)}</span></div>` : ''}
-      ${vendorAddress ? `<div class="ir"><label>Address</label><span class="vendor-addr">${escapeHtml(vendorAddress)}</span></div>` : ''}
-    </div>
-    <div class="box">
-      <div class="box-title">Order Details</div>
-      <div class="ir"><label>PR Number</label><span>${escapeHtml(prNo ?? '-')}</span></div>
-      <div class="ir"><label>PO Number</label><span>${escapeHtml(poNo)}</span></div>
-      <div class="ir"><label>PR Date</label><span>${formatDate(poHeader.pr_reg_date ?? pr?.reg_date)}</span></div>
-      <div class="ir"><label>Required By</label><span>${formatDate(poHeader.pr_required_date ?? pr?.required_date)}</span></div>
-      <div class="ir"><label>Department</label><span>${escapeHtml(departmentName ?? '-')}</span></div>
-      ${terms ? `<div class="ir"><label>Terms</label><span>${escapeHtml(terms)}</span></div>` : ''}
-    </div>
-  </div>
-
-  <div class="items-title">Items Ordered</div>
-  <table>
-    <thead>
-      <tr>
-        <th class="c" style="width:24px">#</th>
-        <th>Item / Product</th>
-        <th class="r" style="width:42px">Qty</th>
-        <th style="width:38px">Unit</th>
-        <th class="r" style="width:72px">Unit Price</th>
-        <th class="r" style="width:62px">Discount</th>
-        <th class="r" style="width:62px">Tax</th>
-        <th class="r" style="width:75px">Total Cost</th>
-        <th class="r" style="width:75px">Net Cost</th>
-      </tr>
-    </thead>
-    <tbody>${itemRows || '<tr><td colspan="9" style="text-align:center;color:#6b7280;padding:12px">No items</td></tr>'}</tbody>
-  </table>
-
-  <div class="totals-wrap">
-    <div class="totals">
-      <div class="t-row"><label>Total Cost</label><span>${formatINR(totalCost)}</span></div>
-      <div class="t-row"><label>Tax</label><span>${formatINR(taxTotal)}</span></div>
-      <div class="t-row grand"><label>Grand Total</label><span>${formatINR(grandTotal)}</span></div>
-    </div>
-  </div>
-
-  ${approvedBy || approvedByName || approvedOn ? `
-    <div class="trail">
-      <div class="trail-title">Final Approval</div>
-      <div class="trail-row">
-        <span>Approved by: <strong>${escapeHtml(approvedByName ?? approvedBy ?? '-')}</strong>${approvedByName && approvedBy ? ` (${escapeHtml(approvedBy)})` : ''}</span>
-        <span>Approved on: <strong>${formatDateTime(approvedOn)}</strong></span>
-      </div>
-    </div>` : ''}
-
-  <div class="sig-footer">
-    <div class="sig-block">Prepared By</div>
-    <div class="sig-block">Purchase Manager</div>
-    <div class="sig-block">
-      ${approvedByName ? `<span class="sig-name">${escapeHtml(approvedByName)}</span>` : ''}
-      Authorised Signatory
-    </div>
-  </div>
-
-  <p style="text-align:center;font-size:9px;color:#9ca3af;margin-top:20px">
-    System-generated Purchase Order | Generated on ${new Date().toLocaleString('en-IN')}
-  </p>
-</div>
-</body>
-</html>`;
-
-  const printWindow = window.open('', '_blank', 'width=960,height=760');
-  if (!printWindow) {
-    alert('Please allow pop-ups for this site to download the PO PDF.');
-    return;
+/**
+ * Creates and directly downloads the final approved Purchase Order as a PDF.
+ * API PO data is preferred, with the PR and quotation retained as fallbacks.
+ */
+export async function generatePOApprovalPdf(
+  pr: AnyRecord,
+  quotation: AnyRecord,
+  approvalData?: AnyRecord,
+): Promise<void> {
+  try {
+    const poHeader = parseJSON<AnyRecord>(approvalData?.po_header, {});
+    const logoUrl = String(firstValue([poHeader, pr ?? {}], ['com_logo', 'company_logo']));
+    const logoDataUrl = await loadLogoDataUrl(logoUrl);
+    const { doc, fileName } = createPOApprovalPdfDocument(
+      pr,
+      quotation,
+      approvalData,
+      logoDataUrl,
+    );
+    doc.save(fileName);
+  } catch (error) {
+    console.error('Unable to generate Purchase Order PDF:', error);
+    alert('Unable to download the Purchase Order PDF. Please try again.');
   }
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-
-  setTimeout(() => {
-    if (printWindow.closed) return;
-    printWindow.focus();
-    printWindow.print();
-  }, 800);
 }

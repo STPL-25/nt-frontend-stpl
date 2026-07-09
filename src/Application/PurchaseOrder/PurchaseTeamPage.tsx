@@ -267,6 +267,7 @@ const PurchaseTeamPage: React.FC = () => {
   // ── Step 1: PO Confirmation ────────────────────────────────────────────────
 
   const handlePOConfirmed = (data: POConfirmationData) => {
+    console.log(data)
     setConfirmedData(data);
     setEditingConfirm(false);
     toast.success('PO details confirmed. You can now select a supplier and add quotations.');
@@ -289,6 +290,7 @@ const PurchaseTeamPage: React.FC = () => {
         div_sno: selectedPR.div_sno,
         brn_sno: selectedPR.brn_sno,
         dept_sno: selectedPR.dept_sno,
+        pr_no: selectedPR.pr_no,
         group_no: groupNo,
         items: items.map(i => ({
           pr_item_sno: i.pr_item_sno,
@@ -484,11 +486,14 @@ const PurchaseTeamPage: React.FC = () => {
     const billingBrnSno = confirmedData?.billing_brn_sno ?? basePR.brn_sno;
 
     try {
+      let createdPOResponse: unknown = null;
+
       if (poGroups.length > 1) {
+        const splitResponses: unknown[] = [];
         let splitIdx = 1;
         for (const group of poGroups) {
           const groupPR = prList.find(p => p.pr_basic_sno === group.sourcePRs[0]) ?? basePR;
-          await postCreatePO(purchaseTeamCreatePO, {
+          const response = await postCreatePO(purchaseTeamCreatePO, {
             pr_basic_sno: groupPR.pr_basic_sno,
             sq_basic_sno: selectedQuotation.sq_basic_sno,
             vendor_sno: group.vendorSno ?? selectedQuotation.vendor_sno,
@@ -505,11 +510,13 @@ const PurchaseTeamPage: React.FC = () => {
               group.items.some(gi => gi.pr_item_sno === qi.pr_item_sno || gi.prod_name === qi.prod_name)
             ),
           }, { withCredentials: true });
+          splitResponses.push(response);
           splitIdx++;
         }
+        createdPOResponse = splitResponses;
         toast.success(`${poGroups.length} PO(s) created from split groups!`);
       } else {
-        await postCreatePO(purchaseTeamCreatePO, {
+        createdPOResponse = await postCreatePO(purchaseTeamCreatePO, {
           pr_basic_sno: basePR.pr_basic_sno,
           sq_basic_sno: selectedQuotation.sq_basic_sno,
           vendor_sno: selectedQuotation.vendor_sno,
@@ -528,6 +535,7 @@ const PurchaseTeamPage: React.FC = () => {
 
       // Keep dialog open so user can download the PDF; refresh PR list in background
       setPrRefreshKey(k => k + 1);
+      return createdPOResponse;
     } catch (err: any) {
       const msg = err?.response?.data?.error ?? 'Failed to create PO';
       if (msg.toLowerCase().includes('database error')) {

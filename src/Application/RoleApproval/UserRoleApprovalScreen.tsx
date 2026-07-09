@@ -85,9 +85,12 @@ type Permissions = Record<string, Record<number, boolean>>;
 interface ExistingPermData {
   success:      boolean;
   permissions:  Permissions;
-  companies?:   string[];
-  divisions?:   string[];
-  branches?:    string[];
+  companies?:   Array<string | number>;
+  divisions?:   Array<string | number>;
+  branches?:    Array<string | number>;
+}
+interface ExistingPermResponse extends Partial<ExistingPermData> {
+  decrypted?: ExistingPermData;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -247,7 +250,7 @@ export default function PermissionManager() {
   const {
     data:    existingPermRes,
     loading: existingLoading,
-  } = useFetch<ExistingPermData>(
+  } = useFetch<ExistingPermResponse>(
     selectedUserEcno ? getUserPermissions(selectedUserEcno) : null,
     "", null, permRefreshKey
   );
@@ -259,6 +262,7 @@ export default function PermissionManager() {
   const allCompanies   = hierarchyRes?.data?.companies ?? [];
   const allScreens     = screensRes?.data            ?? [];
   const permDetails    = permDetailsRes?.data        ?? [];
+  const existingPermData = existingPermRes?.decrypted ?? existingPermRes;
 
   // ── Socket: real-time listeners ────────────────────────────────────────────
   useEffect(() => {
@@ -332,7 +336,12 @@ export default function PermissionManager() {
 
     const base = buildFromScreens(allScreens).permissions;
 
-    if (!existingPermRes?.permissions || Object.keys(existingPermRes.permissions).length === 0) {
+    restoringFromExisting.current = true;
+    setSelectedCompanies((existingPermData?.companies ?? []).map(String));
+    setSelectedDivisions((existingPermData?.divisions ?? []).map(String));
+    setSelectedBranches((existingPermData?.branches ?? []).map(String));
+
+    if (!existingPermData?.permissions || Object.keys(existingPermData.permissions).length === 0) {
       // No existing permissions found → blank slate
       setPermissions(base);
       setOriginalPermissions(base);
@@ -341,17 +350,13 @@ export default function PermissionManager() {
 
     // Merge saved permissions ON TOP of the blank base
     const merged: Permissions = { ...base };
-    for (const [screen, perms] of Object.entries(existingPermRes.permissions)) {
+    for (const [screen, perms] of Object.entries(existingPermData.permissions)) {
       merged[screen] = { ...(merged[screen] ?? {}), ...perms };
     }
 
     setPermissions(merged);
     setOriginalPermissions(JSON.parse(JSON.stringify(merged))); // deep-clone as baseline
 
-    restoringFromExisting.current = true;
-    if (existingPermRes.companies) setSelectedCompanies(existingPermRes.companies.map(String));
-    if (existingPermRes.divisions) setSelectedDivisions(existingPermRes.divisions.map(String));
-    if (existingPermRes.branches)  setSelectedBranches(existingPermRes.branches.map(String));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingPermRes]);
 
@@ -382,16 +387,14 @@ export default function PermissionManager() {
 
   // ── Hierarchy helpers ──────────────────────────────────────────────────────
   const availableDivisions = (): Division[] => {
-    const coms = selectedCompanies.length ? selectedCompanies : existingPermRes?.companies ?? [];
-    return coms.flatMap(
+    return selectedCompanies.flatMap(
       (id) => allCompanies.find((c) => String(c.com_sno) === String(id))?.divisions ?? []
     );
   };
 
   const availableBranches = (): Branch[] => {
-    const divs = selectedDivisions.length ? selectedDivisions : existingPermRes?.divisions ?? [];
     const allDivs = allCompanies.flatMap((c) => c.divisions);
-    return divs.flatMap(
+    return selectedDivisions.flatMap(
       (id) => allDivs.find((d) => String(d.div_sno) === String(id))?.branches ?? []
     );
   };
@@ -410,9 +413,9 @@ export default function PermissionManager() {
 
   // ── Payload builders ───────────────────────────────────────────────────────
   const buildHierarchyPayload = useCallback(() => {
-    const coms = selectedCompanies.length ? selectedCompanies : existingPermRes?.companies ?? [];
-    const divs = selectedDivisions.length ? selectedDivisions : existingPermRes?.divisions ?? [];
-    const brs  = selectedBranches.length  ? selectedBranches  : existingPermRes?.branches  ?? [];
+    const coms = selectedCompanies;
+    const divs = selectedDivisions;
+    const brs  = selectedBranches;
     const allDivs = allCompanies.flatMap((c) => c.divisions);
     const allBrs  = allDivs.flatMap((d) => d.branches);
 
@@ -430,7 +433,7 @@ export default function PermissionManager() {
         }),
       ],
     };
-  }, [allCompanies, selectedCompanies, selectedDivisions, selectedBranches, existingPermRes]);
+  }, [allCompanies, selectedCompanies, selectedDivisions, selectedBranches]);
 
   const buildPermissionsPayload = useCallback(() => {
     const nameToId = new Map<string, number>(allScreens.map((s) => [s.screen_name, s.screen_id]));
@@ -502,9 +505,10 @@ export default function PermissionManager() {
   const enabledCount = useMemo(() => countEnabled(permissions), [permissions]);
 
   const companyNames = useMemo(() => {
-    const ids = selectedCompanies.length ? selectedCompanies : existingPermRes?.companies ?? [];
-    return ids.map((id) => allCompanies.find((c) => c.com_sno === id)?.com_name).filter(Boolean) as string[];
-  }, [selectedCompanies, existingPermRes, allCompanies]);
+    return selectedCompanies
+      .map((id) => allCompanies.find((c) => String(c.com_sno) === String(id))?.com_name)
+      .filter(Boolean) as string[];
+  }, [selectedCompanies, allCompanies]);
 
   const userOptions = useMemo(
     () => allUsers.map((u) => ({
@@ -530,7 +534,7 @@ export default function PermissionManager() {
       {/* ── Page header ───────────────────────────────────────────────────── */}
       <PageHeader
         icon={Shield}
-        title="Role & Permissions"
+        title="Role  Permissions"
         description="Changes reflect on the user's screen instantly"
       >
         <LiveBadge connected={isLive} />
@@ -566,24 +570,24 @@ export default function PermissionManager() {
                     field="companies"
                     label="Companies"
                     type="multi-select"
-                    options={allCompanies.map((c) => ({ label: c.com_name, value: c.com_sno }))}
-                    value={selectedCompanies.length ? selectedCompanies : existingPermRes?.companies ?? []}
+                    options={allCompanies.map((c) => ({ label: c.com_name, value: String(c.com_sno) }))}
+                    value={selectedCompanies}
                     onChange={setSelectedCompanies}
                   />
                   <CustomInputField
                     field="divisions"
                     label="Divisions"
                     type="multi-select"
-                    options={availableDivisions().map((d) => ({ label: d.div_name, value: d.div_sno }))}
-                    value={selectedDivisions.length ? selectedDivisions : existingPermRes?.divisions ?? []}
+                    options={availableDivisions().map((d) => ({ label: d.div_name, value: String(d.div_sno) }))}
+                    value={selectedDivisions}
                     onChange={setSelectedDivisions}
                   />
                   <CustomInputField
                     field="branches"
                     label="Branches"
                     type="multi-select"
-                    options={availableBranches().map((b) => ({ label: b.brn_name, value: b.brn_sno }))}
-                    value={selectedBranches.length ? selectedBranches : existingPermRes?.branches ?? []}
+                    options={availableBranches().map((b) => ({ label: b.brn_name, value: String(b.brn_sno) }))}
+                    value={selectedBranches}
                     onChange={setSelectedBranches}
                   />
                 </div>

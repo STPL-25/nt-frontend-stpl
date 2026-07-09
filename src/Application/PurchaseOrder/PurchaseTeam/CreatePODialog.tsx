@@ -15,7 +15,7 @@ interface CreatePODialogProps {
   onOpenChange: (open: boolean) => void;
   selectedPR: PRRecord | null;
   selectedQuotation: Quotation | null;
-  onCreatePO: (form: POFormState) => Promise<void>;
+  onCreatePO: (form: POFormState) => Promise<unknown>;
 }
 
 const CreatePODialog: React.FC<CreatePODialogProps> = ({
@@ -36,6 +36,7 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
   const [creating, setCreating] = useState(false);
   const [poCreated, setPOCreated] = useState(false);
   const [savedForm, setSavedForm] = useState<POFormState | null>(null);
+  const [savedPOResponse, setSavedPOResponse] = useState<unknown>(null);
 
   React.useEffect(() => {
     if (open) {
@@ -48,6 +49,7 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
       });
       setPOCreated(false);
       setSavedForm(null);
+      setSavedPOResponse(null);
     }
   }, [open, selectedPR, selectedQuotation]);
 
@@ -59,11 +61,18 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
 
     setCreating(true);
     try {
-      await onCreatePO(poForm);
+      const poResponse = await onCreatePO(poForm);
       setSavedForm(poForm);
+      setSavedPOResponse(poResponse);
       setPOCreated(true);
       if (pdfWindow) {
-        generatePOPDF({ pr: selectedPR, quotation: selectedQuotation, form: poForm, targetWindow: pdfWindow });
+        generatePOPDF({
+          pr: selectedPR,
+          quotation: selectedQuotation,
+          form: poForm,
+          apiResponse: poResponse,
+          targetWindow: pdfWindow,
+        });
       }
     } catch {
       pdfWindow?.close();
@@ -75,7 +84,12 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
 
   const handleDownloadPDF = () => {
     if (!selectedPR || !selectedQuotation || !savedForm) return;
-    generatePOPDF({ pr: selectedPR, quotation: selectedQuotation, form: savedForm });
+    generatePOPDF({
+      pr: selectedPR,
+      quotation: selectedQuotation,
+      form: savedForm,
+      apiResponse: savedPOResponse,
+    });
   };
 
   const handleClose = () => {

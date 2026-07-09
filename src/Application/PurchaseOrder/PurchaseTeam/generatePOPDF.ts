@@ -6,7 +6,12 @@ export interface POPDFData {
   quotation: Quotation;
   form: POFormState;
   poNumber?: string;
+  apiResponse?: unknown;
   targetWindow?: Window | null;
+}
+
+interface POHeader {
+  com_logo?: string | null;
 }
 
 export function openPOPDFWindow(): Window | null {
@@ -38,11 +43,16 @@ export function openPOPDFWindow(): Window | null {
 }
 
 export function generatePOPDF(data: POPDFData): boolean {
-  const { pr, quotation, form, poNumber, targetWindow } = data;
+  const { pr, quotation, form, poNumber, apiResponse, targetWindow } = data;
   const { subtotal, discount, tax, grandTotal } = calcQuotationTotals(quotation.items);
 
   const displayPoNo = poNumber ?? `PO-${getPRDisplayNo(pr)}-${Date.now().toString().slice(-6)}`;
   const vendorName = quotation.vendor_name ?? quotation.company_name ?? '—';
+  const companyLogo = extractPOHeader(apiResponse)?.com_logo?.trim();
+  console.log('Company logo URL:', companyLogo);
+  const companyLogoHtml = companyLogo
+    ? `<img class="company-logo" src="${escapeHtml(companyLogo)}" alt="${escapeHtml(pr.com_name ?? 'Company')} logo">`
+    : '';
 
   const itemRows = quotation.items
     .map(
@@ -79,12 +89,14 @@ export function generatePOPDF(data: POPDFData): boolean {
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Purchase Order — ${displayPoNo}</title>
+  /* <title>Purchase Order — ${displayPoNo}</title>*/
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#1a1a1a;background:#fff;padding:20mm 18mm}
     /* Header */
     .po-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #4f46e5;padding-bottom:14px;margin-bottom:18px}
+    .company-brand{display:flex;align-items:center;gap:12px}
+    .company-logo{display:block;max-width:120px;height:52px;object-fit:contain;flex-shrink:0}
     .company-block h1{font-size:20px;color:#4f46e5;font-weight:800;letter-spacing:-0.5px}
     .company-block p{font-size:10px;color:#888;margin-top:2px}
     .po-meta{text-align:right}
@@ -130,9 +142,14 @@ export function generatePOPDF(data: POPDFData): boolean {
   <!-- Header -->
   <div class="po-header">
     <div class="company-block">
-      <h1>${escapeHtml(pr.com_name ?? 'Company Name')}</h1>
-      <p>${escapeHtml([pr.div_name, pr.brn_name].filter(Boolean).join(' | ') || '')}</p>
-      <p style="margin-top:6px;font-size:10px;color:#666">${escapeHtml(pr.dept_name ?? '')}</p>
+      <div class="company-brand">
+        ${companyLogoHtml}
+        <div>
+          <h1>${escapeHtml(pr.com_name ?? 'Company Name')}</h1>
+          <p>${escapeHtml([pr.div_name, pr.brn_name].filter(Boolean).join(' | ') || '')}</p>
+          <p style="margin-top:6px;font-size:10px;color:#666">${escapeHtml(pr.dept_name ?? '')}</p>
+        </div>
+      </div>
     </div>
     <div class="po-meta">
       <div class="doc-label">Purchase Order</div>
@@ -213,13 +230,82 @@ export function generatePOPDF(data: POPDFData): boolean {
   win.document.write(html);
   win.document.close();
   win.focus();
-  // Give the browser time to render before print dialog
-  setTimeout(() => {
-    if (win.closed) return;
+  printWhenImagesReady(win);
+  return true;
+}
+
+function extractPOHeader(value: unknown): POHeader | null {
+  const parsed = parseJSON(value);
+  if (!parsed) return null;
+
+  if (Array.isArray(parsed)) {
+    for (const item of parsed) {
+      const header = extractPOHeader(item);
+      if (header) return header;
+    }
+    return null;
+  }
+
+  if (typeof parsed !== 'object') return null;
+
+  const record = parsed as Record<string, unknown>;
+  if ('com_logo' in record) return record as POHeader;
+
+  if ('po_header' in record) {
+    const header = parseJSON(record.po_header);
+    if (header && typeof header === 'object' && !Array.isArray(header)) {
+      return header as POHeader;
+    }
+  }
+
+  for (const key of ['decrypted', 'data']) {
+    if (key in record) {
+      const header = extractPOHeader(record[key]);
+      if (header) return header;
+    }
+  }
+
+  return null;
+}
+
+function parseJSON(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function printWhenImagesReady(win: Window): void {
+  let printed = false;
+  const print = () => {
+    if (printed || win.closed) return;
+    printed = true;
     win.focus();
     win.print();
-  }, 600);
-  return true;
+  };
+
+  const pendingImages = Array.from(win.document.images).filter(image => !image.complete);
+
+  if (pendingImages.length === 0) {
+    setTimeout(print, 600);
+    return;
+  }
+
+  let remaining = pendingImages.length;
+  const imageSettled = () => {
+    remaining -= 1;
+    if (remaining === 0) setTimeout(print, 100);
+  };
+
+  pendingImages.forEach(image => {
+    image.addEventListener('load', imageSettled, { once: true });
+    image.addEventListener('error', imageSettled, { once: true });
+  });
+
+  // Avoid leaving the preparing window open indefinitely if an image host stalls.
+  setTimeout(print, 3000);
 }
 
 function escapeHtml(str: string): string {

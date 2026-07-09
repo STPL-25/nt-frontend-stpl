@@ -123,7 +123,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
       prev.size === selectable.length ? new Set() : new Set(selectable.map(r => r.id))
     );
   };
-
+console.log("selectedPR",selectedPR,globalDeptSno)
   const createSplitGroup = () => {
     if (selectedIds.size === 0) return;
     const newGroup = splitGroupCount + 1;
@@ -163,6 +163,7 @@ const POConfirmStep: React.FC<POConfirmStepProps> = ({
   const selectableCount = useMemo(() => rows.filter(r => !r.split_group).length, [rows]);
 
   // ── Submit ────────────────────────────────────────────────────────────────
+  console.log(globalComSno,globalDivSno,globalBrnSno,globalDeptSno)
   const handleSave = async () => {
     if (!requiredDate) return;
     const confirmData: POConfirmationData = {
