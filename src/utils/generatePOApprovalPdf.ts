@@ -626,6 +626,7 @@
 // }
 import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
+import QRCode from 'qrcode';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -858,13 +859,21 @@ function cleanFileName(value: string): string {
   return cleaned || 'Purchase-Order';
 }
 
+const DETAIL_HEADER_HEIGHT = 8.5;
+const DETAIL_LABEL_WIDTH = 24;
+
+function detailRowHeight(doc: jsPDF, row: DetailRow, valueWidth: number): number {
+  const lines = doc.splitTextToSize(row.value || '-', valueWidth) as string[];
+  return Math.max(7, lines.length * 3.5 + 3.2);
+}
+
 function detailBoxHeight(doc: jsPDF, rows: DetailRow[], boxWidth: number): number {
-  const valueWidth = boxWidth - 31;
-  const contentHeight = rows.reduce((height, row) => {
-    const lines = doc.splitTextToSize(row.value || '-', valueWidth) as string[];
-    return height + Math.max(4.5, lines.length * 3.5);
-  }, 0);
-  return Math.max(30, 14 + contentHeight);
+  const valueWidth = boxWidth - DETAIL_LABEL_WIDTH - 8;
+  const contentHeight = rows.reduce(
+    (height, row) => height + detailRowHeight(doc, row, valueWidth),
+    0,
+  );
+  return Math.max(32, DETAIL_HEADER_HEIGHT + 3 + contentHeight + 2);
 }
 
 function drawDetailBox(
@@ -876,30 +885,49 @@ function drawDetailBox(
   title: string,
   rows: DetailRow[],
 ): void {
-  doc.setFillColor(...LIGHT_BG);
+  doc.setFillColor(255, 255, 255);
   doc.setDrawColor(...BORDER);
-  doc.roundedRect(x, y, width, height, 1.5, 1.5, 'FD');
+  doc.setLineWidth(0.25);
+  doc.roundedRect(x, y, width, height, 2, 2, 'FD');
+
+  // Solid header band; a plain rect squares off the band's bottom corners.
+  doc.setFillColor(...NAVY);
+  doc.roundedRect(x, y, width, DETAIL_HEADER_HEIGHT, 2, 2, 'F');
+  doc.rect(x, y + DETAIL_HEADER_HEIGHT - 2, width, 2, 'F');
+
+  doc.setFillColor(...ACCENT);
+  doc.rect(x + 3.5, y + 3, 2.4, 2.4, 'F');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(...NAVY);
-  doc.text(title.toUpperCase(), x + 3, y + 5.5);
-  doc.setDrawColor(229, 231, 235);
-  doc.line(x + 3, y + 8, x + width - 3, y + 8);
+  doc.setFontSize(7.8);
+  doc.setTextColor(255, 255, 255);
+  doc.text(title.toUpperCase(), x + 7.8, y + 5.6, { charSpace: 0.4 });
 
-  let cursorY = y + 13;
-  const valueWidth = width - 31;
-  for (const row of rows) {
+  const valueWidth = width - DETAIL_LABEL_WIDTH - 8;
+  let rowY = y + DETAIL_HEADER_HEIGHT + 3;
+  rows.forEach((row, index) => {
     const lines = doc.splitTextToSize(row.value || '-', valueWidth) as string[];
+    const rowHeight = detailRowHeight(doc, row, valueWidth);
+    const baseline = rowY + 4;
+
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(6.6);
     doc.setTextColor(...MUTED);
-    doc.text(row.label, x + 3, cursorY);
+    doc.text(row.label.toUpperCase(), x + 4, baseline, { charSpace: 0.2 });
+
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
     doc.setTextColor(17, 24, 39);
-    doc.text(lines, x + 27, cursorY);
-    cursorY += Math.max(4.5, lines.length * 3.5);
-  }
+    doc.text(lines, x + 4 + DETAIL_LABEL_WIDTH, baseline);
+
+    if (index < rows.length - 1) {
+      doc.setDrawColor(238, 240, 243);
+      doc.setLineWidth(0.15);
+      doc.line(x + 4, rowY + rowHeight - 1, x + width - 4, rowY + rowHeight - 1);
+    }
+    rowY += rowHeight;
+  });
+  doc.setLineWidth(0.2);
 }
 
 function ensurePageSpace(doc: jsPDF, y: number, requiredHeight: number): number {
@@ -915,7 +943,14 @@ function drawWatermark(doc: jsPDF, text: string): void {
     doc.saveGraphicsState();
     doc.setGState(new (doc as any).GState({ opacity: 0.08 }));
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(70);
+    // Shrink long company names so the rotated text stays within the page.
+    const maxTextWidth = 230;
+    const baseFontSize = 70;
+    doc.setFontSize(baseFontSize);
+    const textWidth = doc.getTextWidth(text);
+    if (textWidth > maxTextWidth) {
+      doc.setFontSize(Math.max(20, (baseFontSize * maxTextWidth) / textWidth));
+    }
     doc.setTextColor(...NAVY);
     doc.text(text, PAGE_WIDTH / 2, PAGE_HEIGHT / 2, {
       align: 'center',
@@ -966,30 +1001,43 @@ function drawHeader(
   poNo: string,
   poDate: unknown,
   logoDataUrl?: string,
+  qrDataUrl?: string,
 ): number {
-  const startY = 12;
+  const titleY = 16;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(...NAVY);
+  doc.text('PURCHASE ORDER', PAGE_WIDTH / 2, titleY, { align: 'center', charSpace: 1 });
+
+  const startY = titleY + 6;
   let cursorY = startY;
+  let logoDrawn = false;
 
   if (logoDataUrl) {
     try {
       const properties = doc.getImageProperties(logoDataUrl);
-      const maxWidth = 60;
-      const maxHeight = 40;
+      const maxWidth = 45;
+      const maxHeight = 20;
       const ratio = properties.width / properties.height;
       const width = Math.min(maxWidth, maxHeight * ratio);
       const height = width / ratio;
       doc.addImage(logoDataUrl, PAGE_MARGIN, cursorY, width, height, undefined, 'FAST');
       cursorY += height + 2.5;
-    } catch {
+      logoDrawn = true;
+    } catch (error) {
       // Company text still identifies the issuer if the image is invalid.
+      console.warn('Unable to draw company logo on the PO PDF:', error);
     }
   }
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(...NAVY);
-  doc.text(companyName, PAGE_MARGIN, cursorY);
-  cursorY += 4.5;
+  // The logo already carries the company identity; repeat the name only without it.
+  if (!logoDrawn) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...NAVY);
+    doc.text(companyName, PAGE_MARGIN, cursorY);
+    cursorY += 4.5;
+  }
 
   if (companyAddress) {
     doc.setFont('helvetica', 'normal');
@@ -1008,24 +1056,54 @@ function drawHeader(
     cursorY += 3.5;
   }
 
-  const rightX = PAGE_WIDTH - PAGE_MARGIN;
-  doc.setFillColor(...ACCENT);
-  doc.roundedRect(rightX - 55, startY - 2, 55, 15, 1.5, 1.5, 'F');
+  const cardWidth = 42;
+  const cardX = PAGE_WIDTH - PAGE_MARGIN - cardWidth;
+  const cardY = startY - 2;
+  const cardCenterX = cardX + cardWidth / 2;
+  const qrSize = 16;
+  const qrY = cardY + 3;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  const poNoLines = doc.splitTextToSize(poNo, cardWidth - 6) as string[];
+  const poNoY = qrY + qrSize + 4;
+  const dateY = poNoY + (poNoLines.length - 1) * 3.6 + 4;
+  const cardHeight = dateY - cardY + 2.5;
+
+  doc.setFillColor(...LIGHT_BG);
+  doc.setDrawColor(...BORDER);
+  doc.roundedRect(cardX, cardY, cardWidth, cardHeight, 1.5, 1.5, 'FD');
+
+  if (qrDataUrl) {
+    try {
+      doc.addImage(
+        qrDataUrl,
+        cardX + (cardWidth - qrSize) / 2,
+        qrY,
+        qrSize,
+        qrSize,
+        undefined,
+        'FAST',
+      );
+    } catch {
+      // The PO number text below still identifies the order if the QR image is invalid.
+    }
+  }
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
-  doc.setTextColor(255, 255, 255);
-  doc.text('PURCHASE ORDER', rightX - 2, startY + 3, { align: 'right' });
-  doc.setFontSize(13);
-  doc.text(poNo, rightX - 2, startY + 9, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.text(`PO Date: ${formatDate(poDate)}`, rightX - 2, startY + 12.5, { align: 'right' });
+  doc.setTextColor(...NAVY);
+  doc.text(poNoLines, cardCenterX, poNoY, { align: 'center' });
 
-  const headerBottom = Math.max(cursorY, startY + 17) + 3;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(...MUTED);
+  doc.text(`Date: ${formatDate(poDate)}`, cardCenterX, dateY, { align: 'center' });
+
+  const headerBottom = Math.max(cursorY, cardY + cardHeight) + 2;
   doc.setDrawColor(...NAVY);
   doc.setLineWidth(0.8);
   doc.line(PAGE_MARGIN, headerBottom, PAGE_WIDTH - PAGE_MARGIN, headerBottom);
-  return headerBottom + 5;
+  return headerBottom + 3.5;
 }
 
 function addFooters(doc: jsPDF): void {
@@ -1045,7 +1123,20 @@ function addFooters(doc: jsPDF): void {
   }
 }
 
-export function createPOApprovalPdfDocument(
+async function generateQrCodeDataUrl(text: string): Promise<string | undefined> {
+  if (!text) return undefined;
+  try {
+    return await QRCode.toDataURL(text, {
+      margin: 0,
+      width: 256,
+      color: { dark: '#1E3A5F', light: '#FFFFFF' },
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+export async function createPOApprovalPdfDocument(
   pr: AnyRecord,
   quotation: AnyRecord,
   approvalData?: AnyRecord,
@@ -1055,7 +1146,7 @@ export function createPOApprovalPdfDocument(
     'Delivery must be completed within the agreed lead time.',
     'This PO is valid for 30 days from the date of issue.',
   ],
-): { doc: jsPDF; fileName: string } {
+): Promise<{ doc: jsPDF; fileName: string }> {
   const poHeader = parseJSON<AnyRecord>(approvalData?.po_header, {});
   const vendor = parseJSON<AnyRecord>(approvalData?.vendor, {});
   const approvedItems = parseJSON<AnyRecord[]>(approvalData?.po_items, []);
@@ -1074,10 +1165,10 @@ export function createPOApprovalPdfDocument(
 
   const poNo = String(poHeader.po_df_no
     ?? approvalData?.po_no
-    ?? `PO-${String(pr?.pr_no ?? '').replace(/^PR-?/, '')}-${Date.now().toString().slice(-4)}`);
+    ?? `${String(pr?.pr_no ?? '').replace(/^PR-?/, '')}-${Date.now().toString().slice(-4)}`);
   const poDate = poHeader.po_date ?? approvalData?.final_approved_on ?? new Date().toISOString();
   const companyName = String(poHeader.com_name ?? pr?.com_name ?? 'Company Name');
-  const branchName = String(poHeader.brn_name ?? pr?.brn_name ?? '-');
+  const branchName = String(poHeader.div_name );
   const companyAddress = formatCompanyAddress(pr ?? {}, poHeader);
   const branchAddress = formatBranchAddress(pr ?? {}, poHeader);
   const vendorAddress = formatVendorAddress(vendor, quotation ?? {});
@@ -1111,6 +1202,7 @@ export function createPOApprovalPdfDocument(
     creator: 'Non-Trade Purchase Order System',
   });
 
+  const qrDataUrl = await generateQrCodeDataUrl(poNo);
   let cursorY = drawHeader(
     doc,
     companyName,
@@ -1119,6 +1211,7 @@ export function createPOApprovalPdfDocument(
     poNo,
     poDate,
     logoDataUrl,
+    qrDataUrl,
   );
 
   const boxGap = 6;
@@ -1262,7 +1355,7 @@ export function createPOApprovalPdfDocument(
   drawSignatureBlock(doc, cursorY);
 
   addFooters(doc);
-  if (approvalData?.final_approved_on) drawWatermark(doc, 'APPROVED');
+  if (approvalData?.final_approved_on) drawWatermark(doc, companyName);
 
   return { doc, fileName: `${cleanFileName(poNo)}.pdf` };
 }
@@ -1276,18 +1369,55 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+// jsPDF only decodes PNG/JPEG, so SVG/WebP logos must be redrawn onto a canvas.
+async function rasterizeToPngDataUrl(src: string): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    const timeout = window.setTimeout(() => resolve(undefined), 4000);
+    image.onload = () => {
+      window.clearTimeout(timeout);
+      try {
+        const width = image.naturalWidth || image.width;
+        const height = image.naturalHeight || image.height;
+        if (!width || !height) return resolve(undefined);
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        if (!context) return resolve(undefined);
+        context.drawImage(image, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } catch {
+        resolve(undefined);
+      }
+    };
+    image.onerror = () => {
+      window.clearTimeout(timeout);
+      resolve(undefined);
+    };
+    image.src = src;
+  });
+}
+
 async function loadLogoDataUrl(url: string): Promise<string | undefined> {
   if (!url) return undefined;
-  if (url.startsWith('data:')) return url;
+  if (url.startsWith('data:image/png') || url.startsWith('data:image/jpeg')) return url;
+  if (url.startsWith('data:')) return rasterizeToPngDataUrl(url);
 
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 4000);
   try {
     const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) return undefined;
-    return await blobToDataUrl(await response.blob());
-  } catch {
-    return undefined;
+    if (!response.ok) throw new Error(`Logo request failed with status ${response.status}`);
+    const blob = await response.blob();
+    if (blob.type === 'image/png' || blob.type === 'image/jpeg') {
+      return await blobToDataUrl(blob);
+    }
+    return await rasterizeToPngDataUrl(await blobToDataUrl(blob));
+  } catch (error) {
+    console.warn('Falling back to direct image load for company logo:', error);
+    return rasterizeToPngDataUrl(url);
   } finally {
     window.clearTimeout(timeout);
   }
@@ -1306,7 +1436,7 @@ export async function generatePOApprovalPdf(
     const poHeader = parseJSON<AnyRecord>(approvalData?.po_header, {});
     const logoUrl = String(firstValue([poHeader, pr ?? {}], ['com_logo', 'company_logo']));
     const logoDataUrl = await loadLogoDataUrl(logoUrl);
-    const { doc, fileName } = createPOApprovalPdfDocument(
+    const { doc, fileName } = await createPOApprovalPdfDocument(
       pr,
       quotation,
       approvalData,

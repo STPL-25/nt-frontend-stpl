@@ -4,7 +4,8 @@
       "Bash(npx tsc:*)",
       "Bash(npm install *)",
       "Bash(ls e:/non-trade-new/ 2>/dev/null || echo \"cannot list\")",
-      "Read(//e/non-trade-new/**)"
+      "Read(//e/non-trade-new/**)",
+      "Bash(pnpm add *)"
     ]
   }
 }
