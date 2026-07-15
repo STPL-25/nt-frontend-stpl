@@ -725,7 +725,10 @@ function formatAddressValue(value: unknown): string {
       ?? address.postal_code
       ?? address.add_pin_code
       ?? address.add_reg_pincode,
-  ].filter((part) => part != null && String(part).trim() !== '').join(', ');
+  ]
+    .map((part) => String(part ?? '').trim().replace(/,+$/, '').trim())
+    .filter((part) => part !== '')
+    .join(', ');
 }
 
 function addressField(value: unknown, keys: string[]): unknown {
@@ -1168,7 +1171,7 @@ export async function createPOApprovalPdfDocument(
     ?? `${String(pr?.pr_no ?? '').replace(/^PR-?/, '')}-${Date.now().toString().slice(-4)}`);
   const poDate = poHeader.po_date ?? approvalData?.final_approved_on ?? new Date().toISOString();
   const companyName = String(poHeader.com_name ?? pr?.com_name ?? 'Company Name');
-  const branchName = String(poHeader.div_name );
+  const branchName = String(poHeader.brn_name ?? pr?.brn_name ?? poHeader.div_name ?? '-');
   const companyAddress = formatCompanyAddress(pr ?? {}, poHeader);
   const branchAddress = formatBranchAddress(pr ?? {}, poHeader);
   const vendorAddress = formatVendorAddress(vendor, quotation ?? {});

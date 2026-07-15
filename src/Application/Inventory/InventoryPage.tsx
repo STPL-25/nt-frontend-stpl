@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Boxes, Menu } from 'lucide-react';
@@ -7,7 +8,13 @@ import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
 
 import type { InventoryItem, StockMovement, InventoryFormState } from './Inventory/types';
-import { TEMP_INVENTORY } from './Inventory/helpers';
+import {
+  invSvcGetItems,
+  invSvcCreateItem,
+  invSvcUpdateItem,
+  invSvcDeleteItem,
+  invSvcGetMovements,
+} from '@/Services/GrnService/inventoryApi';
 
 import InventoryListSidebar from './Inventory/InventoryListSidebar';
 import InventorySummaryCard from './Inventory/InventorySummaryCard';
@@ -31,23 +38,30 @@ const InventoryPage: React.FC = () => {
 
   const [saving, setSaving] = useState(false);
 
-  // ── Fetchers (temporary – using local mock data) ─────────────────────────────
+  // ── Fetchers ─────────────────────────────────────────────────────────────────
 
-  const fetchItems = useCallback(() => {
+  const fetchItems = useCallback(async () => {
     setLoadingItems(true);
-    setTimeout(() => {
-      setItems(TEMP_INVENTORY);
+    try {
+      const res = await axios.get(invSvcGetItems);
+      setItems(res.data?.data ?? []);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to load inventory items');
+    } finally {
       setLoadingItems(false);
-    }, 300);
+    }
   }, []);
 
-  const fetchMovements = useCallback((_item_sno: number) => {
+  const fetchMovements = useCallback(async (item_sno: number) => {
     setLoadingMovements(true);
-    setTimeout(() => {
-      // Mock: movements are returned per item in real API
-      setMovements([]);
+    try {
+      const res = await axios.get(invSvcGetMovements(item_sno));
+      setMovements(res.data?.data ?? []);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to load stock movements');
+    } finally {
       setLoadingMovements(false);
-    }, 200);
+    }
   }, []);
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
@@ -74,7 +88,7 @@ const InventoryPage: React.FC = () => {
     // keep selectedItem so view goes back to detail
   };
 
-  const handleSave = (form: InventoryFormState) => {
+  const handleSave = async (form: InventoryFormState) => {
     // Validation
     if (!form.item_code.trim()) { toast.error('Item code is required'); return; }
     if (!form.item_name.trim()) { toast.error('Item name is required'); return; }
@@ -84,11 +98,14 @@ const InventoryPage: React.FC = () => {
     if (form.min_stock > form.max_stock) { toast.error('Min stock cannot exceed max stock'); return; }
 
     setSaving(true);
-    setTimeout(() => {
+    try {
       if (isAddingNew) {
+        const res = await axios.post(invSvcCreateItem, form);
+        const created = res.data?.data?.[0];
         const newItem: InventoryItem = {
           ...form,
-          item_sno: Date.now(),
+          item_sno: created?.item_sno,
+          item_code: created?.item_code ?? form.item_code,
           category: form.category as InventoryItem['category'],
           status: form.status as InventoryItem['status'],
           created_at: new Date().toISOString(),
@@ -97,7 +114,8 @@ const InventoryPage: React.FC = () => {
         setSelectedItem(newItem);
         setIsAddingNew(false);
         toast.success(`Item "${form.item_name}" created successfully`);
-      } else if (selectedItem) {
+      } else if (selectedItem?.item_sno) {
+        await axios.put(invSvcUpdateItem(selectedItem.item_sno), form);
         const updated: InventoryItem = {
           ...selectedItem,
           ...form,
@@ -109,15 +127,24 @@ const InventoryPage: React.FC = () => {
         setSelectedItem(updated);
         toast.success(`Item "${form.item_name}" updated successfully`);
       }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to save item');
+    } finally {
       setSaving(false);
-    }, 400);
+    }
   };
 
-  const handleDelete = (item: InventoryItem) => {
-    if (!window.confirm(`Delete item "${item.item_name}"? This cannot be undone.`)) return;
-    setItems(prev => prev.filter(i => i.item_sno !== item.item_sno));
-    setSelectedItem(null);
-    toast.success(`Item "${item.item_name}" deleted`);
+  const handleDelete = async (item: InventoryItem) => {
+    if (!item.item_sno) return;
+    if (!window.confirm(`Delete item "${item.item_name}"? It will be marked as Discontinued.`)) return;
+    try {
+      await axios.delete(invSvcDeleteItem(item.item_sno));
+      setItems(prev => prev.filter(i => i.item_sno !== item.item_sno));
+      setSelectedItem(null);
+      toast.success(`Item "${item.item_name}" deleted`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to delete item');
+    }
   };
 
   // ── Render ───────────────────────────────────────────────────────────────────

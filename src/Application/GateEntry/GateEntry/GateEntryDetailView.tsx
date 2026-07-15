@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { DoorOpen, FileText, Truck, Scale } from 'lucide-react';
+import { DoorOpen, FileText, Truck } from 'lucide-react';
 import type { GateEntryRecord } from './types';
 import { formatDate } from './helpers';
 
@@ -37,44 +37,31 @@ const GateEntryDetailView: React.FC<{ entry: GateEntryRecord }> = ({ entry }) =>
           <FileText size={13} /> Document Details
         </p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <Field label="Entry Date / Time" value={`${formatDate(entry.entry_date)} ${entry.entry_time ?? ''}`} />
           <Field label="PO Number" value={entry.po_no} />
           <Field label="Vendor" value={entry.vendor_name} />
           <Field label="Invoice No" value={entry.invoice_no} />
           <Field label="Invoice Date" value={formatDate(entry.invoice_date)} />
-          <Field label="Challan / DC No" value={entry.challan_no} />
-          <Field label="LR / Consignment" value={entry.lr_no} />
+          <Field label="Received Qty" value={entry.received_qty} />
+          <Field label="Received Date" value={formatDate(entry.received_date)} />
         </div>
       </div>
 
       <div className="pt-3 border-t">
         <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-          <Truck size={13} /> Vehicle &amp; Transport
+          <Truck size={13} /> Transport
         </p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <Field label="Vehicle No" value={entry.vehicle_no} />
-          <Field label="Driver" value={entry.driver_name} />
-          <Field label="Driver Mobile" value={entry.driver_mobile} />
-          <Field label="Transporter" value={entry.transporter_name} />
+          <Field label="Bundles" value={entry.bundles} />
+          <Field label="Transport" value={entry.transport_name} />
+          <Field label="LR No" value={entry.lr_no} />
+          <Field label="Receiver Ecno" value={entry.receiver_ecno} />
         </div>
       </div>
 
-      <div className="pt-3 border-t">
-        <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-          <Scale size={13} /> Weighment
-        </p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Field label="Gross (kg)" value={entry.gross_weight} />
-          <Field label="Tare (kg)" value={entry.tare_weight} />
-          <Field label="Net (kg)" value={entry.net_weight} />
-          <Field label="Packages" value={entry.no_of_packages} />
-        </div>
-      </div>
-
-      {(entry.material_desc || entry.remarks) && (
-        <div className="pt-3 border-t grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="Material Description" value={entry.material_desc} />
-          <Field label="Security Remarks" value={entry.remarks} />
+      {entry.photo_url && (
+        <div className="pt-3 border-t">
+          <p className="text-xs text-muted-foreground font-medium mb-1.5">Photo of Product</p>
+          <img src={entry.photo_url} alt="Product" className="h-32 w-32 object-cover rounded border" />
         </div>
       )}
 

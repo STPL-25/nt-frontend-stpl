@@ -1,96 +1,144 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, DoorOpen, Menu } from 'lucide-react';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
+import axios from 'axios';
+import { gateGetApprovedPOs, gateGetAllEntries, gateCreateEntry } from '@/Services/GrnService/gateEntryApi';
+import { normalisePORows } from '@/Application/GRN/GRN/helpers';
 
-import type { GatePORef, GateEntryRecord, GateEntryFormState } from './GateEntry/types';
-import { MOCK_GATE_PO_LIST, MOCK_GATE_ENTRIES, generateGateNo, netWeight } from './GateEntry/helpers';
+import type { PORecord, GateEntryRecord, GateEntryFormState } from './GateEntry/types';
+import { MOCK_TRANSPORT_LIST } from './GateEntry/helpers';
 
 import GateEntrySidebar from './GateEntry/GateEntrySidebar';
+import GateEntryPOSearch from './GateEntry/GateEntryPOSearch';
 import GateEntryForm from './GateEntry/GateEntryForm';
 import GateEntryDetailView from './GateEntry/GateEntryDetailView';
 
 const GateEntryPage: React.FC = () => {
-  useAppState(); // keep for auth context
+  const { userData } = useAppState();
   const { canCreate } = usePermissions();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const [poList, setPOList] = useState<GatePORef[]>([]);
+  const currentUserEcno: string = useMemo(() => {
+    const u = Array.isArray(userData) ? userData[0] : userData;
+    return u?.ecno ?? '';
+  }, [userData]);
+
+  const [poList, setPOList] = useState<PORecord[]>([]);
   const [entries, setEntries] = useState<GateEntryRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<GateEntryRecord | null>(null);
+  const [activePO, setActivePO] = useState<PORecord | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // ── Fetchers (temporary – using local mock data) ────────────────────────────
-  const fetchAll = useCallback(() => {
+  // ── Fetchers ──────────────────────────────────────────────────────────────
+  const fetchAll = useCallback(async () => {
     setLoading(true);
-    setTimeout(() => {
-      setPOList(MOCK_GATE_PO_LIST);
-      setEntries(MOCK_GATE_ENTRIES);
+    try {
+      const [posRes] = await Promise.all([
+        axios.get(gateGetApprovedPOs),
+        // axios.get(gateGetAllEntries),
+      ]);
+      setPOList(normalisePORows(posRes.data?.data ?? []));
+      // setEntries(entriesRes.data?.data ?? []);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to load gate entry data');
+    } finally {
       setLoading(false);
-    }, 300);
+    }
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
-  const handleSelect = (entry: GateEntryRecord) => { setSelected(entry); setIsNew(false); };
-  const handleNew = () => { setSelected(null); setIsNew(true); };
+  const handleSelect = (entry: GateEntryRecord) => {
+    setSelected(entry);
+    setIsNew(false);
+    setActivePO(null);
+  };
 
-  const handleSubmit = (form: GateEntryFormState) => {
-    if (!form.vehicle_no.trim()) { toast.error('Vehicle number is required'); return; }
-    if (!form.entry_date) { toast.error('Entry date is required'); return; }
+  const handleNew = () => {
+    setSelected(null);
+    setActivePO(null);
+    setIsNew(true);
+  };
+
+  const handleSubmit = async (form: GateEntryFormState) => {
+    if (!activePO) return;
+    if (!form.invoice_no.trim()) { toast.error('Invoice number is required'); return; }
+    if (!form.received_qty || Number(form.received_qty) <= 0) { toast.error('Received quantity is required'); return; }
+    if (!form.received_date) { toast.error('Received date is required'); return; }
 
     setSubmitting(true);
-    setTimeout(() => {
-      const po = poList.find(p => String(p.po_basic_sno) === form.po_basic_sno);
-      const newEntry: GateEntryRecord = {
-        gate_entry_sno: Date.now(),
-        gate_entry_no: generateGateNo(),
-        entry_date: form.entry_date,
-        entry_time: form.entry_time,
-        po_basic_sno: po?.po_basic_sno,
-        po_no: po?.po_no,
-        vendor_name: po?.vendor_name,
+    try {
+      const entry: Partial<GateEntryRecord> = {
+        po_basic_sno: activePO.po_basic_sno,
         invoice_no: form.invoice_no,
         invoice_date: form.invoice_date,
-        challan_no: form.challan_no,
-        lr_no: form.lr_no,
-        vehicle_no: form.vehicle_no,
-        driver_name: form.driver_name,
-        driver_mobile: form.driver_mobile,
-        transporter_name: form.transporter_name,
-        gross_weight: Number(form.gross_weight) || undefined,
-        tare_weight: Number(form.tare_weight) || undefined,
-        net_weight: netWeight(form.gross_weight, form.tare_weight) || undefined,
-        no_of_packages: Number(form.no_of_packages) || undefined,
-        material_desc: form.material_desc,
-        remarks: form.remarks,
-        status: 'In',
-        created_by_name: 'Current User',
+        received_qty: Number(form.received_qty),
+        received_date: form.received_date,
+        bundles: form.bundles ? Number(form.bundles) : undefined,
+        transport_name: form.transport_name || undefined,
+        lr_no: form.lr_no || undefined,
+        receiver_ecno: form.receiver_ecno || undefined,
+      };
+
+      let body: Partial<GateEntryRecord> | FormData = entry;
+      if (form.photo) {
+        const fd = new FormData();
+        Object.entries(entry).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) fd.append(key, String(value));
+        });
+        fd.append('photo', form.photo);
+        body = fd;
+      }
+
+      const res = await axios.post(gateCreateEntry, body);
+      const created = res.data?.data?.[0];
+
+      const newEntry: GateEntryRecord = {
+        gate_entry_sno: created.gate_entry_sno,
+        gate_entry_no: created.gate_entry_no,
+        po_basic_sno: activePO.po_basic_sno,
+        po_no: activePO.po_no,
+        vendor_name: activePO.vendor_name,
+        invoice_no: form.invoice_no,
+        invoice_date: form.invoice_date,
+        received_qty: Number(form.received_qty),
+        received_date: form.received_date,
+        bundles: form.bundles ? Number(form.bundles) : undefined,
+        transport_name: form.transport_name || undefined,
+        lr_no: form.lr_no || undefined,
+        receiver_ecno: form.receiver_ecno || undefined,
+        status: created.status ?? 'In',
+        created_by_name: currentUserEcno,
         created_at: new Date().toISOString(),
       };
       setEntries(prev => [newEntry, ...prev]);
       setSelected(newEntry);
+      setActivePO(null);
       setIsNew(false);
       toast.success(`Gate entry ${newEntry.gate_entry_no} recorded`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to save gate entry');
+    } finally {
       setSubmitting(false);
-    }, 400);
+    }
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
-  const showForm = isNew;
+  const showSearch = isNew;
   const showDetail = !isNew && selected;
 
   return (
     <TwoPaneLayout
       icon={DoorOpen}
       title="Gate Entry"
-      description="Security inward register — record PO, invoice, vehicle and weighment when goods arrive at the gate"
+      description="Security inward register — search a PO, review its summary, then record what arrived at the gate"
       sidebarOpen={sidebarOpen}
       onSidebarOpenChange={setSidebarOpen}
       sidebar={
@@ -123,19 +171,26 @@ const GateEntryPage: React.FC = () => {
       }
     >
       <div className="px-4 sm:px-6 py-4 space-y-4">
-        {showForm ? (
-          <GateEntryForm
-            poList={poList}
-            onSubmit={handleSubmit}
-            submitting={submitting}
-          />
+        {showSearch ? (
+          activePO ? (
+            <GateEntryForm
+              po={activePO}
+              transportList={MOCK_TRANSPORT_LIST}
+              receiverEcno={currentUserEcno}
+              onSubmit={handleSubmit}
+              onCancel={() => setActivePO(null)}
+              submitting={submitting}
+            />
+          ) : (
+            <GateEntryPOSearch poList={poList} onStartGateEntry={setActivePO} />
+          )
         ) : showDetail ? (
           <GateEntryDetailView entry={selected!} />
         ) : (
           <EmptyState
             icon={DoorOpen}
             message="Select or Create a Gate Entry"
-            description="Choose a gate entry from the left panel to view details, or click 'New' to record an incoming vehicle"
+            description="Choose a gate entry from the left panel to view details, or click 'New' to search a PO and record an incoming delivery"
           />
         )}
       </div>

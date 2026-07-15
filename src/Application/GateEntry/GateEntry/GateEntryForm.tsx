@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,52 +6,58 @@ import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { DoorOpen, Send, RotateCcw, Truck, FileText, Scale } from 'lucide-react';
-import type { GatePORef, GateEntryFormState } from './types';
-import { today, nowTime, netWeight } from './helpers';
+import { DoorOpen, Send, RotateCcw, Paperclip, X } from 'lucide-react';
+import type { PORecord, TransportOption, GateEntryFormState } from './types';
+import { getPODisplayNo } from '@/Application/GRN/GRN/helpers';
+import { today } from './helpers';
 
 interface GateEntryFormProps {
-  poList: GatePORef[];
+  po: PORecord;
+  transportList: TransportOption[];
+  receiverEcno: string;
   onSubmit: (form: GateEntryFormState) => Promise<void> | void;
-  onReset?: () => void;
+  onCancel?: () => void;
   submitting: boolean;
 }
 
-const blankForm = (): GateEntryFormState => ({
-  entry_date: today(),
-  entry_time: nowTime(),
-  po_basic_sno: '',
+const blankForm = (receiverEcno: string): GateEntryFormState => ({
   invoice_no: '',
   invoice_date: today(),
-  challan_no: '',
+  received_qty: '',
+  received_date: today(),
+  bundles: '',
+  transport_name: '',
   lr_no: '',
-  vehicle_no: '',
-  driver_name: '',
-  driver_mobile: '',
-  transporter_name: '',
-  gross_weight: '',
-  tare_weight: '',
-  no_of_packages: '',
-  material_desc: '',
-  remarks: '',
+  receiver_ecno: receiverEcno,
+  photo: null,
 });
 
-const GateEntryForm: React.FC<GateEntryFormProps> = ({ poList, onSubmit, onReset, submitting }) => {
-  const [form, setForm] = useState<GateEntryFormState>(blankForm);
+const GateEntryForm: React.FC<GateEntryFormProps> = ({
+  po, transportList, receiverEcno, onSubmit, onCancel, submitting,
+}) => {
+  const [form, setForm] = useState<GateEntryFormState>(() => blankForm(receiverEcno));
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
-  useEffect(() => { setForm(blankForm()); }, []);
-
-  const setField = (field: keyof GateEntryFormState, value: string) =>
+  const setField = <K extends keyof GateEntryFormState>(field: K, value: GateEntryFormState[K]) =>
     setForm(prev => ({ ...prev, [field]: value }));
 
-  const net = netWeight(form.gross_weight, form.tare_weight);
+  const handlePhoto = (file: File | null) => {
+    setField('photo', file);
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoPreview(file ? URL.createObjectURL(file) : null);
+  };
 
   const canSubmit =
-    !!form.entry_date && !!form.vehicle_no.trim() && !submitting;
+    !!form.invoice_no.trim() &&
+    !!form.invoice_date &&
+    !!form.received_qty &&
+    Number(form.received_qty) > 0 &&
+    !!form.received_date &&
+    !submitting;
 
   const handleReset = () => {
-    setForm(blankForm());
-    onReset?.();
+    setForm(blankForm(receiverEcno));
+    handlePhoto(null);
   };
 
   return (
@@ -59,121 +65,86 @@ const GateEntryForm: React.FC<GateEntryFormProps> = ({ poList, onSubmit, onReset
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
           <DoorOpen size={16} className="text-primary" />
-          New Gate Entry
+          Gate Entry — {getPODisplayNo(po)}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-5">
-
-        {/* Document / PO basics */}
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-            <FileText size={13} /> Document Details
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Date *</Label>
-              <Input type="date" value={form.entry_date} onChange={e => setField('entry_date', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Time</Label>
-              <Input type="time" value={form.entry_time} onChange={e => setField('entry_time', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1 col-span-2">
-              <Label className="text-xs text-muted-foreground">Purchase Order</Label>
-              <Select value={form.po_basic_sno} onValueChange={v => setField('po_basic_sno', v)}>
-                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select PO (optional)" /></SelectTrigger>
-                <SelectContent>
-                  {poList.map(po => (
-                    <SelectItem key={po.po_basic_sno} value={String(po.po_basic_sno)} className="text-xs">
-                      {po.po_no} — {po.vendor_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Invoice No</Label>
-              <Input placeholder="INV-2026-001" value={form.invoice_no} onChange={e => setField('invoice_no', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Invoice Date</Label>
-              <Input type="date" value={form.invoice_date} onChange={e => setField('invoice_date', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Challan / DC No</Label>
-              <Input placeholder="DC-001" value={form.challan_no} onChange={e => setField('challan_no', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">LR / Consignment No</Label>
-              <Input placeholder="LR-001" value={form.lr_no} onChange={e => setField('lr_no', e.target.value)} className="h-8 text-sm" />
-            </div>
-          </div>
-        </div>
-
-        {/* Vehicle / transport */}
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-            <Truck size={13} /> Vehicle &amp; Transport
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Vehicle No *</Label>
-              <Input placeholder="TN-01-AB-1234" value={form.vehicle_no} onChange={e => setField('vehicle_no', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Driver Name</Label>
-              <Input placeholder="Driver name" value={form.driver_name} onChange={e => setField('driver_name', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Driver Mobile</Label>
-              <Input placeholder="9876543210" value={form.driver_mobile} onChange={e => setField('driver_mobile', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Transporter</Label>
-              <Input placeholder="Transporter name" value={form.transporter_name} onChange={e => setField('transporter_name', e.target.value)} className="h-8 text-sm" />
-            </div>
-          </div>
-        </div>
-
-        {/* Weighment */}
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-            <Scale size={13} /> Weighment
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Gross Wt (kg)</Label>
-              <Input type="number" min={0} value={form.gross_weight} onChange={e => setField('gross_weight', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Tare Wt (kg)</Label>
-              <Input type="number" min={0} value={form.tare_weight} onChange={e => setField('tare_weight', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Net Wt (kg)</Label>
-              <Input readOnly value={net || ''} className="h-8 text-sm bg-muted/50" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">No. of Packages</Label>
-              <Input type="number" min={0} value={form.no_of_packages} onChange={e => setField('no_of_packages', e.target.value)} className="h-8 text-sm" />
-            </div>
-          </div>
-        </div>
-
-        {/* Material / remarks */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Material Description</Label>
-            <Input placeholder="Brief description of goods" value={form.material_desc} onChange={e => setField('material_desc', e.target.value)} className="h-8 text-sm" />
+            <Label className="text-xs text-muted-foreground">Invoice No *</Label>
+            <Input placeholder="INV-2026-001" value={form.invoice_no} onChange={e => setField('invoice_no', e.target.value)} className="h-8 text-sm" />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Security Remarks</Label>
-            <Input placeholder="Seal condition, observations..." value={form.remarks} onChange={e => setField('remarks', e.target.value)} className="h-8 text-sm" />
+            <Label className="text-xs text-muted-foreground">Invoice Date *</Label>
+            <Input type="date" value={form.invoice_date} onChange={e => setField('invoice_date', e.target.value)} className="h-8 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Received Qty *</Label>
+            <Input type="number" min={0} value={form.received_qty} onChange={e => setField('received_qty', e.target.value)} className="h-8 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Received Date *</Label>
+            <Input type="date" value={form.received_date} onChange={e => setField('received_date', e.target.value)} className="h-8 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Bundles</Label>
+            <Input type="number" min={0} placeholder="No. of bundles" value={form.bundles} onChange={e => setField('bundles', e.target.value)} className="h-8 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Transport</Label>
+            <Select value={form.transport_name} onValueChange={v => setField('transport_name', v)}>
+              <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select transport" /></SelectTrigger>
+              <SelectContent>
+                {transportList.map(t => (
+                  <SelectItem key={t.transport_sno} value={t.transport_name} className="text-xs">
+                    {t.transport_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">LR No</Label>
+            <Input placeholder="LR-001" value={form.lr_no} onChange={e => setField('lr_no', e.target.value)} className="h-8 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Receiver Ecno</Label>
+            <Input readOnly value={form.receiver_ecno} className="h-8 text-sm bg-muted/50" />
           </div>
         </div>
 
-        {/* Actions */}
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Photo of Product</Label>
+          {photoPreview ? (
+            <div className="flex items-center gap-3">
+              <img src={photoPreview} alt="Product" className="h-16 w-16 object-cover rounded border" />
+              <div className="flex-1 text-xs text-foreground truncate">{form.photo?.name}</div>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handlePhoto(null)}>
+                <X size={12} className="mr-1" /> Remove
+              </Button>
+            </div>
+          ) : (
+            <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-primary">
+              <span className="inline-flex items-center gap-1.5 border border-primary/40 rounded px-2.5 py-1.5 bg-card hover:bg-primary/10">
+                <Paperclip size={13} /> Choose photo…
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={e => handlePhoto(e.target.files?.[0] ?? null)}
+              />
+            </label>
+          )}
+        </div>
+
         <div className="flex items-center justify-end gap-2 pt-1">
+          {onCancel && (
+            <Button variant="ghost" size="sm" className="text-xs" onClick={onCancel}>
+              Cancel
+            </Button>
+          )}
           <Button variant="outline" size="sm" className="text-xs" onClick={handleReset}>
             <RotateCcw size={13} className="mr-1" /> Reset
           </Button>

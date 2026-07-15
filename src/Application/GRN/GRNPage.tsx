@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,8 +10,8 @@ import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
 import { StatusBadge } from '@/utils/statusUtils';
 
 import type { PORecord, GRNRecord, GRNFormState, GRNItemEntry } from './GRN/types';
-import { getPODisplayNo, formatDate, formatINR, getGRNStatus } from './GRN/helpers';
-import { TEMP_PO_LIST, getTempGRNsForPO } from './GRN/data';
+import { getPODisplayNo, formatDate, formatINR, getGRNStatus, normalisePORows } from './GRN/helpers';
+import { grnSvcGetPendingPOs, grnSvcGetGRNsByPO, grnSvcCreateGRN } from '@/Services/GrnService/grnApi';
 
 import POListSidebar from './GRN/POListSidebar';
 import GRNEntryForm from './GRN/GRNEntryForm';
@@ -83,22 +84,30 @@ const GRNPage: React.FC = () => {
 
   const [submitting, setSubmitting] = useState(false);
 
-  // ── Fetchers (temporary – using local mock data) ────────────────────────────
+  // ── Fetchers ────────────────────────────────────────────────────────────────
 
-  const fetchPOs = useCallback(() => {
+  const fetchPOs = useCallback(async () => {
     setLoadingPO(true);
-    setTimeout(() => {
-      setPOList(TEMP_PO_LIST);
+    try {
+      const res = await axios.get(grnSvcGetPendingPOs);
+      setPOList(normalisePORows(res.data?.data ?? []));
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to load pending POs');
+    } finally {
       setLoadingPO(false);
-    }, 300);
+    }
   }, []);
 
-  const fetchGRNs = useCallback((po_basic_sno: number) => {
+  const fetchGRNs = useCallback(async (po_basic_sno: number) => {
     setLoadingGRNs(true);
-    setTimeout(() => {
-      setGRNList(getTempGRNsForPO(po_basic_sno));
+    try {
+      const res = await axios.get(grnSvcGetGRNsByPO(po_basic_sno));
+      setGRNList(res.data?.data ?? []);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to load GRNs for this PO');
+    } finally {
       setLoadingGRNs(false);
-    }, 200);
+    }
   }, []);
 
   useEffect(() => { fetchPOs(); }, [fetchPOs]);
@@ -125,26 +134,18 @@ const GRNPage: React.FC = () => {
     }
 
     setSubmitting(true);
-    setTimeout(() => {
-      // Build a mock GRN and append it locally
-      const newGRN: GRNRecord = {
-        grn_basic_sno: Date.now(),
-        grn_no: `GRN-TEMP-${Date.now()}`,
+    try {
+      const payload: Partial<GRNRecord> = {
         po_basic_sno: selectedPO.po_basic_sno,
         po_no: selectedPO.po_no,
         vendor_sno: selectedPO.vendor_sno,
         vendor_name: selectedPO.vendor_name,
         received_date: form.received_date,
-        received_by: 'USR-01',
-        received_by_name: 'Current User',
         doc_ref_no: form.doc_ref_no,
         vehicle_no: form.vehicle_no,
         challan_no: form.challan_no,
         remarks: form.remarks,
-        status: 'Pending',
-        created_at: new Date().toISOString(),
-        items: items.map((it, idx) => ({
-          grn_item_sno: Date.now() + idx,
+        items: items.map(it => ({
           po_item_sno: it.po_item_sno,
           prod_sno: it.prod_sno,
           prod_name: it.prod_name,
@@ -158,10 +159,20 @@ const GRNPage: React.FC = () => {
         })),
       };
 
-      setGRNList(prev => [newGRN, ...prev]);
-      toast.success('GRN submitted successfully (temporary data)');
+      const res = await axios.post(grnSvcCreateGRN, payload);
+      const created = res.data?.data?.[0];
+      toast.success(`GRN ${created?.grn_no ?? ''} submitted successfully`.trim());
+
+      // Refresh: the GRN list for this PO and the pending-PO list (received qty changed)
+      await Promise.all([
+        selectedPO.po_basic_sno ? fetchGRNs(selectedPO.po_basic_sno) : Promise.resolve(),
+        fetchPOs(),
+      ]);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to submit GRN');
+    } finally {
       setSubmitting(false);
-    }, 400);
+    }
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────

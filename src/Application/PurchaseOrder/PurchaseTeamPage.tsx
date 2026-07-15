@@ -574,7 +574,10 @@ const PurchaseTeamPage: React.FC = () => {
   }, [confirmedSplitGroups, selectedPR]);
 
   // ── Whether Step 2 (supplier/quotation) is unlocked ───────────────────────
-  const isStep2Unlocked = !!confirmedData && !editingConfirm;
+  // A PR whose quotation is already submitted skips Step 1 and opens on Step 2.
+  const quotationAlreadySubmitted =
+    ['1', 'true', 'y'].includes(String(selectedPR?.isQuotationSubmitted ?? '').toLowerCase());
+  const isStep2Unlocked = quotationAlreadySubmitted || (!!confirmedData && !editingConfirm);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -659,15 +662,19 @@ const PurchaseTeamPage: React.FC = () => {
               </div>
 
               {/* ── Section 1: PO Confirmation ───────────────────────────── */}
-              <POConfirmStep
-                key={`${selectedPR.pr_basic_sno}-${selectedPR.pr_no ?? selectedPR.pr_id ?? ''}`}
-                selectedPR={selectedPR}
-                onConfirmed={handlePOConfirmed}
-                onSplitGroupCreated={handleSplitGroupCreated}
-                saving={savingConfirm}
-                confirmedData={editingConfirm ? null : confirmedData}
-                onEditConfirm={() => setEditingConfirm(true)}
-              />
+              {/* Once a quotation is submitted, Step 1 is locked: show only the
+                  read-only summary (when available) and jump straight to Step 2. */}
+              {(!quotationAlreadySubmitted || !!confirmedData) && (
+                <POConfirmStep
+                  key={`${selectedPR.pr_basic_sno}-${selectedPR.pr_no ?? selectedPR.pr_id ?? ''}`}
+                  selectedPR={selectedPR}
+                  onConfirmed={handlePOConfirmed}
+                  onSplitGroupCreated={handleSplitGroupCreated}
+                  saving={savingConfirm}
+                  confirmedData={editingConfirm && !quotationAlreadySubmitted ? null : confirmedData}
+                  onEditConfirm={quotationAlreadySubmitted ? undefined : () => setEditingConfirm(true)}
+                />
+              )}
 
               {/* ── Sections below are locked until Step 1 is saved ──────── */}
               {!isStep2Unlocked && (

@@ -49,6 +49,7 @@ export interface PRRecord {
   budget_code?: string;
   entered_by?: string;
   created_by?: string;
+  isQuotationSubmitted?: number | boolean | string;
   items?: PRItem[] | string;
   // flat item columns
   prod_name?: string;

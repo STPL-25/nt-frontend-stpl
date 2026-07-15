@@ -33,7 +33,7 @@ const GateEntrySidebar: React.FC<GateEntrySidebarProps> = ({
       (e.gate_entry_no ?? '').toLowerCase().includes(q) ||
       (e.po_no ?? '').toLowerCase().includes(q) ||
       (e.vendor_name ?? '').toLowerCase().includes(q) ||
-      (e.vehicle_no ?? '').toLowerCase().includes(q) ||
+      (e.transport_name ?? '').toLowerCase().includes(q) ||
       (e.invoice_no ?? '').toLowerCase().includes(q)
     );
   }, [entries, search]);
@@ -55,7 +55,7 @@ const GateEntrySidebar: React.FC<GateEntrySidebarProps> = ({
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
           <Input
-            placeholder="Search gate no, PO, vehicle..."
+            placeholder="Search gate no, PO, transport..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-8 h-8 text-sm"
@@ -98,11 +98,11 @@ const GateEntrySidebar: React.FC<GateEntrySidebarProps> = ({
                   {e.vendor_name ?? '—'}
                 </div>
                 <div className="text-xs text-muted-foreground/70 truncate">
-                  {e.po_no ? `PO: ${e.po_no}` : 'No PO'} • {e.vehicle_no ?? '—'}
+                  {e.po_no ? `PO: ${e.po_no}` : 'No PO'} • {e.transport_name ?? '—'}
                 </div>
                 <div className="flex items-center justify-between mt-1">
                   <span className="text-xs text-muted-foreground/70">
-                    {formatDate(e.entry_date)} {e.entry_time}
+                    {formatDate(e.received_date)} {e.invoice_no ? `• ${e.invoice_no}` : ''}
                   </span>
                   <ChevronRight size={14} className="text-muted-foreground/70" />
                 </div>
