@@ -31,6 +31,14 @@ export interface InventoryItem {
   status: InventoryStatus;
   hsn_code?: string;
   description?: string;
+  com_sno?: number;
+  com_name?: string;
+  div_sno?: number;
+  div_name?: string;
+  brn_sno?: number;
+  brn_name?: string;
+  dept_sno?: number;
+  dept_name?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -68,6 +76,14 @@ export interface InventoryFormState {
   status: string;
   hsn_code: string;
   description: string;
+  com_sno: number | '';
+  com_name: string;
+  div_sno: number | '';
+  div_name: string;
+  brn_sno: number | '';
+  brn_name: string;
+  dept_sno: number | '';
+  dept_name: string;
 }
 
 export const EMPTY_INVENTORY_FORM: InventoryFormState = {
@@ -87,6 +103,14 @@ export const EMPTY_INVENTORY_FORM: InventoryFormState = {
   status: 'Active',
   hsn_code: '',
   description: '',
+  com_sno: '',
+  com_name: '',
+  div_sno: '',
+  div_name: '',
+  brn_sno: '',
+  brn_name: '',
+  dept_sno: '',
+  dept_name: '',
 };
 
 export const INVENTORY_CATEGORIES: InventoryCategory[] = [

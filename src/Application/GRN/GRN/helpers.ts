@@ -53,6 +53,20 @@ export const normalisePORows = (rows: any[]): PORecord[] => {
   }));
 };
 
+export const normaliseGRNRows = (rows: any[]): any[] => {
+  if (!Array.isArray(rows)) return [];
+  return rows.map(row => ({
+    ...row,
+    items: (() => {
+      if (Array.isArray(row.items)) return row.items;
+      if (typeof row.items === 'string') {
+        try { return JSON.parse(row.items); } catch { return []; }
+      }
+      return [];
+    })(),
+  }));
+};
+
 export const buildGRNItems = (po: PORecord): GRNItemEntry[] => {
   return getPOItems(po).map(item => {
     const ordered = Number(item.ordered_qty ?? item.qty ?? 0);

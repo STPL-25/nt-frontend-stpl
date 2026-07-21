@@ -11,6 +11,9 @@ import { GRN_SERVICE_BASE } from './base';
 const base = `${GRN_SERVICE_BASE}/api/grn`;
 
 export const grnSvcGetPendingPOs = `${base}/getPendingPOs`;
+// GRN is gated on Gate Entry — this is what GRNPage lists so a GRN can only
+// be raised against a delivery that already cleared the gate.
+export const grnSvcGetPendingGateEntries = `${base}/getPendingGateEntries`;
 export const grnSvcGetGRNsByPO = (po_basic_sno: number) => `${base}/getGRNsByPO/${po_basic_sno}`;
 export const grnSvcCreateGRN = `${base}/createGRN`;
 export const grnSvcGetAllGRNs = `${base}/getAllGRNs`;

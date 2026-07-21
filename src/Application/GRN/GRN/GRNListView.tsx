@@ -21,8 +21,9 @@ const conditionColor: Record<string, string> = {
 
 const GRNCard: React.FC<{ grn: GRNRecord }> = ({ grn }) => {
   const [expanded, setExpanded] = useState(false);
-  const totalReceived = grn.items.reduce((s, it) => s + it.received_qty, 0);
-  const totalRejected = grn.items.reduce((s, it) => s + it.rejected_qty, 0);
+  const items = Array.isArray(grn?.items) ? grn.items : [];
+  const totalReceived = items.reduce((s, it) => s + it.received_qty, 0);
+  const totalRejected = items.reduce((s, it) => s + it.rejected_qty, 0);
 
   return (
     <Card className="border-border">
@@ -63,7 +64,7 @@ const GRNCard: React.FC<{ grn: GRNRecord }> = ({ grn }) => {
               )}
               <div>
                 <span className="text-muted-foreground/70">Items: </span>
-                <span>{grn.items.length}</span>
+                <span>{items.length}</span>
               </div>
               <div>
                 <span className="text-muted-foreground/70">Received: </span>
@@ -94,7 +95,7 @@ const GRNCard: React.FC<{ grn: GRNRecord }> = ({ grn }) => {
         </div>
 
         {/* Item details (expandable) */}
-        {expanded && grn.items.length > 0 && (
+        {expanded && items.length > 0 && (
           <div className="mt-3 border rounded overflow-x-auto">
             <Table>
               <TableHeader>
@@ -109,7 +110,7 @@ const GRNCard: React.FC<{ grn: GRNRecord }> = ({ grn }) => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {grn.items.map((item, idx) => (
+                {items.map((item, idx) => (
                   <TableRow key={idx}>
                     <TableCell className="text-xs text-muted-foreground/70">{idx + 1}</TableCell>
                     <TableCell>

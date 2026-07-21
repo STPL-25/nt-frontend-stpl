@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { PackageCheck, Send, RotateCcw, Info } from 'lucide-react';
+import { PackageCheck, Send, RotateCcw, Info, Save } from 'lucide-react';
 import type { PORecord, GRNFormState, GRNItemEntry } from './types';
 import { today, formatINR, getPODisplayNo, buildGRNItems } from './helpers';
 
@@ -17,25 +17,33 @@ interface GRNEntryFormProps {
   po: PORecord;
   onSubmit: (form: GRNFormState, items: GRNItemEntry[]) => Promise<void>;
   submitting: boolean;
+  /** Present when resuming a saved draft — seeds the form instead of building fresh from the PO. */
+  initialForm?: GRNFormState;
+  initialItems?: GRNItemEntry[];
+  onSaveDraft?: (form: GRNFormState, items: GRNItemEntry[]) => Promise<void>;
+  savingDraft?: boolean;
+  isDraft?: boolean;
 }
 
 const CONDITIONS = ['Good', 'Damaged', 'Partial'] as const;
 
-const GRNEntryForm: React.FC<GRNEntryFormProps> = ({ po, onSubmit, submitting }) => {
-  const [form, setForm] = useState<GRNFormState>({
-    received_date: today(),
-    doc_ref_no: '',
-    vehicle_no: '',
-    challan_no: '',
-    remarks: '',
-  });
+const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
+  po, onSubmit, submitting, initialForm, initialItems, onSaveDraft, savingDraft, isDraft,
+}) => {
+  const [form, setForm] = useState<GRNFormState>(
+    () => initialForm ?? { received_date: today(), doc_ref_no: '', vehicle_no: '', challan_no: '', remarks: '' }
+  );
 
-  const [items, setItems] = useState<GRNItemEntry[]>([]);
+  const [items, setItems] = useState<GRNItemEntry[]>(() => initialItems ?? buildGRNItems(po));
 
-  // Reset form when PO changes
+  // Reset form when the PO changes (not when resuming a draft — the parent
+  // remounts this component with a `key` covering the draft too, so the
+  // useState initializers above already seed the right values on resume).
   useEffect(() => {
+    if (initialForm || initialItems) return;
     setForm({ received_date: today(), doc_ref_no: '', vehicle_no: '', challan_no: '', remarks: '' });
     setItems(buildGRNItems(po));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [po.po_basic_sno]);
 
   const setFormField = (field: keyof GRNFormState, value: string) =>
@@ -64,6 +72,11 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({ po, onSubmit, submitting })
           {allReceived && (
             <Badge className="text-xs bg-green-100 text-green-700 border-green-200 ml-1">
               Fully Received
+            </Badge>
+          )}
+          {isDraft && (
+            <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 border-amber-300 ml-1">
+              Draft
             </Badge>
           )}
         </CardTitle>
@@ -249,6 +262,18 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({ po, onSubmit, submitting })
                 >
                   <RotateCcw size={13} className="mr-1" /> Reset
                 </Button>
+                {onSaveDraft && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                    disabled={submitting || savingDraft}
+                    onClick={() => onSaveDraft(form, items)}
+                  >
+                    <Save size={13} className="mr-1" />
+                    {savingDraft ? 'Saving…' : isDraft ? 'Update Draft' : 'Save Draft'}
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   className="bg-green-600 hover:bg-green-700 text-xs"

@@ -79,6 +79,17 @@ const STATUS_DEFS: Record<string, StatusDef> = {
   REJECTED: { label: "Rejected", tone: "danger" },
   REVERSED: { label: "Reversed", tone: "danger" },
 
+  // Stock levels (Inventory)
+  "IN STOCK": { label: "In Stock", tone: "success" },
+  "LOW STOCK": { label: "Low Stock", tone: "warning" },
+  "OUT OF STOCK": { label: "Out of Stock", tone: "danger" },
+  OVERSTOCKED: { label: "Overstocked", tone: "warning" },
+  DISCONTINUED: { label: "Discontinued", tone: "neutral" },
+
+  // Stock requests (StockRequestPage / StockIssuePage)
+  ISSUED: { label: "Issued", tone: "success" },
+  "PARTIALLY ISSUED": { label: "Partially Issued", tone: "warning" },
+
   // Document lifecycle
   D: { label: "Draft", tone: "info" },
   DRAFT: { label: "Draft", tone: "info" },

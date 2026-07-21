@@ -13,3 +13,4 @@ export * from './base';
 export * from './gateEntryApi';
 export * from './grnApi';
 export * from './inventoryApi';
+export * from './stockRequestApi';

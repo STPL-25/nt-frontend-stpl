@@ -58,6 +58,24 @@ export const SOCKET_JOIN_PURCHASE_TEAM  = "join-purchase-team";
 export const SOCKET_LEAVE_PURCHASE_TEAM = "leave-purchase-team";
 export const SOCKET_PT_SPLIT_UPDATED    = "pt:split:updated";
 
+// ── GRN / Gate Entry room + real-time events ──────────────────────────────────
+export const SOCKET_JOIN_GRN  = "join-grn";
+export const SOCKET_LEAVE_GRN = "leave-grn";
+export const SOCKET_GRN_CREATED             = "grn:created";
+export const SOCKET_GRN_DRAFT_NEW           = "grn:draft:new";
+export const SOCKET_GRN_DRAFT_UPDATED       = "grn:draft:updated";
+export const SOCKET_GRN_DRAFT_DELETED       = "grn:draft:deleted";
+export const SOCKET_GRN_DRAFT_SUBMITTED     = "grn:draft:submitted";
+export const SOCKET_GATE_ENTRY_CREATED        = "gate_entry:created";
+export const SOCKET_GATE_ENTRY_STATUS_UPDATED = "gate_entry:status_updated";
+
+// ── Inventory room + real-time events ─────────────────────────────────────────
+export const SOCKET_JOIN_INVENTORY  = "join-inventory";
+export const SOCKET_LEAVE_INVENTORY = "leave-inventory";
+export const SOCKET_INVENTORY_UPDATED = "inventory:updated";
+// Stock requests share the inventory room (issuing changes stock)
+export const SOCKET_STOCK_REQUEST_UPDATED = "stockrequest:updated";
+
 // ── User / permission events ──────────────────────────────────────────────────
 export const SOCKET_PERMISSIONS_UPDATED          = "permissions:updated";
 export const SOCKET_USER_NEW                     = "user:new";

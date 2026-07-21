@@ -96,12 +96,15 @@ const POListSidebar: React.FC<POListSidebarProps> = ({
                 <div className="text-xs text-foreground font-medium truncate">
                   {po.vendor_name ?? po.company_name ?? '—'}
                 </div>
+                {po.gate_entry_no && (
+                  <div className="text-xs text-muted-foreground/70 truncate">Gate: {po.gate_entry_no}</div>
+                )}
                 {po.pr_no && (
                   <div className="text-xs text-muted-foreground/70 truncate">PR: {po.pr_no}</div>
                 )}
                 <div className="flex items-center justify-between mt-1">
                   <span className="text-xs text-muted-foreground/70">
-                    {formatDate(po.po_date ?? po.required_date)}
+                    {formatDate(po.gate_received_date ?? po.po_date ?? po.required_date)}
                   </span>
                   <ChevronRight size={14} className="text-muted-foreground/70" />
                 </div>

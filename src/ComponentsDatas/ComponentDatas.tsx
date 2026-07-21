@@ -25,6 +25,8 @@ import { lazy, LazyExoticComponent, ComponentType } from "react";
  export const GRNPage = lazy(() => import("../Application/GRN/GRNPage"));
  export const POAmendmentPage = lazy(() => import("../Application/POAmendment/POAmendmentPage"));
  export const InventoryPage = lazy(() => import("../Application/Inventory/InventoryPage"));
+ export const StockRequestPage = lazy(() => import("../Application/StockRequest/StockRequestPage"));
+ export const StockIssuePage = lazy(() => import("../Application/StockRequest/StockIssuePage"));
  export const AccountEntryPage = lazy(() => import("../Application/AccountEntry/AccountEntryPage"));
  export const AccountsBillPage = lazy(() => import("../Application/Accounts/AccountsBillPage"));
  export const PaymentPage = lazy(() => import("../Application/Payment/PaymentPage"));
@@ -58,6 +60,8 @@ export const sectionComponents: SectionComponentsMap = {
   GRNPage,
   POAmendmentPage,
   InventoryPage,
+  StockRequestPage,
+  StockIssuePage,
   AccountEntryPage,
   AccountsBillPage,
   PaymentPage,

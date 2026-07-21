@@ -46,6 +46,15 @@ export interface PORecord {
   // flat item columns (when PO has single item)
   prod_name?: string;
   unit_name?: string;
+  // Gate Entry linkage — present when this row came from
+  // sp_nt_GetPendingGateEntriesForGRN (GRN is gated on Gate Entry).
+  gate_entry_sno?: number;
+  gate_entry_no?: string;
+  invoice_no?: string;
+  invoice_date?: string;
+  gate_received_qty?: number;
+  gate_received_date?: string;
+  gate_entry_status?: string;
 }
 
 export interface GRNItem {

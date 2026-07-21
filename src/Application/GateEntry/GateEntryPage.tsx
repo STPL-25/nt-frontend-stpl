@@ -8,6 +8,7 @@ import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
 import axios from 'axios';
 import { gateGetApprovedPOs, gateGetAllEntries, gateCreateEntry } from '@/Services/GrnService/gateEntryApi';
 import { normalisePORows } from '@/Application/GRN/GRN/helpers';
+import { socket, SOCKET_JOIN_GRN, SOCKET_LEAVE_GRN, SOCKET_GATE_ENTRY_CREATED } from '@/Services/Socket';
 
 import type { PORecord, GateEntryRecord, GateEntryFormState } from './GateEntry/types';
 import { MOCK_TRANSPORT_LIST } from './GateEntry/helpers';
@@ -53,6 +54,18 @@ const GateEntryPage: React.FC = () => {
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Real-time: join the shared GRN/Gate Entry room so entries created by
+  // other users (or other tabs) are reflected without a manual refresh.
+  useEffect(() => {
+    if (!socket) return;
+    socket.emit(SOCKET_JOIN_GRN);
+    socket.on(SOCKET_GATE_ENTRY_CREATED, fetchAll);
+    return () => {
+      socket.emit(SOCKET_LEAVE_GRN);
+      socket.off(SOCKET_GATE_ENTRY_CREATED, fetchAll);
+    };
+  }, [fetchAll]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleSelect = (entry: GateEntryRecord) => {
