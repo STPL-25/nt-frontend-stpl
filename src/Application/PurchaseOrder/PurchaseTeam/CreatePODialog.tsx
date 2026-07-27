@@ -1,14 +1,25 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
-import { Package, Send, Loader2, Download, CheckCircle2, FileText } from 'lucide-react';
+import { Package, Send, Loader2, CheckCircle2, Mail } from 'lucide-react';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { usePOFormFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
+import usePost from '@/hooks/usePostHook';
+import { purchaseTeamSendPOEmail } from '@/Services/Api';
 import type { PRRecord, Quotation, POFormState } from './types';
 import { formatINR, getQuotationTotal, getPRDisplayNo, today } from './helpers';
-import { generatePOPDF, openPOPDFWindow } from './generatePOPDF';
+import { buildPOPdfBlob } from './generatePOPdfBlob';
+
+/** createPOFromQuotation's response is either a single `{data:[row]}` payload
+ * or (split-group case) an array of such payloads — pull the first result row. */
+function extractPOResultRow(response: unknown): { po_no?: string; vendor_sno?: number } | null {
+  const payload = Array.isArray(response) ? response[0] : response;
+  const row = (payload as any)?.data?.[0] ?? (payload as any)?.decrypted?.data?.[0];
+  return row ?? null;
+}
 
 interface CreatePODialogProps {
   open: boolean;
@@ -35,8 +46,7 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
   });
   const [creating, setCreating] = useState(false);
   const [poCreated, setPOCreated] = useState(false);
-  const [savedForm, setSavedForm] = useState<POFormState | null>(null);
-  const [savedPOResponse, setSavedPOResponse] = useState<unknown>(null);
+  const { postData: postSendPOEmail } = usePost();
 
   React.useEffect(() => {
     if (open) {
@@ -48,8 +58,6 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
         delivery_address: '',
       });
       setPOCreated(false);
-      setSavedForm(null);
-      setSavedPOResponse(null);
     }
   }, [open, selectedPR, selectedQuotation]);
 
@@ -57,39 +65,49 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
     if (!selectedPR || !selectedQuotation) return;
 
     const poForm = { ...form };
-    const pdfWindow = openPOPDFWindow();
 
     setCreating(true);
     try {
       const poResponse = await onCreatePO(poForm);
-      setSavedForm(poForm);
-      setSavedPOResponse(poResponse);
       setPOCreated(true);
-      if (pdfWindow) {
-        generatePOPDF({
-          pr: selectedPR,
-          quotation: selectedQuotation,
-          form: poForm,
-          apiResponse: poResponse,
-          targetWindow: pdfWindow,
-        });
-      }
+      await emailPOPdf(poForm, poResponse);
     } catch {
-      pdfWindow?.close();
       // error already shown via toast in parent
     } finally {
       setCreating(false);
     }
   };
 
-  const handleDownloadPDF = () => {
-    if (!selectedPR || !selectedQuotation || !savedForm) return;
-    generatePOPDF({
-      pr: selectedPR,
-      quotation: selectedQuotation,
-      form: savedForm,
-      apiResponse: savedPOResponse,
-    });
+  // Generates the PO as a PDF in the browser and uploads it so the backend
+  // can email it to the supplier — the PDF is never downloaded locally.
+  const emailPOPdf = async (poForm: POFormState, poResponse: unknown) => {
+    if (!selectedPR || !selectedQuotation) return;
+
+    const resultRow = extractPOResultRow(poResponse);
+    const poNo = resultRow?.po_no;
+    const vendorSno = resultRow?.vendor_sno ?? selectedQuotation.vendor_sno;
+    if (!poNo || !vendorSno) return;
+
+    try {
+      const pdfBlob = buildPOPdfBlob({ pr: selectedPR, quotation: selectedQuotation, form: poForm, poNo });
+
+      const fd = new FormData();
+      fd.append('vendor_sno', String(vendorSno));
+      fd.append('po_no', poNo);
+      fd.append('po_date', poForm.po_date);
+      fd.append('required_date', poForm.required_date);
+      fd.append('terms_conditions', poForm.terms_conditions ?? '');
+      fd.append('delivery_address', poForm.delivery_address ?? '');
+      fd.append('items', JSON.stringify(selectedQuotation.items));
+      fd.append('po_pdf', pdfBlob, `${poNo}.pdf`);
+
+      await postSendPOEmail(purchaseTeamSendPOEmail, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        withCredentials: true,
+      });
+    } catch {
+      toast.warning('PO created, but emailing the PDF to the supplier failed.');
+    }
   };
 
   const handleClose = () => {
@@ -145,9 +163,9 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
             </div>
 
             <div className="rounded-lg border border-primary/20 bg-primary/10 p-3 text-sm flex items-start gap-2">
-              <FileText size={15} className="text-primary mt-0.5 shrink-0" />
+              <Mail size={15} className="text-primary mt-0.5 shrink-0" />
               <p className="text-primary">
-                Download the Purchase Order as a PDF to share with your supplier or for record-keeping.
+                The Purchase Order PDF has been emailed to the supplier.
               </p>
             </div>
           </div>
@@ -195,16 +213,7 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
 
         <DialogFooter>
           {poCreated ? (
-            <>
-              <Button variant="outline" onClick={handleClose}>Close</Button>
-              <Button
-                onClick={handleDownloadPDF}
-                className="bg-primary hover:bg-primary/90"
-              >
-                <Download size={16} className="mr-1" />
-                Download PO as PDF
-              </Button>
-            </>
+            <Button onClick={handleClose} className="bg-primary hover:bg-primary/90">Close</Button>
           ) : (
             <>
               <Button variant="outline" onClick={handleClose}>Cancel</Button>

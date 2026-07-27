@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
+import { toast } from "sonner";
 import {
   ChevronRight, Mail, Phone, Building2, MapPin, CreditCard,
   FileText, User, Hash, X, Download, ExternalLink, ShieldCheck,
   Landmark, BadgeCheck, Calendar, Eye, Edit2, Trash2, Menu,
-  Users,
+  Users, Send, Loader2,
 } from "lucide-react";
 import { usePermissions } from "@/globalState/hooks/usePermissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +16,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import useFetch from "@/hooks/useFetchHook";
+import usePost from "@/hooks/usePostHook";
 import { apiGetAllKycDatas } from "@/Services/Api";
+import { supplierInvite } from "@/Services/SupplierService";
 import { KYCData, APIResponse } from "./types/KYCDataViewType";
 import { LoadingState, ErrorState, EmptyState } from "@/CustomComponent/PageComponents";
 import { StatusBadge, getStatusInfo } from "@/utils/statusUtils";
@@ -176,6 +179,28 @@ function KYCListContent({
 function KYCDetailPanel({ supplier }: { supplier: KYCData }) {
   const { canEdit, canDelete } = usePermissions();
   const [docPreview, setDocPreview] = useState<DocPreview | null>(null);
+  const { postData: sendInvite, loading: invitingPortal } = usePost();
+
+  // Emails the supplier their portal credentials. Enabled once a supplier code
+  // has been generated. Staff-authed & crypto-exempt — /api/supplier skips the
+  // global axios encryption interceptor (see main.tsx).
+  const handleSendInvite = async () => {
+    if (!supplier.email) {
+      toast.error("This supplier has no email on file.");
+      return;
+    }
+    try {
+      await sendInvite(supplierInvite, {
+        kyc_basic_info_sno: supplier.kyc_basic_info_sno,
+        login_email: supplier.email,
+        company_name: supplier.company_name,
+        supp_code: supplier.supp_code,
+      });
+      toast.success(`Portal invite sent to ${supplier.email}`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || "Failed to send portal invite");
+    }
+  };
 
   const addresses = useMemo(() => parseJSON(supplier.kyc_address), [supplier]);
   const bankInfo  = useMemo(() => parseJSON(supplier.kyc_bank_info), [supplier]);
@@ -201,6 +226,22 @@ function KYCDetailPanel({ supplier }: { supplier: KYCData }) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-xl sm:text-2xl font-bold">KYC Details</h1>
         <div className="flex items-center gap-2">
+          {supplier.supp_code && (
+            <Button
+              size="sm"
+              className="h-8 gap-1.5 text-xs"
+              onClick={handleSendInvite}
+              disabled={invitingPortal || !supplier.email}
+              title={supplier.email ? `Email portal login to ${supplier.email}` : "No email on file"}
+            >
+              {invitingPortal ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Send className="h-3.5 w-3.5" />
+              )}
+              {invitingPortal ? "Sending…" : "Send Portal Invite"}
+            </Button>
+          )}
           {canEdit("KYCDataView") && (
             <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs">
               <Edit2 className="h-3.5 w-3.5" /> Edit

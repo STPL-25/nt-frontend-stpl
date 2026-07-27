@@ -108,6 +108,7 @@ export const purchaseTeamGetQuotations = (prBasicSno: number,pr_no: string) =>
   `${baseUrl}/api/purchase_team/getSupplierQuotations/${prBasicSno}/${pr_no}`;
 export const purchaseTeamSelectQuotation = baseUrl + "/api/purchase_team/selectQuotation";
 export const purchaseTeamCreatePO = baseUrl + "/api/purchase_team/createPOFromQuotation";
+export const purchaseTeamSendPOEmail = baseUrl + "/api/purchase_team/sendPOEmail";
 export const purchaseTeamUpdateItemQty = baseUrl + "/api/purchase_team/updateItemQuantity";
 export const purchaseTeamSaveQuotationDraft = baseUrl + "/api/purchase_team/saveQuotationDraft";
 export const purchaseTeamGetQuotationDrafts = baseUrl + "/api/purchase_team/getQuotationDrafts";

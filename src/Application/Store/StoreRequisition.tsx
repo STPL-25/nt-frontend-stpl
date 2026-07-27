@@ -1,774 +1,572 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import axios from 'axios';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow,} from '@/components/ui/table';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { StatusBadge } from '@/utils/statusUtils';
 import { PageHeader } from '@/CustomComponent/PageComponents';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Search,
-  Plus,
-  Trash2,
-  Send,
-  Package,
-  TrendingUp,
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  FileText,
-  Eye,
-  Filter,
+  Search, Plus, Trash2, Send, RefreshCw, PackageOpen, ShoppingCart, Eye, XCircle, Loader2,
 } from 'lucide-react';
-import { toast } from 'sonner';
-interface StockItem {
-  id: number;
-  itemCode: string;
-  itemName: string;
-  category: string;
-  availableQuantity: number;
-  unit: string;
-  location: string;
-  reorderLevel: number;
-}
 
-interface RequisitionItem {
-  id: number;
-  stockItem: StockItem;
-  requestedQuantity: number;
-}
+import { useAppState } from '@/globalState/hooks/useAppState';
+import { usePermissions } from '@/globalState/hooks/usePermissions';
+import type { InventoryItem } from '@/Application/Inventory/Inventory/types';
+import { invSvcGetItems } from '@/Services/GrnService/inventoryApi';
+import {
+  srGetRequests, srGetRequestItems, srCreateRequest, srCancelRequest,
+} from '@/Services/GrnService/stockRequestApi';
+import {
+  socket, SOCKET_JOIN_INVENTORY, SOCKET_LEAVE_INVENTORY, SOCKET_STOCK_REQUEST_UPDATED,
+  SOCKET_INVENTORY_UPDATED,
+} from '@/Services/Socket';
 
-interface Requisition {
-  id: number;
-  requisitionNo: string;
-  requestDate: string;
-  status: 'Pending' | 'Approved' | 'Rejected' | 'Partially Approved';
-  items: number;
-  remarks?: string;
-}
-
-interface DashboardStats {
-  totalRequisitions: number;
-  pendingRequisitions: number;
-  approvedRequisitions: number;
-  rejectedRequisitions: number;
-}
+import type { StockRequest, StockRequestLine, CartLine } from '@/Application/StockRequest/types';
 
 const StoreRequisitionDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('new-requisition');
-  const [stockItems, setStockItems] = useState<StockItem[]>([]);
-  const [filteredStocks, setFilteredStocks] = useState<StockItem[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [requisitionItems, setRequisitionItems] = useState<RequisitionItem[]>([]);
-  const [remarks, setRemarks] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [myRequisitions, setMyRequisitions] = useState<Requisition[]>([]);
-  const [stats, setStats] = useState<DashboardStats>({
-    totalRequisitions: 0,
-    pendingRequisitions: 0,
-    approvedRequisitions: 0,
-    rejectedRequisitions: 0,
-  });
-  const [selectedRequisition, setSelectedRequisition] = useState<Requisition | null>(null);
-  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const { userData } = useAppState();
+  const { canCreate } = usePermissions();
 
-  useEffect(() => {
-    fetchDashboardData();
+  const currentUserEcno: string = useMemo(() => {
+    const u = Array.isArray(userData) ? userData[0] : userData;
+    return u?.ecno ?? '';
+  }, [userData]);
+
+  const [activeTab, setActiveTab] = useState('new-request');
+
+  // ── New Request state ────────────────────────────────────────────────────
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [purpose, setPurpose] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  // ── My Requests state ────────────────────────────────────────────────────
+  const [requests, setRequests] = useState<StockRequest[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<StockRequest | null>(null);
+  const [requestLines, setRequestLines] = useState<StockRequestLine[]>([]);
+  const [loadingLines, setLoadingLines] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  // ── Fetchers ─────────────────────────────────────────────────────────────
+
+  const fetchItems = useCallback(async () => {
+    setLoadingItems(true);
+    try {
+      const res = await axios.get(invSvcGetItems, { params: { status: 'Active' } });
+      setItems(res.data?.data ?? []);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to load stock items');
+    } finally {
+      setLoadingItems(false);
+    }
   }, []);
 
-  const fetchDashboardData = async () => {
-    setLoading(true);
+  const fetchMyRequests = useCallback(async () => {
+    if (!currentUserEcno) return;
+    setLoadingRequests(true);
+    try {
+      const res = await axios.get(srGetRequests, { params: { requested_by: currentUserEcno } });
+      setRequests(res.data?.data ?? []);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to load your requisitions');
+    } finally {
+      setLoadingRequests(false);
+    }
+  }, [currentUserEcno]);
 
-    // Sample stock data
-    const sampleStockData: StockItem[] = [
-      {
-        id: 1,
-        itemCode: 'ITM001',
-        itemName: 'Office Paper A4',
-        category: 'Stationery',
-        availableQuantity: 500,
-        unit: 'Reams',
-        location: 'Store-A',
-        reorderLevel: 100,
-      },
-      {
-        id: 2,
-        itemCode: 'ITM002',
-        itemName: 'Laptop Dell Latitude',
-        category: 'Electronics',
-        availableQuantity: 15,
-        unit: 'Units',
-        location: 'Store-B',
-        reorderLevel: 5,
-      },
-      {
-        id: 3,
-        itemCode: 'ITM003',
-        itemName: 'Office Chair',
-        category: 'Furniture',
-        availableQuantity: 25,
-        unit: 'Units',
-        location: 'Store-C',
-        reorderLevel: 10,
-      },
-      {
-        id: 4,
-        itemCode: 'ITM004',
-        itemName: 'Printer Ink Cartridge',
-        category: 'Stationery',
-        availableQuantity: 100,
-        unit: 'Pieces',
-        location: 'Store-A',
-        reorderLevel: 20,
-      },
-      {
-        id: 5,
-        itemCode: 'ITM005',
-        itemName: 'Whiteboard Marker',
-        category: 'Stationery',
-        availableQuantity: 200,
-        unit: 'Pieces',
-        location: 'Store-A',
-        reorderLevel: 50,
-      },
-      {
-        id: 6,
-        itemCode: 'ITM006',
-        itemName: 'USB Flash Drive 32GB',
-        category: 'Electronics',
-        availableQuantity: 45,
-        unit: 'Pieces',
-        location: 'Store-B',
-        reorderLevel: 15,
-      },
-    ];
+  const openRequestDetail = useCallback(async (request: StockRequest) => {
+    setSelectedRequest(request);
+    setLoadingLines(true);
+    try {
+      const res = await axios.get(srGetRequestItems(request.request_sno));
+      setRequestLines(res.data?.data ?? []);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to load requisition items');
+    } finally {
+      setLoadingLines(false);
+    }
+  }, []);
 
-    // Sample requisition history
-    const sampleRequisitions: Requisition[] = [
-      {
-        id: 1,
-        requisitionNo: 'REQ-2026-001',
-        requestDate: '2026-01-08',
-        status: 'Pending',
-        items: 3,
-        remarks: 'Urgent requirement for Q1 2026',
-      },
-      {
-        id: 2,
-        requisitionNo: 'REQ-2026-002',
-        requestDate: '2026-01-07',
-        status: 'Approved',
-        items: 5,
-      },
-      {
-        id: 3,
-        requisitionNo: 'REQ-2026-003',
-        requestDate: '2026-01-05',
-        status: 'Rejected',
-        items: 2,
-        remarks: 'Budget constraints',
-      },
-      {
-        id: 4,
-        requisitionNo: 'REQ-2025-125',
-        requestDate: '2025-12-28',
-        status: 'Approved',
-        items: 4,
-      },
-      {
-        id: 5,
-        requisitionNo: 'REQ-2025-120',
-        requestDate: '2025-12-20',
-        status: 'Partially Approved',
-        items: 6,
-      },
-    ];
+  useEffect(() => { fetchItems(); }, [fetchItems]);
+  useEffect(() => { fetchMyRequests(); }, [fetchMyRequests]);
 
-    setStockItems(sampleStockData);
-    setFilteredStocks(sampleStockData);
-    setMyRequisitions(sampleRequisitions);
-
-    // Calculate stats
-    setStats({
-      totalRequisitions: sampleRequisitions.length,
-      pendingRequisitions: sampleRequisitions.filter((r) => r.status === 'Pending').length,
-      approvedRequisitions: sampleRequisitions.filter((r) => r.status === 'Approved').length,
-      rejectedRequisitions: sampleRequisitions.filter((r) => r.status === 'Rejected').length,
-    });
-
-    setLoading(false);
-  };
-
+  // ── Real-time: status changes on my requisitions (issued / rejected) ─────
   useEffect(() => {
-    let filtered = stockItems;
+    if (!socket) return;
+    socket.emit(SOCKET_JOIN_INVENTORY);
 
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter((item) => item.category === selectedCategory);
-    }
-
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (item) =>
-          item.itemName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.itemCode.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    setFilteredStocks(filtered);
-  }, [searchTerm, selectedCategory, stockItems]);
-
-  const categories = Array.from(new Set(stockItems.map((item) => item.category)));
-
-  const addToRequisition = (stock: StockItem) => {
-    const exists = requisitionItems.find((item) => item.stockItem.id === stock.id);
-
-    if (exists) {
-    
-      return;
-    }
-
-    const newItem: RequisitionItem = {
-      id: Date.now(),
-      stockItem: stock,
-      requestedQuantity: 1,
+    const onRequestUpdated = (payload: { request?: StockRequest; action?: string }) => {
+      const req = payload?.request;
+      if (!req || req.requested_by !== currentUserEcno) return;
+      fetchMyRequests();
+      if (payload.action === 'issued') toast.info(`Requisition ${req.request_no} has been issued`);
+      if (payload.action === 'rejected') toast.warning(`Requisition ${req.request_no} was rejected`);
     };
 
-    setRequisitionItems([...requisitionItems, newItem]);
-  };
+    socket.on(SOCKET_STOCK_REQUEST_UPDATED, onRequestUpdated);
+    return () => {
+      socket.emit(SOCKET_LEAVE_INVENTORY);
+      socket.off(SOCKET_STOCK_REQUEST_UPDATED, onRequestUpdated);
+    };
+  }, [currentUserEcno, fetchMyRequests]);
 
-  const updateQuantity = (id: number, quantity: number) => {
-    setRequisitionItems(
-      requisitionItems.map((item) =>
-        item.id === id ? { ...item, requestedQuantity: quantity } : item
-      )
+  // ── Real-time: live stock changes while browsing (adjustments, GRN receipts,
+  // other users' issues) — keeps "Available" quantities and the cart's caps
+  // in sync without a manual refresh.
+  useEffect(() => {
+    if (!socket) return;
+
+    const onInventoryUpdated = (payload: { item?: any; movement?: any; action?: string }) => {
+      const { item, movement, action } = payload ?? {};
+
+      if (action === 'created' || action === 'updated') {
+        fetchItems();
+        return;
+      }
+
+      if (action === 'deleted' && item?.item_sno) {
+        setItems(prev => prev.filter(i => i.item_sno !== item.item_sno));
+        setCart(prev => prev.filter(l => l.item_sno !== item.item_sno));
+        return;
+      }
+
+      if ((action === 'adjusted' || action === 'grn_receipt' || action === 'issued') && movement?.item_sno) {
+        setItems(prev => prev.map(i => i.item_sno === movement.item_sno
+          ? { ...i, current_stock: movement.balance_after, warehouse: movement.warehouse ?? i.warehouse }
+          : i));
+
+        setCart(prev => prev.map(l => l.item_sno === movement.item_sno
+          ? {
+            ...l,
+            current_stock: movement.balance_after,
+            quantity: Math.min(l.quantity, movement.balance_after),
+          }
+          : l));
+      }
+    };
+
+    socket.on(SOCKET_INVENTORY_UPDATED, onInventoryUpdated);
+    return () => { socket.off(SOCKET_INVENTORY_UPDATED, onInventoryUpdated); };
+  }, [fetchItems]);
+
+  // ── Derived ──────────────────────────────────────────────────────────────
+
+  const categories = useMemo(
+    () => Array.from(new Set(items.map(i => i.category).filter(Boolean))).sort(),
+    [items],
+  );
+
+  const availableItems = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return items.filter(i =>
+      i.current_stock > 0 &&
+      (categoryFilter === 'all' || i.category === categoryFilter) &&
+      (!term || i.item_name.toLowerCase().includes(term) || i.item_code.toLowerCase().includes(term)),
     );
+  }, [items, searchTerm, categoryFilter]);
+
+  const stats = useMemo(() => ({
+    total: requests.length,
+    pending: requests.filter(r => r.status === 'Pending').length,
+    issued: requests.filter(r => r.status === 'Issued' || r.status === 'Partially Issued').length,
+    rejected: requests.filter(r => r.status === 'Rejected').length,
+  }), [requests]);
+
+  // ── Cart handlers ────────────────────────────────────────────────────────
+
+  const addToCart = (item: InventoryItem) => {
+    if (!item.item_sno) return;
+    if (cart.some(l => l.item_sno === item.item_sno)) {
+      toast.info(`${item.item_name} is already in the requisition`);
+      return;
+    }
+    setCart(prev => [...prev, {
+      item_sno: item.item_sno!,
+      item_code: item.item_code,
+      item_name: item.item_name,
+      uom: item.uom,
+      current_stock: item.current_stock,
+      quantity: 1,
+      remarks: '',
+    }]);
   };
 
-  const removeFromRequisition = (id: number) => {
-    setRequisitionItems(requisitionItems.filter((item) => item.id !== id));
-  };
+  const updateCartLine = (item_sno: number, patch: Partial<CartLine>) =>
+    setCart(prev => prev.map(l => l.item_sno === item_sno ? { ...l, ...patch } : l));
+
+  const removeFromCart = (item_sno: number) =>
+    setCart(prev => prev.filter(l => l.item_sno !== item_sno));
 
   const handleSubmit = async () => {
-    if (requisitionItems.length === 0) {
-     
-      return;
+    if (cart.length === 0) { toast.error('Add at least one item to the requisition'); return; }
+    for (const line of cart) {
+      if (!line.quantity || line.quantity <= 0) {
+        toast.error(`Enter a quantity for ${line.item_name}`); return;
+      }
+      if (line.quantity > line.current_stock) {
+        toast.error(`${line.item_name}: requested ${line.quantity} exceeds available ${line.current_stock}`);
+        return;
+      }
     }
-
-    const invalidItems = requisitionItems.filter(
-      (item) =>
-        item.requestedQuantity <= 0 ||
-        item.requestedQuantity > item.stockItem.availableQuantity
-    );
-
-    if (invalidItems.length > 0) {
-      toast.error('Invalid Quantities', { description: 'Please check requested quantities.' });
-      return;
-    }
-
-    setLoading(true);
-
-    const requisitionData = {
-      items: requisitionItems.map((item) => ({
-        itemId: item.stockItem.id,
-        itemCode: item.stockItem.itemCode,
-        itemName: item.stockItem.itemName,
-        requestedQuantity: item.requestedQuantity,
-        unit: item.stockItem.unit,
-      })),
-      remarks,
-      requestDate: new Date().toISOString(),
-    };
-
+    setSubmitting(true);
     try {
-      // Replace with actual API call
-      console.log('Requisition submitted:', requisitionData);
-
-    
-
-      setRequisitionItems([]);
-      setRemarks('');
+      const res = await axios.post(srCreateRequest, {
+        purpose: purpose.trim() || undefined,
+        items: cart.map(l => ({
+          item_sno: l.item_sno,
+          quantity: l.quantity,
+          remarks: l.remarks.trim() || undefined,
+        })),
+      });
+      const created = res.data?.data?.[0];
+      toast.success(`Requisition ${created?.request_no ?? ''} submitted`);
+      setCart([]);
+      setPurpose('');
+      fetchMyRequests();
       setActiveTab('my-requisitions');
-      fetchDashboardData();
-    } catch (error) {
-      
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to submit requisition');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  const getStatusBadge = (status: string) => <StatusBadge status={status} />;
-
-  const viewRequisitionDetails = (requisition: Requisition) => {
-    setSelectedRequisition(requisition);
-    setShowDetailsDialog(true);
+  const handleCancel = async (request: StockRequest) => {
+    if (!window.confirm(`Cancel requisition ${request.request_no}?`)) return;
+    setCancelling(true);
+    try {
+      await axios.put(srCancelRequest(request.request_sno), {});
+      toast.success(`Requisition ${request.request_no} cancelled`);
+      setSelectedRequest(null);
+      fetchMyRequests();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to cancel requisition');
+    } finally {
+      setCancelling(false);
+    }
   };
+
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col min-h-full bg-muted/20">
       <PageHeader
-        icon={FileText}
+        icon={PackageOpen}
         title="Store Requisition"
-        description="Raise and track store material requisitions"
+        description="Raise and track store material requisitions — sourced from live inventory"
       >
-        <Badge variant="outline" className="text-sm bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground">
-          User ID: EMP001
-        </Badge>
+        <Button
+          variant="outline"
+          size="sm"
+          className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+          onClick={() => { fetchItems(); fetchMyRequests(); }}
+          disabled={loadingItems || loadingRequests}
+        >
+          <RefreshCw size={15} className={loadingItems || loadingRequests ? 'animate-spin mr-1' : 'mr-1'} />
+          Refresh
+        </Button>
       </PageHeader>
-      <div className="p-4 sm:p-6 space-y-6 w-full">
 
+      <div className="p-4 sm:p-6 space-y-6 w-full">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Total Requisitions</p>
-                  <p className="text-3xl font-bold text-foreground mt-2">{stats.totalRequisitions}</p>
-                </div>
-                <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
-                  <FileText className="h-6 w-6 text-blue-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Pending</p>
-                  <p className="text-3xl font-bold text-yellow-600 mt-2">{stats.pendingRequisitions}</p>
-                </div>
-                <div className="h-12 w-12 bg-yellow-100 rounded-full flex items-center justify-center">
-                  <Clock className="h-6 w-6 text-yellow-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Approved</p>
-                  <p className="text-3xl font-bold text-green-600 mt-2">{stats.approvedRequisitions}</p>
-                </div>
-                <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
-                  <CheckCircle className="h-6 w-6 text-green-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Rejected</p>
-                  <p className="text-3xl font-bold text-red-600 mt-2">{stats.rejectedRequisitions}</p>
-                </div>
-                <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center">
-                  <XCircle className="h-6 w-6 text-red-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="border rounded-lg p-4 bg-card">
+            <p className="text-sm font-medium text-muted-foreground">Total Requisitions</p>
+            <p className="text-3xl font-bold text-foreground mt-2">{stats.total}</p>
+          </div>
+          <div className="border rounded-lg p-4 bg-card">
+            <p className="text-sm font-medium text-muted-foreground">Pending</p>
+            <p className="text-3xl font-bold text-yellow-600 mt-2">{stats.pending}</p>
+          </div>
+          <div className="border rounded-lg p-4 bg-card">
+            <p className="text-sm font-medium text-muted-foreground">Issued</p>
+            <p className="text-3xl font-bold text-green-600 mt-2">{stats.issued}</p>
+          </div>
+          <div className="border rounded-lg p-4 bg-card">
+            <p className="text-sm font-medium text-muted-foreground">Rejected</p>
+            <p className="text-3xl font-bold text-red-600 mt-2">{stats.rejected}</p>
+          </div>
         </div>
 
-        {/* Main Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2 lg:w-[600px]">
-            <TabsTrigger value="new-requisition">
+          <TabsList>
+            <TabsTrigger value="new-request">
               <Plus className="h-4 w-4 mr-2" />
               New Requisition
+              {cart.length > 0 && <Badge variant="secondary" className="ml-2">{cart.length}</Badge>}
             </TabsTrigger>
             <TabsTrigger value="my-requisitions">
-              <FileText className="h-4 w-4 mr-2" />
+              <ShoppingCart className="h-4 w-4 mr-2" />
               My Requisitions
             </TabsTrigger>
-            {/* <TabsTrigger value="stock-overview">
-              <Package className="h-4 w-4 mr-2" />
-              Stock Overview
-            </TabsTrigger> */}
           </TabsList>
 
-          {/* New Requisition Tab */}
-          <TabsContent value="new-requisition" className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Available Stock Section */}
-              <Card className="lg:col-span-2">
-                <CardHeader>
-                  <CardTitle>Available Stock Items</CardTitle>
-                  <CardDescription>Browse and add items to your requisition</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {/* Search and Filter */}
-                    <div className="flex gap-4">
-                      <div className="relative flex-1">
-                        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground/70" />
-                        <Input
-                          placeholder="Search by item name or code..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="pl-9"
-                        />
-                      </div>
-                      <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                        <SelectTrigger className="w-[200px]">
-                          <SelectValue placeholder="Category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Categories</SelectItem>
-                          {categories.map((category) => (
-                            <SelectItem key={category} value={category}>
-                              {category}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Stock Table */}
-                    <div className="border rounded-lg overflow-hidden">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/40">
-                            <TableHead>Item Code</TableHead>
-                            <TableHead>Item Name</TableHead>
-                            <TableHead>Category</TableHead>
-                            <TableHead>Available</TableHead>
-                            <TableHead>Location</TableHead>
-                            <TableHead>Action</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filteredStocks.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                                No stock items found
-                              </TableCell>
-                            </TableRow>
-                          ) : (
-                            filteredStocks.map((stock) => (
-                              <TableRow key={stock.id}>
-                                <TableCell className="font-medium">{stock.itemCode}</TableCell>
-                                <TableCell>{stock.itemName}</TableCell>
-                                <TableCell>
-                                  <Badge variant="secondary">{stock.category}</Badge>
-                                </TableCell>
-                                <TableCell>
-                                  <span className={stock.availableQuantity <= stock.reorderLevel ? 'text-red-600 font-semibold' : ''}>
-                                    {stock.availableQuantity} {stock.unit}
-                                  </span>
-                                </TableCell>
-                                <TableCell>{stock.location}</TableCell>
-                                <TableCell>
-                                  <Button
-                                    size="sm"
-                                    onClick={() => addToRequisition(stock)}
-                                    disabled={requisitionItems.some(
-                                      (item) => item.stockItem.id === stock.id
-                                    )}
-                                  >
-                                    <Plus className="h-4 w-4 mr-1" />
-                                    Add
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
+          {/* ── New Requisition ── */}
+          <TabsContent value="new-request" className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+              {/* Available items */}
+              <div className="lg:col-span-3 border rounded-lg overflow-hidden">
+                <div className="p-3 border-b flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      className="pl-8"
+                      placeholder="Search by item name or code…"
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                    />
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Requisition Cart */}
-              <Card className="h-fit sticky top-6">
-                <CardHeader>
-                  <CardTitle>Requisition Cart</CardTitle>
-                  <CardDescription>
-                    {requisitionItems.length} item(s) selected
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {requisitionItems.length === 0 ? (
-                      <div className="text-center py-12">
-                        <Package className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
-                        <p className="text-sm text-muted-foreground">No items added yet</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3 max-h-96 overflow-y-auto">
-                        {requisitionItems.map((item) => (
-                          <div
-                            key={item.id}
-                            className="border rounded-lg p-3 space-y-2 bg-card"
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <p className="font-medium text-sm">{item.stockItem.itemName}</p>
-                                <p className="text-xs text-muted-foreground">{item.stockItem.itemCode}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  Available: {item.stockItem.availableQuantity} {item.stockItem.unit}
-                                </p>
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeFromRequisition(item.id)}
-                              >
-                                <Trash2 className="h-4 w-4 text-red-500" />
-                              </Button>
-                            </div>
-                            <div>
-                              <Label className="text-xs">Requested Quantity</Label>
-                              <Input
-                                type="number"
-                                min="1"
-                                max={item.stockItem.availableQuantity}
-                                value={item.requestedQuantity}
-                                onChange={(e) =>
-                                  updateQuantity(item.id, parseInt(e.target.value) || 0)
-                                }
-                                className="mt-1"
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {requisitionItems.length > 0 && (
-                      <>
-                        <div>
-                          <Label>Remarks (Optional)</Label>
-                          <Textarea
-                            placeholder="Add any remarks or special instructions..."
-                            value={remarks}
-                            onChange={(e) => setRemarks(e.target.value)}
-                            className="mt-1"
-                            rows={3}
-                          />
-                        </div>
-
-                        <Button
-                          className="w-full"
-                          onClick={handleSubmit}
-                          disabled={loading}
-                        >
-                          <Send className="h-4 w-4 mr-2" />
-                          {loading ? 'Submitting...' : 'Submit Requisition'}
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {/* My Requisitions Tab */}
-          <TabsContent value="my-requisitions">
-            <Card>
-              <CardHeader>
-                <CardTitle>My Requisition History</CardTitle>
-                <CardDescription>Track all your submitted requisitions</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="border rounded-lg overflow-hidden">
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="sm:w-44"><SelectValue placeholder="Category" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All categories</SelectItem>
+                      {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="max-h-[28rem] overflow-y-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/40">
-                        <TableHead>Requisition No.</TableHead>
-                        <TableHead>Request Date</TableHead>
-                        <TableHead>Items</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Remarks</TableHead>
-                        <TableHead>Action</TableHead>
+                      <TableRow>
+                        <TableHead>Item</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead className="text-right">Available</TableHead>
+                        <TableHead className="w-20" />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {myRequisitions.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                            No requisitions found
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        myRequisitions.map((req) => (
-                          <TableRow key={req.id}>
-                            <TableCell className="font-medium">{req.requisitionNo}</TableCell>
-                            <TableCell>{new Date(req.requestDate).toLocaleDateString()}</TableCell>
-                            <TableCell>{req.items} items</TableCell>
-                            <TableCell>{getStatusBadge(req.status)}</TableCell>
-                            <TableCell className="max-w-xs truncate">
-                              {req.remarks || '-'}
+                      {loadingItems ? (
+                        <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                          <Loader2 size={16} className="inline animate-spin mr-2" />Loading items…
+                        </TableCell></TableRow>
+                      ) : availableItems.length === 0 ? (
+                        <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                          No in-stock items match
+                        </TableCell></TableRow>
+                      ) : availableItems.map(item => {
+                        const inCart = cart.some(l => l.item_sno === item.item_sno);
+                        return (
+                          <TableRow key={item.item_sno}>
+                            <TableCell>
+                              <div className="font-medium">{item.item_name}</div>
+                              <div className="text-xs text-muted-foreground">{item.item_code}</div>
+                            </TableCell>
+                            <TableCell className="text-sm">{item.category}</TableCell>
+                            <TableCell className="text-right text-sm">
+                              {item.current_stock} {item.uom}
                             </TableCell>
                             <TableCell>
                               <Button
-                                variant="outline"
                                 size="sm"
-                                onClick={() => viewRequisitionDetails(req)}
+                                variant={inCart ? 'secondary' : 'outline'}
+                                disabled={inCart || !canCreate('StoreRequisition')}
+                                onClick={() => addToCart(item)}
                               >
-                                <Eye className="h-4 w-4 mr-1" />
-                                View
+                                <Plus size={14} className="mr-1" />{inCart ? 'Added' : 'Add'}
                               </Button>
                             </TableCell>
                           </TableRow>
-                        ))
-                      )}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+
+              {/* Cart */}
+              <div className="lg:col-span-2 border rounded-lg p-4 space-y-3 h-fit">
+                <div className="flex items-center gap-2 font-medium">
+                  <ShoppingCart size={16} /> Requisition Items
+                  <Badge variant="secondary">{cart.length}</Badge>
+                </div>
+
+                {cart.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-6 text-center">
+                    Add items from the list to build your requisition
+                  </p>
+                ) : (
+                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                    {cart.map(line => (
+                      <div key={line.item_sno} className="border rounded-md p-2.5 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="text-sm font-medium">{line.item_name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {line.item_code} · Available: {line.current_stock} {line.uom}
+                            </div>
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-destructive"
+                            onClick={() => removeFromCart(line.item_sno)}
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs shrink-0">Qty</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={line.current_stock}
+                            className="h-8 w-24"
+                            value={line.quantity || ''}
+                            onChange={e => updateCartLine(line.item_sno, { quantity: Number(e.target.value) })}
+                          />
+                          <span className="text-xs text-muted-foreground">{line.uom}</span>
+                          <Input
+                            className="h-8 flex-1"
+                            placeholder="Line remarks (optional)"
+                            value={line.remarks}
+                            onChange={e => updateCartLine(line.item_sno, { remarks: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Purpose / Remarks</Label>
+                  <Textarea
+                    rows={2}
+                    placeholder="Why are these items needed?"
+                    value={purpose}
+                    onChange={e => setPurpose(e.target.value)}
+                  />
+                </div>
+
+                <Button
+                  className="w-full"
+                  disabled={cart.length === 0 || submitting || !canCreate('StoreRequisition')}
+                  onClick={handleSubmit}
+                >
+                  {submitting
+                    ? <><Loader2 size={15} className="animate-spin mr-1" /> Submitting…</>
+                    : <><Send size={15} className="mr-1" /> Submit Requisition</>}
+                </Button>
+              </div>
+            </div>
           </TabsContent>
 
-          {/* Stock Overview Tab */}
-          <TabsContent value="stock-overview">
-            <Card>
-              <CardHeader>
-                <CardTitle>Stock Overview</CardTitle>
-                <CardDescription>Complete inventory status</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <div className="flex gap-2">
-                      <Badge variant="outline" className="bg-red-50 text-red-700">
-                        Low Stock: {stockItems.filter(s => s.availableQuantity <= s.reorderLevel).length}
-                      </Badge>
-                      <Badge variant="outline" className="bg-green-50 text-green-700">
-                        In Stock: {stockItems.filter(s => s.availableQuantity > s.reorderLevel).length}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="border rounded-lg overflow-hidden">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/40">
-                          <TableHead>Item Code</TableHead>
-                          <TableHead>Item Name</TableHead>
-                          <TableHead>Category</TableHead>
-                          <TableHead>Available Qty</TableHead>
-                          <TableHead>Reorder Level</TableHead>
-                          <TableHead>Location</TableHead>
-                          <TableHead>Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {stockItems.map((stock) => (
-                          <TableRow key={stock.id}>
-                            <TableCell className="font-medium">{stock.itemCode}</TableCell>
-                            <TableCell>{stock.itemName}</TableCell>
-                            <TableCell>
-                              <Badge variant="secondary">{stock.category}</Badge>
-                            </TableCell>
-                            <TableCell>
-                              {stock.availableQuantity} {stock.unit}
-                            </TableCell>
-                            <TableCell>
-                              {stock.reorderLevel} {stock.unit}
-                            </TableCell>
-                            <TableCell>{stock.location}</TableCell>
-                            <TableCell>
-                              {stock.availableQuantity <= stock.reorderLevel ? (
-                                <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300">
-                                  <AlertCircle className="h-3 w-3 mr-1" />
-                                  Low Stock
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
-                                  <CheckCircle className="h-3 w-3 mr-1" />
-                                  In Stock
-                                </Badge>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {/* ── My Requisitions ── */}
+          <TabsContent value="my-requisitions">
+            <div className="border rounded-lg overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Requisition No.</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Items</TableHead>
+                    <TableHead className="text-right">Requested</TableHead>
+                    <TableHead className="text-right">Issued</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-24" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loadingRequests ? (
+                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      <Loader2 size={16} className="inline animate-spin mr-2" />Loading requisitions…
+                    </TableCell></TableRow>
+                  ) : requests.length === 0 ? (
+                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      No requisitions found
+                    </TableCell></TableRow>
+                  ) : requests.map(req => (
+                    <TableRow key={req.request_sno}>
+                      <TableCell className="font-medium">{req.request_no}</TableCell>
+                      <TableCell className="text-sm">{req.created_at?.slice(0, 16) ?? '—'}</TableCell>
+                      <TableCell className="text-right">{req.item_count}</TableCell>
+                      <TableCell className="text-right">{req.total_requested_qty}</TableCell>
+                      <TableCell className="text-right">{req.total_issued_qty}</TableCell>
+                      <TableCell><StatusBadge status={req.status} withDot /></TableCell>
+                      <TableCell>
+                        <Button size="sm" variant="ghost" onClick={() => openRequestDetail(req)}>
+                          <Eye size={14} className="mr-1" /> View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
 
-      {/* Requisition Details Dialog */}
-      <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
+      {/* ── Requisition detail dialog ── */}
+      <Dialog open={!!selectedRequest} onOpenChange={open => { if (!open) setSelectedRequest(null); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Requisition Details</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedRequest?.request_no}
+              {selectedRequest && <StatusBadge status={selectedRequest.status} withDot />}
+            </DialogTitle>
             <DialogDescription>
-              View complete details of your requisition
+              Raised {selectedRequest?.created_at?.slice(0, 16)}
+              {selectedRequest?.purpose ? ` — ${selectedRequest.purpose}` : ''}
             </DialogDescription>
           </DialogHeader>
-          {selectedRequisition && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm text-muted-foreground">Requisition No.</Label>
-                  <p className="font-medium">{selectedRequisition.requisitionNo}</p>
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">Request Date</Label>
-                  <p className="font-medium">
-                    {new Date(selectedRequisition.requestDate).toLocaleDateString()}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">Status</Label>
-                  <div className="mt-1">{getStatusBadge(selectedRequisition.status)}</div>
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">Total Items</Label>
-                  <p className="font-medium">{selectedRequisition.items}</p>
-                </div>
-              </div>
-              {selectedRequisition.remarks && (
-                <div>
-                  <Label className="text-sm text-muted-foreground">Remarks</Label>
-                  <p className="mt-1 text-sm">{selectedRequisition.remarks}</p>
-                </div>
-              )}
-              <div className="pt-4 border-t">
-                <p className="text-sm text-muted-foreground mb-2">Items Requested</p>
-                <div className="text-sm text-muted-foreground">
-                  Item details will be loaded from API...
-                </div>
-              </div>
-            </div>
+
+          {selectedRequest?.status === 'Rejected' && selectedRequest.reject_reason && (
+            <p className="text-sm text-destructive">Rejection reason: {selectedRequest.reject_reason}</p>
+          )}
+
+          <div className="border rounded-md overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Item</TableHead>
+                  <TableHead className="text-right">Requested</TableHead>
+                  <TableHead className="text-right">Issued</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loadingLines ? (
+                  <TableRow><TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
+                    <Loader2 size={15} className="inline animate-spin mr-2" />Loading…
+                  </TableCell></TableRow>
+                ) : requestLines.map(line => (
+                  <TableRow key={line.sr_item_sno}>
+                    <TableCell>
+                      <div className="font-medium text-sm">{line.item_name}</div>
+                      <div className="text-xs text-muted-foreground">{line.item_code}</div>
+                    </TableCell>
+                    <TableCell className="text-right text-sm">{line.requested_qty} {line.uom}</TableCell>
+                    <TableCell className="text-right text-sm">{line.issued_qty} {line.uom}</TableCell>
+                    <TableCell><StatusBadge status={line.line_status} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {selectedRequest?.status === 'Pending' && (
+            <Button
+              variant="outline"
+              className="text-destructive border-destructive/40 hover:bg-destructive/10 w-fit"
+              disabled={cancelling}
+              onClick={() => handleCancel(selectedRequest)}
+            >
+              {cancelling
+                ? <Loader2 size={14} className="animate-spin mr-1" />
+                : <XCircle size={14} className="mr-1" />}
+              Cancel Requisition
+            </Button>
           )}
         </DialogContent>
       </Dialog>

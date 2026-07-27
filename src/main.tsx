@@ -14,13 +14,14 @@ axios.defaults.withCredentials = true;
 
 // ─── PAYLOAD ENCRYPTION: REQUEST ────────────────────────────────────────────
 // Encrypt request body for all protected API routes before sending.
-// Skips: /api/secure (login/signup), FormData (file uploads).
+// Skips: /api/secure (login/signup), /api/supplier (the supplier portal talks
+// plain JSON — see gateway/index.js's CRYPTO_EXEMPT_PATHS), FormData (file uploads).
 axios.interceptors.request.use(async (config) => {
   const url = config.url ?? "";
-  const isAuthRoute = url.includes("/api/secure");
+  const isExemptRoute = url.includes("/api/secure") || url.includes("/api/supplier");
   const isFormData = config.data instanceof FormData;
 
-  if (!isAuthRoute && !isFormData && config.data != null) {
+  if (!isExemptRoute && !isFormData && config.data != null) {
     config.data = await encryptPayload(config.data);
   }
 

@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import { useAppState } from "./globalState/hooks/useAppState";
 import { useEffect } from "react";
 import Signup from "./ApplicationPages/SignupPage";
+import SupplierPortal from "./Application/SupplierPortal/SupplierPortal";
 import { useInactivityLogout } from "./hooks/useInactivityLogout";
 import SessionTimeoutModal from "./LayoutComponent/SessionTimeoutModal";
 import SessionExpiredModal from "./LayoutComponent/SessionExpiredModal";
@@ -79,6 +80,7 @@ function RootRoute() {
 const router = createBrowserRouter([
   { path: "/", element: <RootRoute /> },
   { path: "/signup", element: <Signup /> },
+   { path: "/Supplier", element: <SupplierPortal /> },
 ]);
 
 function App() {
