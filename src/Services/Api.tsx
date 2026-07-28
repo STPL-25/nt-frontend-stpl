@@ -6,9 +6,13 @@ export const apiSignUp   = baseUrl + "/api/secure/sign_up";
 export const apiGetAllUsersSignUp = baseUrl + "/api/secure/get_all_users_sign_up";
 
 // Auth / Sidebar
-export const apiFetchSidebarData = baseUrl + "/api/user_approval/get_user_screens_and_permisssions/";
+// DEPRECATED — replaced by the nt_user_permissions_json backed route below.
+// export const apiFetchSidebarData = baseUrl + "/api/user_approval/get_user_screens_and_permisssions/";
+// export const apiFetchSidebarDataByEcno = (ecno: string) =>
+//   `${baseUrl}/api/user_approval/get_user_screens_and_permisssions/${ecno}`;
+export const apiFetchSidebarData = baseUrl + "/api/user_approval/get_user_screens_and_permisssions_json/";
 export const apiFetchSidebarDataByEcno = (ecno: string) =>
-  `${baseUrl}/api/user_approval/get_user_screens_and_permisssions/${ecno}`;
+  `${baseUrl}/api/user_approval/get_user_screens_and_permisssions_json/${ecno}`;
 
 // Hierarchy
 export const apiGetHierarchyDetails = baseUrl + "/api/user_approval/get_hierachy_com_details";
@@ -16,9 +20,18 @@ export const apiGetHierarchyDetails = baseUrl + "/api/user_approval/get_hierachy
 // User Approval
 export const apiGetScreensWithGroups  = baseUrl + "/api/user_approval/get_screens_with_groups";
 export const apiGetPermissionDetails  = baseUrl + "/api/user_approval/get_permission_details";
-export const apiSaveUserPermissions   = baseUrl + "/api/user_approval/save_user_permissions";
-export const getUserPermissions = (ecno: string) =>
-  `${baseUrl}/api/user_approval/get_user_permissions/${ecno}`;
+
+// DEPRECATED — replaced by the JSON-column based endpoints below.
+// export const apiSaveUserPermissions   = baseUrl + "/api/user_approval/save_user_permissions";
+// export const getUserPermissions = (ecno: string) =>
+//   `${baseUrl}/api/user_approval/get_user_permissions/${ecno}`;
+
+// nt_user_permissions_json — hierarchy + screens/permissions stored as JSON columns
+export const apiSaveUserPermissionsJson   = baseUrl + "/api/user_approval/save_user_permissions_json";
+export const apiUpdateUserPermissionsJson = baseUrl + "/api/user_approval/update_user_permissions_json";
+export const apiDeleteUserPermissionsJson = baseUrl + "/api/user_approval/delete_user_permissions_json";
+export const getUserPermissionsJson = (userId: string) =>
+  `${baseUrl}/api/user_approval/get_user_permissions_json/${userId}`;
 
 // KYC
 export const apiGetAllKycDatas = baseUrl + "/api/kyc/get_all_kycs";
@@ -65,6 +78,11 @@ export const apiSaveWorkflowStage   = baseUrl + "/api/workflow_approval/saveWork
 export const apiGetWorkflowStages   = (workflowTypesId: number) =>
   `${baseUrl}/api/workflow_approval/getWorkflowStages/${workflowTypesId}`;
 export const apiUpdateWorkflowStage = baseUrl + "/api/workflow_approval/updateWorkflowStage";
+
+// Workflow Approval — soft deletes (rows go is_active='N', history is kept)
+export const apiDeleteWorkflow      = baseUrl + "/api/workflow_approval/deleteWorkflow";
+export const apiDeleteWorkflowType  = baseUrl + "/api/workflow_approval/deleteWorkflowType";
+export const apiDeleteWorkflowStage = baseUrl + "/api/workflow_approval/deleteWorkflowStage";
 
 // Legacy (keep for backward compat)
 export const createWorkFlowApproval = apiSaveFullWorkflow;

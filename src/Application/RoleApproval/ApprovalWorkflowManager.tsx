@@ -8,6 +8,14 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { PageHeader } from "@/CustomComponent/PageComponents";
 import {
   Plus,
@@ -26,6 +34,7 @@ import { useApprovalFlowHierarchy } from "@/FieldDatas/ApprovalWorkFlow";
 import { toast } from "sonner";
 import usePost from "@/hooks/usePostHook";
 import useUpdate from "@/hooks/useUpdateHook";
+import useDelete from "@/hooks/useDeleteHook";
 import useFetch from "@/hooks/useFetchHook";
 import {
   apiSaveFullWorkflow,
@@ -37,6 +46,8 @@ import {
   apiUpdateWorkflowStage,
   apiSaveWorkflowType,
   apiSaveWorkflowStage,
+  apiDeleteWorkflow,
+  apiDeleteWorkflowType,
 } from "@/Services/Api";
 import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
 import {
@@ -51,6 +62,12 @@ import { usePermissions } from "@/globalState/hooks/usePermissions";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type PanelMode = "idle" | "loading" | "create" | "edit";
+
+/** What a pending confirm dialog is about to delete. */
+type PendingDelete =
+  | { kind: "workflow"; label: string }
+  | { kind: "type"; index: number; label: string }
+  | null;
 
 type WorkflowApiStageRow = {
   stage_order_json?: StageOrderItem[] | string;
@@ -402,8 +419,9 @@ const WorkflowTypeCard: React.FC<{
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ApprovalFlowDynamic() {
-  const { canCreate, canEdit } = usePermissions();
+  const { canCreate, canEdit, canDelete } = usePermissions();
   const canSave = canCreate("ApprovalWorkflowPage") || canEdit("ApprovalWorkflowPage");
+  const canRemove = canDelete("ApprovalWorkflowPage");
 
   // ── List ──────────────────────────────────────────────────────────────────
   const [listRefreshKey, setListRefreshKey] = useState(0);
@@ -430,8 +448,13 @@ export default function ApprovalFlowDynamic() {
   const [editTypes, setEditTypes] = useState<WorkflowTypeExtended[]>([]);
   const [editSaving, setEditSaving] = useState(false);
 
+  // ── Delete state ──────────────────────────────────────────────────────────
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const { postData } = usePost<any>();
   const { updateData } = useUpdate<any>();
+  const { deleteData } = useDelete<any>();
   const { workflowFields, entityTypeCount, hierarchyData } = useApprovalFlowHierarchy();
   const isSaving = createSaving || editSaving;
 
@@ -477,8 +500,12 @@ export default function ApprovalFlowDynamic() {
     removeType: (index: number) => {
       const t = getTypes()[index];
       if (t._typeIds.length > 0) {
-        setter((prev) => prev.map((wt, i) => (i === index ? { ...wt, is_active: false } : wt)));
-        toast.info(`"${t.workflow_types_name}" marked inactive. Save to apply.`);
+        // Saved type — deleting it touches the database, so confirm first.
+        setPendingDelete({
+          kind: "type",
+          index,
+          label: t.workflow_types_name || `Type ${index + 1}`,
+        });
       } else {
         setter((prev) => prev.filter((_, i) => i !== index));
       }
@@ -645,7 +672,7 @@ export default function ApprovalFlowDynamic() {
       )
     );
     try {
-       
+
       const data = await postData(apiSaveFullWorkflow, {
         workflow_name: createWorkflow.workflow_name,
         workflow_code: autoCode,
@@ -729,6 +756,40 @@ export default function ApprovalFlowDynamic() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRow, editWorkflow, editTypes, buildBranchParent]);
+
+  // ── Delete ────────────────────────────────────────────────────────────────
+  // Soft delete: the row's is_active flips to 'N' and it stops appearing, but
+  // approvals already routed through it keep their history.
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      if (pendingDelete.kind === "workflow") {
+        if (!selectedRow) return;
+        await deleteData(apiDeleteWorkflow, { workflow_id: selectedRow.workflow_id });
+        toast.success(`"${selectedRow.workflow_name}" deleted`);
+        setListRefreshKey((k) => k + 1);
+        setSelectedId("");
+        setSelectedRow(null);
+        setMode("idle");
+      } else {
+        const type = editTypes[pendingDelete.index];
+        for (const typeId of type._typeIds) {
+          await deleteData(apiDeleteWorkflowType, {
+            workflow_types_id: typeId,
+            workflow_id: selectedRow?.workflow_id,
+          });
+        }
+        setEditTypes((prev) => prev.filter((_, i) => i !== pendingDelete.index));
+        toast.success(`"${pendingDelete.label}" deleted`);
+      }
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || "Delete failed");
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
+    }
+  }, [pendingDelete, selectedRow, editTypes, deleteData]);
 
   const activeTypes  = (mode === "create" ? createTypes : editTypes);
   const activeWf     = mode === "create" ? createWorkflow : editWorkflow;
@@ -840,6 +901,19 @@ export default function ApprovalFlowDynamic() {
                   <RotateCcw className="h-4 w-4" />
                   Discard Changes
                 </Button>
+                {mode === "edit" && selectedRow && canRemove && (
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                    onClick={() =>
+                      setPendingDelete({ kind: "workflow", label: selectedRow.workflow_name })
+                    }
+                    disabled={isSaving}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete Workflow
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   className="w-full text-muted-foreground text-sm"
@@ -1018,7 +1092,7 @@ export default function ApprovalFlowDynamic() {
                     onRemoveStage={mode === "create" ? ch.removeStage : eh.removeStage}
                     onMoveStage={mode === "create" ? ch.moveStage : eh.moveStage}
                     onRemove={mode === "create" ? ch.removeType : eh.removeType}
-                    removable={type._typeIds.length === 0}
+                    removable={type._typeIds.length === 0 || canRemove}
                   />
                 ))}
               </div>
@@ -1046,6 +1120,30 @@ export default function ApprovalFlowDynamic() {
           )}
         </div>
       </div>
+
+      {/* ── Delete confirmation ─────────────────────────────────────────── */}
+      <Dialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Delete {pendingDelete?.kind === "workflow" ? "workflow" : "workflow type"}?
+            </DialogTitle>
+            <DialogDescription>
+              "{pendingDelete?.label}" will be deactivated along with everything under it.
+              It stops appearing here, and approvals already routed through it keep their history.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setPendingDelete(null)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete} disabled={deleting}>
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

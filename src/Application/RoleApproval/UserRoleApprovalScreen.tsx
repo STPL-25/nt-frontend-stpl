@@ -38,6 +38,8 @@ import { cn }     from "@/lib/utils";
 
 import useFetch  from "@/hooks/useFetchHook";
 import usePost   from "@/hooks/usePostHook";
+import useUpdate from "@/hooks/useUpdateHook";
+import useDelete from "@/hooks/useDeleteHook";
 import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
 import PermissionTable      from "@/CustomComponent/InputComponents/PermissionTableProps";
 import {
@@ -50,8 +52,10 @@ import {
   apiGetHierarchyDetails,
   apiGetScreensWithGroups,
   apiGetPermissionDetails,
-  apiSaveUserPermissions,
-  getUserPermissions,
+  apiSaveUserPermissionsJson,
+  apiUpdateUserPermissionsJson,
+  apiDeleteUserPermissionsJson,
+  getUserPermissionsJson,
 } from "@/Services/Api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -84,6 +88,7 @@ interface PermissionDetail {
 type Permissions = Record<string, Record<number, boolean>>;
 interface ExistingPermData {
   success:      boolean;
+  exists?:      boolean;
   permissions:  Permissions;
   companies?:   Array<string | number>;
   divisions?:   Array<string | number>;
@@ -245,17 +250,20 @@ export default function PermissionManager() {
     apiGetPermissionDetails
   );
 
-  // API: { success, permissions, companies, divisions, branches }
-  // Null URL → skipped until ecno is set; re-fetches whenever selectedUserEcno changes
+  // API: { success, exists, permissions, companies, divisions, branches }
+  // Null URL → skipped until a user is selected; re-fetches whenever selectedUser changes
   const {
     data:    existingPermRes,
     loading: existingLoading,
   } = useFetch<ExistingPermResponse>(
-    selectedUserEcno ? getUserPermissions(selectedUserEcno) : null,
+    selectedUser ? getUserPermissionsJson(selectedUser) : null,
     "", null, permRefreshKey
   );
 
-  const { postData } = usePost();
+  const { postData }             = usePost();
+  const { updateData }           = useUpdate();
+  const { deleteData }           = useDelete();
+  const [deleting, setDeleting]  = useState(false);
 
   // ── Convenient accessors ───────────────────────────────────────────────────
   const allUsers       = usersRes?.data              ?? [];
@@ -463,23 +471,27 @@ export default function PermissionManager() {
     setPermissions(JSON.parse(JSON.stringify(originalPermissions)));
   }, [originalPermissions]);
 
-  // ── Save ───────────────────────────────────────────────────────────────────
+  // ── Save (create on first assignment, update once a record already exists) ─
   const handleSave = useCallback(async () => {
     if (!selectedUser) { toast.error("Select a user first."); return; }
     setSaving(true);
     try {
-      const res: any = await postData(
-        apiSaveUserPermissions,
-        {
-          user_id:   selectedUser,
-          user_ecno: selectedUserEcno,
-          ...buildHierarchyPayload(),
-          screens: buildPermissionsPayload(),
-        }
-      );
+      const payload = {
+        user_id:   selectedUser,
+        user_ecno: selectedUserEcno,
+        ...buildHierarchyPayload(),
+        screens: buildPermissionsPayload(),
+      };
+
+      const recordExists = !!existingPermData?.exists;
+      const res: any = recordExists
+        ? await updateData(apiUpdateUserPermissionsJson, selectedUser, payload)
+        : await postData(apiSaveUserPermissionsJson, payload);
+
       if (res?.success) {
         // Update baseline so diff resets to 0 after save
         setOriginalPermissions(JSON.parse(JSON.stringify(permissions)));
+        setPermRefreshKey((k) => k + 1);
         toast.success("Saved — permissions pushed to user instantly via WebSocket.");
       } else {
         toast.error("Failed to save permissions.");
@@ -490,10 +502,35 @@ export default function PermissionManager() {
       setSaving(false);
     }
   }, [
-    selectedUser, selectedUserEcno,
+    selectedUser, selectedUserEcno, existingPermData,
     buildHierarchyPayload, buildPermissionsPayload,
-    postData, permissions,
+    postData, updateData, permissions,
   ]);
+
+  // ── Delete (revoke) — removes the user's saved hierarchy + screen permissions record ──
+  const handleDelete = useCallback(async () => {
+    if (!selectedUser) return;
+    setDeleting(true);
+    try {
+      const res: any = await deleteData(`${apiDeleteUserPermissionsJson}/${selectedUser}`);
+      if (res?.success) {
+        const base = buildFromScreens(allScreens).permissions;
+        setPermissions(base);
+        setOriginalPermissions(base);
+        setSelectedCompanies([]);
+        setSelectedDivisions([]);
+        setSelectedBranches([]);
+        setPermRefreshKey((k) => k + 1);
+        toast.success("Permissions revoked for this user.");
+      } else {
+        toast.error("Failed to delete permissions.");
+      }
+    } catch {
+      toast.error("Error deleting permissions.");
+    } finally {
+      setDeleting(false);
+    }
+  }, [selectedUser, deleteData, allScreens]);
 
   // ── Derived values ─────────────────────────────────────────────────────────
   const { added, removed } = useMemo(
@@ -664,6 +701,17 @@ export default function PermissionManager() {
                 >
                   Clear Selection
                 </Button>
+                {existingPermData?.exists && (
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2 text-rose-600 hover:text-rose-600 border-rose-500/30 hover:bg-rose-500/10"
+                    onClick={handleDelete}
+                    disabled={saving || deleting}
+                  >
+                    {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    {deleting ? "Revoking…" : "Revoke All Permissions"}
+                  </Button>
+                )}
               </div>
             )}
 

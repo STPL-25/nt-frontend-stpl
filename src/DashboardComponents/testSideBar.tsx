@@ -402,7 +402,7 @@ const Sidebar: React.FC = () => {
   // Only fetch when we have a valid ecno; passing null skips the fetch entirely
   const { data, loading, error } = useFetch<PermissionData>(
     ecno
-      ? `${import.meta.env.VITE_API_URL}/api/user_approval/get_user_screens_and_permisssions/${ecno}`
+      ? `${import.meta.env.VITE_API_URL}/api/user_approval/get_user_screens_and_permisssions_json/${ecno}`
       : null
   );
 
