@@ -84,6 +84,7 @@ export const buildGRNItems = (po: PORecord): GRNItemEntry[] => {
       received_qty: pending,
       rejected_qty: 0,
       condition: 'Good',
+      hsn_code: '',
       remarks: '',
       selected: pending > 0,
     };

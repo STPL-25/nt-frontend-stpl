@@ -3,9 +3,9 @@ import { AlertCircle, Clock } from 'lucide-react';
 import POApprovalScreenLayout from '@/LayoutComponent/ApprovalLayout/POApprovalScreenLayout';
 import useFetch from '@/hooks/useFetchHook';
 import usePost from '@/hooks/usePostHook';
-import { getPoRecords, poApproveAction } from '@/Services/Api';
+import { getPoRecords, poApproveAction, purchaseTeamSendPOEmail } from '@/Services/Api';
 import { useAppState } from '@/imports';
-import { generatePOApprovalPdf } from '@/utils/generatePOApprovalPdf';
+import { buildPOApprovalPdf } from '@/utils/generatePOApprovalPdf';
 import { usePoApprovalSideCardDatas } from '@/FieldDatas/PoApprovalData';
 import { socket, SOCKET_JOIN_PO_APPROVAL, SOCKET_LEAVE_PO_APPROVAL, SOCKET_PO_APPROVAL_UPDATED } from '@/Services/Socket';
 
@@ -33,6 +33,7 @@ const POApprovalScreen: React.FC = () => {
   const { userData } = useAppState();
   const fieldDatas = usePoApprovalSideCardDatas();
   const { postData, loading } = usePost();
+  const { postData: postSendPOEmail } = usePost();
 
   const { data, loading: fetchLoading, error } = useFetch<APIResponse>(
     getPoRecords,
@@ -80,6 +81,51 @@ const POApprovalScreen: React.FC = () => {
     setComments('');
     setBackwardTarget('');
     setShowApprovalDialog(true);
+  };
+
+  // On final-stage approval, sp_nt_ApproveSupplierQuotation has already created
+  // the real po_request_info row (po_header.po_basic_sno / po_df_no) and
+  // returned the vendor's email. Save a local copy for the approver, then
+  // upload the same PDF so the backend can email the supplier, store it on
+  // FTP, and make it available for download in the supplier portal.
+  const sendFinalPOToSupplier = async (approvalData: any, selectedQuotation: any) => {
+    try {
+      const poHeader = parseJSON(approvalData?.po_header, {});
+      const vendor = parseJSON(approvalData?.vendor, {});
+      const poItems = parseJSON(approvalData?.po_items, []);
+
+      const { doc, fileName } = await buildPOApprovalPdf(selectedPR, selectedQuotation, approvalData);
+      doc.save(fileName);
+
+      if (!poHeader.po_no && !poHeader.po_df_no) return;
+      if (!vendor.vendor_sno) return;
+
+      const emailItems = (Array.isArray(poItems) ? poItems : []).map((item: any) => ({
+        prod_name: item.prod_name,
+        qty: item.qty,
+        unit_name: item.uom_name,
+        unit_price: item.agreed_unit_price,
+        total_amount: item.net_cost,
+      }));
+
+      const fd = new FormData();
+      fd.append('vendor_sno', String(vendor.vendor_sno));
+      fd.append('po_no', String(poHeader.po_df_no ?? poHeader.po_no));
+      fd.append('po_date', poHeader.po_date ?? '');
+      fd.append('required_date', poHeader.pr_required_date ?? '');
+      fd.append('terms_conditions', poHeader.terms_conditions ?? '');
+      fd.append('delivery_address', poHeader.branch_address ?? '');
+      fd.append('items', JSON.stringify(emailItems));
+      if (poHeader.po_basic_sno) fd.append('po_basic_sno', String(poHeader.po_basic_sno));
+      fd.append('po_pdf', doc.output('blob'), fileName);
+
+      await postSendPOEmail(purchaseTeamSendPOEmail, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        withCredentials: true,
+      });
+    } catch (error) {
+      console.error('Unable to send the final PO to the supplier:', error);
+    }
   };
 
   const handleSubmit = async () => {
@@ -132,7 +178,7 @@ const POApprovalScreen: React.FC = () => {
           (approval_stages.length > 0 &&
             approval_stages[approval_stages.length - 1]?.approver_ecno === userData[0]?.ecno);
         if (isFinalStage) {
-          generatePOApprovalPdf(selectedPR, selectedQuotation, approvalData);
+          sendFinalPOToSupplier(approvalData, selectedQuotation);
         }
       }
 

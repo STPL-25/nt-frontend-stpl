@@ -12,15 +12,27 @@ import type { FieldType, OptionType } from "./fieldType/fieldType";
 
 export type { FieldType, OptionType };
 
+// Builds ONE company -> division -> branch -> department chain at a time (single-select,
+// cascading). A KYC record can still be linked to several such chains — see
+// `OrgMapping` / the "add mapping" list in KycEntry.tsx — but each chain is picked as a
+// single, unambiguous path rather than four independent multi-selects. That's what
+// prevents the old bug where selecting e.g. two companies and a division/branch that
+// happen to share a name across those companies made it impossible to tell which
+// company the selection actually belonged to (and the backend used to cross-join every
+// selected value together instead of saving the real combination).
 export const useComDivBranchDeptFields = (
-  selectedCompany: number[],
-  selectedDivision: number[]
+  selectedCompany: number | "",
+  selectedDivision: number | "",
+  selectedBranch: number | ""
 ) => {
   // Use specific selectors to avoid collision from useAppState spreading both
   // hierarchyCompany and sidebarData (both have { data, loading, error } keys)
   const hierarchyData = useAppSelector(selectCompanyHierarchy);
   const hierarchyLoading = useAppSelector(selectCompanyHierarchyLoading);
   const hierarchyError = useAppSelector(selectCompanyHierarchyError);
+  // Real department master rows (each carries its own brn_sno/div_sno/com_sno) — not the
+  // old static placeholder list, which had no relationship to the masters at all.
+  const { options: masterOptions } = useMasterOptions(["DeptMaster"]);
 
   const companyOptions: Option[] = useMemo(() => {
     if (!hierarchyData?.companies) return [];
@@ -31,44 +43,36 @@ export const useComDivBranchDeptFields = (
   }, [hierarchyData]);
 
   const divisionOptions: Option[] = useMemo(() => {
-    if (!hierarchyData?.companies || selectedCompany.length === 0) return [];
-    return hierarchyData.companies
-      .filter((company: Company) =>
-        selectedCompany.includes(Number(company.com_sno))
-      )
-      .flatMap((company: any) =>
-        company.divisions.map((division: Division) => ({
-          label: division.div_name,
-          value: Number(division.div_sno),
-        }))
-      );
+    if (!hierarchyData?.companies || selectedCompany === "") return [];
+    const company = hierarchyData.companies.find(
+      (c: Company) => Number(c.com_sno) === Number(selectedCompany)
+    );
+    return (company?.divisions ?? []).map((division: Division) => ({
+      label: division.div_name,
+      value: Number(division.div_sno),
+    }));
   }, [hierarchyData, selectedCompany]);
 
   const branchOptions: Option[] = useMemo(() => {
-    if (!hierarchyData?.companies || selectedDivision.length === 0) return [];
-    return hierarchyData.companies
-      .flatMap((company: any) => company.divisions)
-      .filter((division: Division) =>
-        selectedDivision.includes(Number(division.div_sno))
-      )
-      .flatMap((division: Division) =>
-        division.branches.map((branch: Branch) => ({
-          label: branch.brn_name,
-          value: Number(branch.brn_sno),
-        }))
-      );
+    if (!hierarchyData?.companies || selectedDivision === "") return [];
+    const division = hierarchyData.companies
+      .flatMap((company: Company) => company.divisions ?? [])
+      .find((d: Division) => Number(d.div_sno) === Number(selectedDivision));
+    return (division?.branches ?? []).map((branch: Branch) => ({
+      label: branch.brn_name,
+      value: Number(branch.brn_sno),
+    }));
   }, [hierarchyData, selectedDivision]);
 
-  // const departmentOptions: Option[] = useMemo(
-  //   () => [
-  //     { value: "1", label: "Procurement" },
-  //     { value: "2", label: "Finance" },
-  //     { value: "3", label: "Operations" },
-  //     { value: "4", label: "HR" },
-  //     { value: "5", label: "Administration" },
-  //   ],
-  //   []
-  // );
+  const departmentOptions: Option[] = useMemo(() => {
+    if (selectedBranch === "") return [];
+    const all = (masterOptions?.DeptMaster ?? []) as (Option & {
+      brn_sno?: number | string | null;
+    })[];
+    return all
+      .filter((d) => d.brn_sno != null && Number(d.brn_sno) === Number(selectedBranch))
+      .map((d) => ({ label: d.label, value: Number(d.value) }));
+  }, [masterOptions?.DeptMaster, selectedBranch]);
 
   const fields: FieldType[] = useMemo(
     () => [
@@ -76,48 +80,58 @@ export const useComDivBranchDeptFields = (
         field: "com_sno",
         label: "Company",
         require: true,
-        type: "multi-select",
-        placeholder: "Select companies",
-        input: false,
+        type: "select",
+        placeholder: "Select company",
+        input: true,
         options: companyOptions,
-        view: false,
+        view: true,
         disabled: hierarchyLoading || !!hierarchyError,
       },
       {
         field: "div_sno",
         label: "Division",
-        require: false,
-        type: "multi-select",
-        placeholder: "Select divisions",
-        input: false,
+        require: true,
+        type: "select",
+        placeholder: "Select division",
+        input: true,
         options: divisionOptions,
-        view: false,
-        disabled: selectedCompany.length === 0 || divisionOptions.length === 0,
+        view: true,
+        disabled: selectedCompany === "" || divisionOptions.length === 0,
       },
       {
         field: "brn_sno",
         label: "Branch",
-        require: false,
-        type: "multi-select",
-        placeholder: "Select branches",
-        input: false,
+        require: true,
+        type: "select",
+        placeholder: "Select branch",
+        input: true,
         options: branchOptions,
-        view: false,
-        disabled: selectedDivision.length === 0 || branchOptions.length === 0,
+        view: true,
+        disabled: selectedDivision === "" || branchOptions.length === 0,
       },
-      // {
-      //   field: "dept_sno",
-      //   label: "Department",
-      //   require: false,
-      //   type: "multi-select",
-      //   placeholder: "Select departments",
-      //   input: false,
-      //   options: departmentOptions,
-      //   view: false,
-      //   disabled: false,
-      // },
+      {
+        field: "dept_sno",
+        label: "Department",
+        require: true,
+        type: "select",
+        placeholder: "Select department",
+        input: true,
+        options: departmentOptions,
+        view: true,
+        disabled: selectedBranch === "" || departmentOptions.length === 0,
+      },
     ],
-    [companyOptions, divisionOptions, branchOptions]
+    [
+      companyOptions,
+      divisionOptions,
+      branchOptions,
+      departmentOptions,
+      hierarchyLoading,
+      hierarchyError,
+      selectedCompany,
+      selectedDivision,
+      selectedBranch,
+    ]
   );
 
   return {
@@ -125,7 +139,7 @@ export const useComDivBranchDeptFields = (
     companyOptions,
     divisionOptions,
     branchOptions,
-    // departmentOptions,
+    departmentOptions,
     loading: hierarchyLoading,
     error: hierarchyError,
   };

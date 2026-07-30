@@ -18,9 +18,11 @@ interface GateEntryFormProps {
   onSubmit: (form: GateEntryFormState) => Promise<void> | void;
   onCancel?: () => void;
   submitting: boolean;
+  /** Prefill from a scanned dispatch slip (LR no, transport, invoice, qty…). */
+  initial?: Partial<GateEntryFormState>;
 }
 
-const blankForm = (receiverEcno: string): GateEntryFormState => ({
+const blankForm = (receiverEcno: string, initial?: Partial<GateEntryFormState>): GateEntryFormState => ({
   invoice_no: '',
   invoice_date: today(),
   received_qty: '',
@@ -30,12 +32,13 @@ const blankForm = (receiverEcno: string): GateEntryFormState => ({
   lr_no: '',
   receiver_ecno: receiverEcno,
   photo: null,
+  ...initial,
 });
 
 const GateEntryForm: React.FC<GateEntryFormProps> = ({
-  po, transportList, receiverEcno, onSubmit, onCancel, submitting,
+  po, transportList, receiverEcno, onSubmit, onCancel, submitting, initial,
 }) => {
-  const [form, setForm] = useState<GateEntryFormState>(() => blankForm(receiverEcno));
+  const [form, setForm] = useState<GateEntryFormState>(() => blankForm(receiverEcno, initial));
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const setField = <K extends keyof GateEntryFormState>(field: K, value: GateEntryFormState[K]) =>
@@ -95,6 +98,12 @@ const GateEntryForm: React.FC<GateEntryFormProps> = ({
             <Select value={form.transport_name} onValueChange={v => setField('transport_name', v)}>
               <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select transport" /></SelectTrigger>
               <SelectContent>
+                {/* keep a scanned/prefilled transport selectable even if it's not in the master list */}
+                {form.transport_name && !transportList.some(t => t.transport_name === form.transport_name) && (
+                  <SelectItem value={form.transport_name} className="text-xs">
+                    {form.transport_name}
+                  </SelectItem>
+                )}
                 {transportList.map(t => (
                   <SelectItem key={t.transport_sno} value={t.transport_name} className="text-xs">
                     {t.transport_name}

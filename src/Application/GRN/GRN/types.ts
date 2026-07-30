@@ -68,6 +68,8 @@ export interface GRNItem {
   rejected_qty: number;
   unit_name: string;
   condition: 'Good' | 'Damaged' | 'Partial';
+  /** HSN code keyed in from the supplier's invoice. */
+  hsn_code?: string;
   remarks: string;
 }
 
@@ -110,6 +112,8 @@ export interface GRNItemEntry {
   received_qty: number;
   rejected_qty: number;
   condition: 'Good' | 'Damaged' | 'Partial';
+  /** HSN code keyed in from the supplier's invoice. */
+  hsn_code: string;
   remarks: string;
   selected: boolean;
 }

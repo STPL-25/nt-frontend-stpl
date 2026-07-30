@@ -4,7 +4,7 @@ import {
   ChevronRight, Mail, Phone, Building2, MapPin, CreditCard,
   FileText, User, Hash, X, Download, ExternalLink, ShieldCheck,
   Landmark, BadgeCheck, Calendar, Eye, Edit2, Trash2, Menu,
-  Users, Send, Loader2,
+  Users, Send, Loader2, Network,
 } from "lucide-react";
 import { usePermissions } from "@/globalState/hooks/usePermissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,9 +17,9 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import useFetch from "@/hooks/useFetchHook";
 import usePost from "@/hooks/usePostHook";
-import { apiGetAllKycDatas } from "@/Services/Api";
+import { apiGetAllKycDatas, apiGetKycOrgMappings } from "@/Services/Api";
 import { supplierInvite } from "@/Services/SupplierService";
-import { KYCData, APIResponse } from "./types/KYCDataViewType";
+import { KYCData, APIResponse, OrgMappingsResponse } from "./types/KYCDataViewType";
 import { LoadingState, ErrorState, EmptyState } from "@/CustomComponent/PageComponents";
 import { StatusBadge, getStatusInfo } from "@/utils/statusUtils";
 import { getAuthFileUrl } from "@/Services/authUrl";
@@ -208,6 +208,11 @@ function KYCDetailPanel({ supplier }: { supplier: KYCData }) {
   const documents = useMemo(() => parseJSON(supplier.kyc_uploaded_doc), [supplier]);
   const { label: statusLabel, cls: statusCls } = getStatusInfo(supplier.status);
 
+  const { data: orgMappingsRes, loading: orgMappingsLoading } = useFetch<OrgMappingsResponse>(
+    apiGetKycOrgMappings(supplier.kyc_basic_info_sno)
+  );
+  const orgMappings = orgMappingsRes?.data ?? [];
+
   const basicFields = [
     { label: "Company Name",   value: supplier.company_name,   icon: Building2   },
     { label: "Business Type",  value: supplier.business_type,  icon: FileText    },
@@ -288,6 +293,10 @@ function KYCDetailPanel({ supplier }: { supplier: KYCData }) {
                   <TabsTrigger value="basic" className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm">
                     <User className="h-3.5 w-3.5" /> Basic Info
                   </TabsTrigger>
+                  <TabsTrigger value="organization" className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm">
+                    <Network className="h-3.5 w-3.5" /> Organization
+                    <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-muted data-[state=active]:bg-primary-foreground/20">{orgMappings.length}</span>
+                  </TabsTrigger>
                   <TabsTrigger value="address" className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm">
                     <MapPin className="h-3.5 w-3.5" /> Address
                     <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-muted data-[state=active]:bg-primary-foreground/20">{addresses.length}</span>
@@ -324,6 +333,44 @@ function KYCDetailPanel({ supplier }: { supplier: KYCData }) {
                       </div>
                     ))}
                   </div>
+                </TabsContent>
+
+                {/* Organization — real company/division/branch/department combinations
+                    this KYC is linked to (kyc_cmp_info), never a flattened/cross-joined
+                    list of independently selected values. */}
+                <TabsContent value="organization">
+                  {orgMappingsLoading ? (
+                    <div className="flex items-center justify-center py-10 text-sm text-muted-foreground gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Loading organization mapping…
+                    </div>
+                  ) : orgMappings.length === 0 ? (
+                    <EmptyState icon={Network} message="No company / division / branch / department mapping found" />
+                  ) : (
+                    <div className="space-y-2">
+                      {orgMappings.map((m) => (
+                        <div
+                          key={m.kyc_cmp_sno}
+                          className={`flex flex-wrap items-center gap-2 rounded-xl border px-4 py-3 text-sm ${
+                            m.is_primary === "Y" ? "border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800" : "border-border bg-card"
+                          }`}
+                        >
+                          <Building2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                          <span className="font-semibold">{m.com_name}</span>
+                          <span className="text-muted-foreground">›</span>
+                          <span>{m.div_name}</span>
+                          <span className="text-muted-foreground">›</span>
+                          <span>{m.brn_name}</span>
+                          <span className="text-muted-foreground">›</span>
+                          <span>{m.dept_name}</span>
+                          {m.is_primary === "Y" && (
+                            <Badge className="ml-auto text-[10px] bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-900/40 dark:text-amber-300">
+                              Primary
+                            </Badge>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </TabsContent>
 
                 {/* Address */}

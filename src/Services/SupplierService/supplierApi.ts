@@ -9,6 +9,7 @@ export const supplierGetPOs = `${base}/pos`;
 export const supplierGetPODetail = (po_basic_sno: number) => `${base}/pos/${po_basic_sno}`;
 export const supplierAcceptPO = (po_basic_sno: number) => `${base}/pos/${po_basic_sno}/accept`;
 export const supplierCreateDispatch = (po_basic_sno: number) => `${base}/pos/${po_basic_sno}/dispatch`;
+export const supplierGetTransporters = `${base}/transporters`;
 export const supplierGetDispatchSlip = (dispatch_slip_sno: number) => `${base}/dispatch/${dispatch_slip_sno}`;
 export const supplierGetDispatchDelivery = (delivery_sno: number) => `${base}/dispatch/delivery/${delivery_sno}`;
 
@@ -21,6 +22,7 @@ export interface SupplierPOListItem {
   status: string;
   supplier_ack_status: 'Accepted' | null;
   supplier_ack_date: string | null;
+  po_pdf_url: string | null;
   com_name: string | null;
   dispatch_count: number;
 }
@@ -47,10 +49,20 @@ export interface SupplierPODetail {
   status: string;
   supplier_ack_status: 'Accepted' | null;
   supplier_ack_date: string | null;
+  po_pdf_url: string | null;
   com_name: string | null;
   vendor_name: string | null;
   /** Raw FOR JSON PATH string from MSSQL — parse before use. */
   items: string | SupplierPOItem[];
+}
+
+export type DispatchMode = 'Transport' | 'Direct';
+
+/** Row from the transporter master (sp_nt_GetTransportRecords). */
+export interface TransporterOption {
+  transport_sno: number;
+  transport_code: string | null;
+  transport_name: string;
 }
 
 /** One delivery (shipment/LR) entered on the dispatch form. */
@@ -61,9 +73,13 @@ export interface DeliveryFormValues {
   qty?: number;
   pieces?: number;
   bundles?: number;
+  /** Invoice copy — compulsory when dispatching via a transporter. */
+  invoice_file?: File | null;
 }
 
 export interface DispatchFormValues {
+  dispatch_mode: DispatchMode;
+  transport_sno?: number;
   transport_name?: string;
   deliveries: DeliveryFormValues[];
 }
@@ -71,7 +87,7 @@ export interface DispatchFormValues {
 /** One row returned right after sp_nt_CreateDispatchSlip creates it. */
 export interface CreatedDelivery {
   delivery_sno: number;
-  lr_no: string;
+  lr_no: string | null;
   invoice_no: string;
 }
 
@@ -97,36 +113,51 @@ export interface SupplierDispatchSlip {
   dispatch_slip_no: string;
   po_basic_sno: number;
   po_no: string;
+  transport_sno: number | null;
   transport_name: string | null;
+  dispatch_mode: DispatchMode;
   status: string;
   created_at: string;
   deliveries: Array<{
     delivery_sno: number;
-    lr_no: string;
+    lr_no: string | null;
     invoice_no: string;
     invoice_date: string;
     qty: number | null;
     pieces: number | null;
     bundles: number | null;
+    invoice_file_url: string | null;
   }>;
 }
 
 /** sp_nt_GetDispatchDelivery — everything needed to print ONE delivery's slip. */
 export interface SupplierDispatchDelivery extends FromAddressFields {
   delivery_sno: number;
-  lr_no: string;
+  lr_no: string | null;
   invoice_no: string;
   invoice_date: string;
   qty: number | null;
   pieces: number | null;
   bundles: number | null;
+  invoice_file_url: string | null;
   dispatch_slip_sno: number;
   dispatch_slip_no: string;
+  transport_sno: number | null;
   transport_name: string | null;
+  dispatch_mode: DispatchMode;
   po_basic_sno: number;
   po_no: string;
   supplier_name: string | null;
   to_address: string | null;
+}
+
+/**
+ * The code encoded in a delivery slip's QR: the LR number when there is one,
+ * else a 'DSD-<delivery_sno>' fallback (Direct dispatches may have no LR).
+ * sp_nt_GetDispatchDeliveryByLr resolves both forms at the gate.
+ */
+export function dispatchQrCode(delivery: { lr_no: string | null; delivery_sno: number }): string {
+  return delivery.lr_no || `DSD-${delivery.delivery_sno}`;
 }
 
 export function parseSupplierPOItems(items: SupplierPODetail['items']): SupplierPOItem[] {

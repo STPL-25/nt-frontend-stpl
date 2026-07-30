@@ -312,6 +312,7 @@ console.log(selectedPO);
           rejected_qty: it.rejected_qty,
           unit_name: it.unit_name,
           condition: it.condition,
+          hsn_code: it.hsn_code || undefined,
           remarks: it.remarks,
         })),
       };
@@ -327,11 +328,13 @@ console.log(selectedPO);
       }
       clearDraftState();
 
-      // Refresh: GRN list for this PO + the pending gate-entry list (this one just closed)
-      await Promise.all([
-        selectedPO.po_basic_sno ? fetchGRNs(selectedPO.po_basic_sno) : Promise.resolve(),
-        fetchPOs(),
-      ]);
+      // This gate entry just flipped to 'GRN Done' — it drops off the pending
+      // list. Clear the selection so the entry form unmounts instead of
+      // staying open (with its Save button re-enabled) and allowing a
+      // duplicate submit against the same items.
+      setSelectedPO(null);
+      setGRNList([]);
+      await fetchPOs();
     } catch (err: any) {
       toast.error(err?.response?.data?.error ?? 'Failed to submit GRN');
     } finally {

@@ -30,7 +30,7 @@ import {
   RotateCcw,
   Loader2,
 } from "lucide-react";
-import { useApprovalFlowHierarchy } from "@/FieldDatas/ApprovalWorkFlow";
+import { useApprovalFlowHierarchy, CascadeOption } from "@/FieldDatas/ApprovalWorkFlow";
 import { toast } from "sonner";
 import usePost from "@/hooks/usePostHook";
 import useUpdate from "@/hooks/useUpdateHook";
@@ -229,6 +229,7 @@ const WorkflowTypeCard: React.FC<{
   type: WorkflowType;
   typeIndex: number;
   employeeOptions: { label: string; value: string }[];
+  allDepartments: CascadeOption[];
   onChange: (i: number, field: keyof WorkflowType, value: any) => void;
   onStageChange: (
     ti: number,
@@ -246,6 +247,7 @@ const WorkflowTypeCard: React.FC<{
     type,
     typeIndex,
     employeeOptions,
+    allDepartments,
     onChange,
     onStageChange,
     onAddStage,
@@ -267,14 +269,26 @@ const WorkflowTypeCard: React.FC<{
           onChange(typeIndex, "com_snos", v);
           onChange(typeIndex, "div_snos", []);
           onChange(typeIndex, "brn_snos", []);
+          onChange(typeIndex, "dept_snos", []);
         } else if (field === "div_snos") {
           onChange(typeIndex, "div_snos", v);
           onChange(typeIndex, "brn_snos", []);
+          onChange(typeIndex, "dept_snos", []);
+        } else if (field === "brn_snos") {
+          onChange(typeIndex, "brn_snos", v);
+          // Drop any already-selected departments that no longer belong to one of
+          // the newly-selected branches, so a stale dept can't survive into save.
+          const validBrn = new Set((v as string[]).map(String));
+          const stillValid = type.dept_snos.filter((deptSno) => {
+            const dept = allDepartments.find((d) => String(d.value) === String(deptSno));
+            return dept?.brn_sno != null && validBrn.has(String(dept.brn_sno));
+          });
+          onChange(typeIndex, "dept_snos", stillValid);
         } else {
           onChange(typeIndex, field as keyof WorkflowType, v);
         }
       },
-      [typeIndex, onChange]
+      [typeIndex, onChange, allDepartments, type.dept_snos]
     );
 
     return (
@@ -455,7 +469,7 @@ export default function ApprovalFlowDynamic() {
   const { postData } = usePost<any>();
   const { updateData } = useUpdate<any>();
   const { deleteData } = useDelete<any>();
-  const { workflowFields, entityTypeCount, hierarchyData } = useApprovalFlowHierarchy();
+  const { workflowFields, entityTypeCount, hierarchyData, allDepartments } = useApprovalFlowHierarchy();
   const isSaving = createSaving || editSaving;
 
   useEffect(() => {
@@ -489,6 +503,25 @@ export default function ApprovalFlowDynamic() {
     }
     return map;
   }, [hierarchyData]);
+
+  // ── Department parent lookup ────────────────────────────────────────────
+  // Each department master row already carries its own real com_sno/div_sno/brn_sno
+  // (see backend CommonMasterRepo fieldMappings for DeptMaster). Using this instead of
+  // pairing every selected branch with every selected department avoids producing
+  // nonsensical combinations when a workflow type spans multiple branches/departments
+  // that don't actually belong together (e.g. same-named departments under different
+  // companies/branches).
+  const buildDeptParent = useCallback((): Record<string, { com_sno: string; div_sno: string; brn_sno: string }> => {
+    const map: Record<string, { com_sno: string; div_sno: string; brn_sno: string }> = {};
+    for (const d of allDepartments) {
+      map[String(d.value)] = {
+        com_sno: String(d.com_sno ?? ""),
+        div_sno: String(d.div_sno ?? ""),
+        brn_sno: String(d.brn_sno ?? ""),
+      };
+    }
+    return map;
+  }, [allDepartments]);
 
   // ── Type/stage handlers factory ───────────────────────────────────────────
   const makeHandlers = (
@@ -658,18 +691,22 @@ export default function ApprovalFlowDynamic() {
     setCreateSaving(true);
     const count = entityTypeCount[createWorkflow.entity_type] || 0;
     const autoCode = `WF_${createWorkflow.entity_type}_${String(count + 1).padStart(3, "0")}`;
-    const bp = buildBranchParent();
+    const dp = buildDeptParent();
+    // One row per selected department, using that department's own real com/div/brn —
+    // never a branch × department cross-join (a department not belonging to a selected
+    // branch is silently dropped rather than paired with the wrong branch).
     const expandedTypes = createTypes.flatMap((t) =>
-      t.brn_snos.flatMap((brn) =>
-        t.dept_snos.map((dept) => ({
+      t.dept_snos
+        .filter((dept) => dp[String(dept)] && t.brn_snos.includes(dp[String(dept)].brn_sno))
+        .map((dept) => ({
           workflow_types_name: t.workflow_types_name,
-          com_sno: bp[String(brn)]?.com_sno ?? "",
-          div_sno: bp[String(brn)]?.div_sno ?? "",
-          brn_sno: brn, dept_sno: dept,
+          com_sno: dp[String(dept)].com_sno,
+          div_sno: dp[String(dept)].div_sno,
+          brn_sno: dp[String(dept)].brn_sno,
+          dept_sno: dept,
           is_active: t.is_active ? "Y" : "N",
           stage_order_json: JSON.stringify(t.stages),
         }))
-      )
     );
     try {
 
@@ -692,7 +729,7 @@ export default function ApprovalFlowDynamic() {
       setCreateSaving(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [validateCreate, createWorkflow, createTypes, entityTypeCount, buildBranchParent]);
+  }, [validateCreate, createWorkflow, createTypes, entityTypeCount, buildDeptParent]);
 
   // ── Edit submit ───────────────────────────────────────────────────────────
   const handleUpdateSubmit = useCallback(async () => {
@@ -706,7 +743,7 @@ export default function ApprovalFlowDynamic() {
         description: editWorkflow.description,
         is_active: editWorkflow.is_active ? "Y" : "N",
       });
-      const bp = buildBranchParent();
+      const dp = buildDeptParent();
       for (const type of editTypes) {
         if (type._typeIds.length > 0) {
           for (const typeId of type._typeIds) {
@@ -722,23 +759,27 @@ export default function ApprovalFlowDynamic() {
           }
         } else {
           if (!type.workflow_types_name || !type.brn_snos.length || !type.dept_snos.length) continue;
-          for (const brn of type.brn_snos) {
-            for (const dept of type.dept_snos) {
-              const res = await postData(apiSaveWorkflowType, {
-                workflow_id: selectedRow.workflow_id,
-                workflow_types_name: type.workflow_types_name,
-                com_sno: bp[String(brn)]?.com_sno ?? "",
-                div_sno: bp[String(brn)]?.div_sno ?? "",
-                brn_sno: brn, dept_sno: dept,
-                is_active: type.is_active ? "Y" : "N",
+          // One row per selected department, using that department's own real
+          // com/div/brn — same rule as create (no branch × department cross-join).
+          const validDepts = type.dept_snos.filter(
+            (dept) => dp[String(dept)] && type.brn_snos.includes(dp[String(dept)].brn_sno)
+          );
+          for (const dept of validDepts) {
+            const res = await postData(apiSaveWorkflowType, {
+              workflow_id: selectedRow.workflow_id,
+              workflow_types_name: type.workflow_types_name,
+              com_sno: dp[String(dept)].com_sno,
+              div_sno: dp[String(dept)].div_sno,
+              brn_sno: dp[String(dept)].brn_sno,
+              dept_sno: dept,
+              is_active: type.is_active ? "Y" : "N",
+            });
+            const newTypeId = res?.data?.[0]?.workflow_types_id;
+            if (newTypeId) {
+              await postData(apiSaveWorkflowStage, {
+                workflow_types_id: newTypeId,
+                stage_order_json: JSON.stringify(type.stages),
               });
-              const newTypeId = res?.data?.[0]?.workflow_types_id;
-              if (newTypeId) {
-                await postData(apiSaveWorkflowStage, {
-                  workflow_types_id: newTypeId,
-                  stage_order_json: JSON.stringify(type.stages),
-                });
-              }
             }
           }
         }
@@ -755,7 +796,7 @@ export default function ApprovalFlowDynamic() {
       setEditSaving(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRow, editWorkflow, editTypes, buildBranchParent]);
+  }, [selectedRow, editWorkflow, editTypes, buildDeptParent]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
   // Soft delete: the row's is_active flips to 'N' and it stops appearing, but
@@ -1058,7 +1099,7 @@ export default function ApprovalFlowDynamic() {
                   <div>
                     <p className="text-sm font-semibold text-foreground">Workflow Types</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Each type expands into one entry per branch × department
+                      Each type expands into one entry per selected department, scoped to that department's own branch
                     </p>
                   </div>
                   <Button
@@ -1086,6 +1127,7 @@ export default function ApprovalFlowDynamic() {
                     type={type}
                     typeIndex={index}
                     employeeOptions={employeeOptions}
+                    allDepartments={allDepartments}
                     onChange={mode === "create" ? ch.updateType : eh.updateType}
                     onStageChange={mode === "create" ? ch.updateStage : eh.updateStage}
                     onAddStage={mode === "create" ? ch.addStage : eh.addStage}

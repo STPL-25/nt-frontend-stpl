@@ -6,16 +6,20 @@ import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
 import axios from 'axios';
-import { gateGetApprovedPOs, gateGetAllEntries, gateCreateEntry } from '@/Services/GrnService/gateEntryApi';
+import {
+  gateGetApprovedPOs, gateGetAllEntries, gateCreateEntry, gateGetDispatchByLr,
+  type DispatchDeliveryLookup,
+} from '@/Services/GrnService/gateEntryApi';
+import { apiFetchCommonMaster } from '@/Services/Api';
 import { normalisePORows } from '@/Application/GRN/GRN/helpers';
 import { socket, SOCKET_JOIN_GRN, SOCKET_LEAVE_GRN, SOCKET_GATE_ENTRY_CREATED } from '@/Services/Socket';
 
-import type { PORecord, GateEntryRecord, GateEntryFormState } from './GateEntry/types';
-import { MOCK_TRANSPORT_LIST } from './GateEntry/helpers';
+import type { PORecord, GateEntryRecord, GateEntryFormState, TransportOption } from './GateEntry/types';
 
 import GateEntrySidebar from './GateEntry/GateEntrySidebar';
 import GateEntryPOSearch from './GateEntry/GateEntryPOSearch';
 import GateEntryForm from './GateEntry/GateEntryForm';
+import GateEntryQRScan from './GateEntry/GateEntryQRScan';
 import GateEntryDetailView from './GateEntry/GateEntryDetailView';
 
 const GateEntryPage: React.FC = () => {
@@ -30,9 +34,12 @@ const GateEntryPage: React.FC = () => {
 
   const [poList, setPOList] = useState<PORecord[]>([]);
   const [entries, setEntries] = useState<GateEntryRecord[]>([]);
+  const [transportList, setTransportList] = useState<TransportOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<GateEntryRecord | null>(null);
   const [activePO, setActivePO] = useState<PORecord | null>(null);
+  const [prefill, setPrefill] = useState<Partial<GateEntryFormState> | null>(null);
+  const [scanning, setScanning] = useState(false);
   const [isNew, setIsNew] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -55,6 +62,18 @@ const GateEntryPage: React.FC = () => {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  // Transporter master (replaces the old hardcoded mock list)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await axios.get(`${apiFetchCommonMaster}TransportMaster`);
+        setTransportList(res.data?.data ?? []);
+      } catch {
+        toast.error('Failed to load transporter master');
+      }
+    })();
+  }, []);
+
   // Real-time: join the shared GRN/Gate Entry room so entries created by
   // other users (or other tabs) are reflected without a manual refresh.
   useEffect(() => {
@@ -72,12 +91,43 @@ const GateEntryPage: React.FC = () => {
     setSelected(entry);
     setIsNew(false);
     setActivePO(null);
+    setPrefill(null);
+    setScanning(false);
   };
 
   const handleNew = () => {
     setSelected(null);
     setActivePO(null);
+    setPrefill(null);
+    setScanning(false);
     setIsNew(true);
+  };
+
+  // QR scan-to-fill: resolve the scanned code (LR no / DSD-<sno>) to its
+  // dispatch delivery, locate the PO, and prefill the gate entry form.
+  const handleScanned = async (code: string) => {
+    setScanning(false);
+    try {
+      const res = await axios.get(gateGetDispatchByLr(code));
+      const d: DispatchDeliveryLookup = res.data?.data;
+      const po = poList.find(p => p.po_basic_sno === d.po_basic_sno);
+      if (!po) {
+        toast.error(`Dispatch found for PO ${d.po_no}, but that PO is not pending gate entry.`);
+        return;
+      }
+      setPrefill({
+        lr_no: d.lr_no ?? '',
+        transport_name: d.transport_name ?? '',
+        invoice_no: d.invoice_no ?? '',
+        invoice_date: d.invoice_date ?? '',
+        received_qty: d.qty != null ? String(d.qty) : '',
+        bundles: d.bundles != null ? String(d.bundles) : '',
+      });
+      setActivePO(po);
+      toast.success(`Dispatch ${d.dispatch_slip_no} loaded — verify and save the gate entry`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? `No dispatch found for "${code}"`);
+    }
   };
 
   const handleSubmit = async (form: GateEntryFormState) => {
@@ -134,6 +184,7 @@ const GateEntryPage: React.FC = () => {
       setEntries(prev => [newEntry, ...prev]);
       setSelected(newEntry);
       setActivePO(null);
+      setPrefill(null);
       setIsNew(false);
       toast.success(`Gate entry ${newEntry.gate_entry_no} recorded`);
     } catch (err: any) {
@@ -187,15 +238,24 @@ const GateEntryPage: React.FC = () => {
         {showSearch ? (
           activePO ? (
             <GateEntryForm
+              key={`${activePO.po_basic_sno}-${prefill?.lr_no ?? ''}`}
               po={activePO}
-              transportList={MOCK_TRANSPORT_LIST}
+              transportList={transportList}
               receiverEcno={currentUserEcno}
               onSubmit={handleSubmit}
-              onCancel={() => setActivePO(null)}
+              onCancel={() => { setActivePO(null); setPrefill(null); }}
               submitting={submitting}
+              initial={prefill ?? undefined}
             />
+          ) : scanning ? (
+            <GateEntryQRScan onScan={handleScanned} onClose={() => setScanning(false)} />
           ) : (
-            <GateEntryPOSearch poList={poList} onStartGateEntry={setActivePO} />
+            <GateEntryPOSearch
+              poList={poList}
+              onStartGateEntry={(po) => { setPrefill(null); setActivePO(po); }}
+              onScanQR={() => setScanning(true)}
+              onLookupLr={handleScanned}
+            />
           )
         ) : showDetail ? (
           <GateEntryDetailView entry={selected!} />

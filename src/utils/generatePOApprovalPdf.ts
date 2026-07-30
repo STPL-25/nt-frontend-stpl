@@ -848,8 +848,6 @@ function itemTotalCost(item: AnyRecord): number {
 }
 
 function itemNetCost(item: AnyRecord): number {
-  if (item.net_cost != null) return toNumber(item.net_cost);
-  if (item.total_amount != null) return toNumber(item.total_amount);
   return itemTotalCost(item) * (1 + (toNumber(item.tax_pct) / 100));
 }
 
@@ -981,20 +979,20 @@ function drawTermsBlock(doc: jsPDF, y: number, terms: string[]): number {
   return y + height + 6;
 }
 
-function drawSignatureBlock(doc: jsPDF, y: number): number {
-  const colWidth = CONTENT_WIDTH / 3;
-  const labels = ['Prepared By', 'Checked By', 'Approved By'];
-  doc.setDrawColor(...BORDER);
-  labels.forEach((label, i) => {
-    const x = PAGE_MARGIN + i * colWidth;
-    doc.line(x + 5, y + 12, x + colWidth - 5, y + 12);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(...MUTED);
-    doc.text(label, x + 5, y + 16);
-  });
-  return y + 22;
-}
+// function drawSignatureBlock(doc: jsPDF, y: number): number {
+//   const colWidth = CONTENT_WIDTH / 3;
+//   const labels = ['Prepared By', 'Checked By', 'Approved By'];
+//   doc.setDrawColor(...BORDER);
+//   labels.forEach((label, i) => {
+//     const x = PAGE_MARGIN + i * colWidth;
+//     doc.line(x + 5, y + 12, x + colWidth - 5, y + 12);
+//     doc.setFont('helvetica', 'normal');
+//     doc.setFontSize(7.5);
+//     doc.setTextColor(...MUTED);
+//     doc.text(label, x + 5, y + 16);
+//   });
+//   return y + 22;
+// }
 
 function drawHeader(
   doc: jsPDF,
@@ -1019,8 +1017,8 @@ function drawHeader(
   if (logoDataUrl) {
     try {
       const properties = doc.getImageProperties(logoDataUrl);
-      const maxWidth = 45;
-      const maxHeight = 20;
+      const maxWidth = 60;
+      const maxHeight = 30;
       const ratio = properties.width / properties.height;
       const width = Math.min(maxWidth, maxHeight * ratio);
       const height = width / ratio;
@@ -1036,7 +1034,7 @@ function drawHeader(
   // The logo already carries the company identity; repeat the name only without it.
   if (!logoDrawn) {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
+    doc.setFontSize(7);
     doc.setTextColor(...NAVY);
     doc.text(companyName, PAGE_MARGIN, cursorY);
     cursorY += 4.5;
@@ -1044,19 +1042,19 @@ function drawHeader(
 
   if (companyAddress) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(5);
     doc.setTextColor(55, 65, 81);
-    const addressLines = doc.splitTextToSize(companyAddress, 108) as string[];
+    const addressLines = doc.splitTextToSize(companyAddress, 90) as string[];
     doc.text(addressLines, PAGE_MARGIN, cursorY);
-    cursorY += addressLines.length * 3.3;
+    cursorY += addressLines.length * 2.9;
   }
 
   if (companyGstNo) {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
+    doc.setFontSize(5);
     doc.setTextColor(55, 65, 81);
     doc.text(`GST No.: ${companyGstNo}`, PAGE_MARGIN, cursorY);
-    cursorY += 3.5;
+    cursorY += 3;
   }
 
   const cardWidth = 42;
@@ -1161,6 +1159,7 @@ export async function createPOApprovalPdfDocument(
     ? approvedItems
     : Array.isArray(quotationItems) ? quotationItems : [];
 
+  const netCostTotal = items.reduce((sum, item) => sum + itemBase(item), 0);
   const totalCost = items.reduce((sum, item) => sum + itemTotalCost(item), 0);
   const grandTotal = items.reduce((sum, item) => sum + itemNetCost(item), 0);
   const taxTotal = grandTotal - totalCost;
@@ -1264,9 +1263,8 @@ export async function createPOApprovalPdfDocument(
       String(item.uom_name ?? item.unit_name ?? '-'),
       formatMoney(itemUnitPrice(item)),
       `${formatQuantity(item.discount_pct)}%\n${formatMoney(itemDiscount(item))}`,
-      `${formatQuantity(item.tax_pct)}%\n${formatMoney(itemTaxValue(item))}`,
+      `${formatQuantity(item.tax_pct)}%\n${formatMoney(toNumber(item?.net_cost))}`,
       formatMoney(itemTotalCost(item)),
-      formatMoney(itemNetCost(item)),
     ];
   });
 
@@ -1279,13 +1277,12 @@ export async function createPOApprovalPdfDocument(
       'Unit',
       'Unit Price',
       'Discount',
-      'Tax',
+      'GST',
       'Total Cost',
-      'Net Cost',
     ]],
     body: itemRows.length > 0
       ? itemRows
-      : [['', 'No items', '', '', '', '', '', '', '']],
+      : [['', 'No items', '', '', '', '', '', '']],
     theme: 'grid',
     margin: { left: PAGE_MARGIN, right: PAGE_MARGIN, bottom: 30 },
     styles: {
@@ -1314,8 +1311,7 @@ export async function createPOApprovalPdfDocument(
       4: { cellWidth: 22, halign: 'right' },
       5: { cellWidth: 20, halign: 'right' },
       6: { cellWidth: 20, halign: 'right' },
-      7: { cellWidth: 24, halign: 'right' },
-      8: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
+      7: { cellWidth: 50, halign: 'right', fontStyle: 'bold' },
     },
   });
 
@@ -1326,9 +1322,9 @@ export async function createPOApprovalPdfDocument(
   const totalsWidth = 78;
   const totalsX = PAGE_WIDTH - PAGE_MARGIN - totalsWidth;
   const totalRows = [
-    ['Total Cost', formatMoney(totalCost)],
+    ['Net Cost', formatMoney(netCostTotal)],
     ['Discount', `- ${formatMoney(discountTotal)}`],
-    ['Tax', formatMoney(taxTotal)],
+    ['GST', formatMoney(taxTotal)],
   ];
   doc.setDrawColor(...BORDER);
   doc.setLineWidth(0.2);
@@ -1348,17 +1344,17 @@ export async function createPOApprovalPdfDocument(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(255, 255, 255);
-  doc.text('Grand Total', totalsX + 3, grandY + 5.5);
+  doc.text('Total Cost', totalsX + 3, grandY + 5.5);
   doc.text(formatMoney(grandTotal), totalsX + totalsWidth - 3, grandY + 5.5, { align: 'right' });
 
   cursorY = grandY + 14;
   cursorY = ensurePageSpace(doc, cursorY, 40);
   cursorY = drawTermsBlock(doc, cursorY, terms);
   cursorY = ensurePageSpace(doc, cursorY, 25);
-  drawSignatureBlock(doc, cursorY);
+    // drawSignatureBlock(doc, cursorY);
 
   addFooters(doc);
-  if (approvalData?.final_approved_on) drawWatermark(doc, companyName);
+  // if (approvalData?.final_approved_on) drawWatermark(doc, companyName);
 
   return { doc, fileName: `${cleanFileName(poNo)}.pdf` };
 }
@@ -1427,8 +1423,23 @@ async function loadLogoDataUrl(url: string): Promise<string | undefined> {
 }
 
 /**
- * Creates and directly downloads the final approved Purchase Order as a PDF.
+ * Builds the final approved Purchase Order PDF without saving it, so callers
+ * can both save it locally and upload the same document elsewhere.
  * API PO data is preferred, with the PR and quotation retained as fallbacks.
+ */
+export async function buildPOApprovalPdf(
+  pr: AnyRecord,
+  quotation: AnyRecord,
+  approvalData?: AnyRecord,
+): Promise<{ doc: jsPDF; fileName: string }> {
+  const poHeader = parseJSON<AnyRecord>(approvalData?.po_header, {});
+  const logoUrl = String(firstValue([poHeader, pr ?? {}], ['com_logo', 'company_logo']));
+  const logoDataUrl = await loadLogoDataUrl(logoUrl);
+  return createPOApprovalPdfDocument(pr, quotation, approvalData, logoDataUrl);
+}
+
+/**
+ * Creates and directly downloads the final approved Purchase Order as a PDF.
  */
 export async function generatePOApprovalPdf(
   pr: AnyRecord,
@@ -1436,15 +1447,7 @@ export async function generatePOApprovalPdf(
   approvalData?: AnyRecord,
 ): Promise<void> {
   try {
-    const poHeader = parseJSON<AnyRecord>(approvalData?.po_header, {});
-    const logoUrl = String(firstValue([poHeader, pr ?? {}], ['com_logo', 'company_logo']));
-    const logoDataUrl = await loadLogoDataUrl(logoUrl);
-    const { doc, fileName } = await createPOApprovalPdfDocument(
-      pr,
-      quotation,
-      approvalData,
-      logoDataUrl,
-    );
+    const { doc, fileName } = await buildPOApprovalPdf(pr, quotation, approvalData);
     doc.save(fileName);
   } catch (error) {
     console.error('Unable to generate Purchase Order PDF:', error);

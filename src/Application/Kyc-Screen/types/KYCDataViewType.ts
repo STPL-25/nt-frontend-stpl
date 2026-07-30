@@ -34,3 +34,23 @@ export interface APIResponse {
   success: boolean;
   data: KYCData[];
 }
+
+// One row from kyc_cmp_info — a real, unambiguous company/division/branch/department
+// combination this KYC record is linked to (a record can have several).
+export interface KYCOrgMapping {
+  kyc_cmp_sno: number;
+  com_sno: number;
+  div_sno: number;
+  brn_sno: number;
+  dept_sno: number;
+  is_primary: "Y" | "N";
+  com_name: string;
+  div_name: string;
+  brn_name: string;
+  dept_name: string;
+}
+
+export interface OrgMappingsResponse {
+  success: boolean;
+  data: KYCOrgMapping[];
+}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { ArrowLeft, CheckCircle2, Truck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Download, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -89,6 +89,12 @@ const SupplierPODetail: React.FC<Props> = ({ po_basic_sno, onBack, onDispatch })
             </p>
           </div>
           <div className="flex gap-2">
+            {po.po_pdf_url && (
+              <Button variant="outline" onClick={() => window.open(po.po_pdf_url as string, '_blank')}>
+                <Download className="h-4 w-4" />
+                Download PO
+              </Button>
+            )}
             {!isAccepted && (
               <Button onClick={handleAccept} disabled={accepting}>
                 <CheckCircle2 className="h-4 w-4" />

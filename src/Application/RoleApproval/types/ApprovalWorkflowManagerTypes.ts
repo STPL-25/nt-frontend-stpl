@@ -21,7 +21,8 @@ export interface StageOrderItem {
 }
 
 // UI model — com_snos/div_snos are cascade helpers, not persisted.
-// On submit, each brn_sno × dept_sno pair becomes one workflow_types row.
+// On submit, each selected dept_sno becomes one workflow_types row, scoped to that
+// department's own real com_sno/div_sno/brn_sno (never a branch × department cross-join).
 export interface WorkflowType {
   workflow_types_name: string;
   com_snos: string[];  // multi-select — UI only

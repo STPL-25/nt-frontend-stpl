@@ -31,10 +31,12 @@ interface Branch {
   brn_name: string;
 }
 
-interface CascadeOption {
+export interface CascadeOption {
   value: string | number;
   label: string;
   brn_sno?: string | number | null;
+  div_sno?: string | number | null;
+  com_sno?: string | number | null;
 }
 
 interface FieldType {
@@ -63,19 +65,49 @@ export const useApprovalFlowHierarchy = (
   const { data: workflowsData, loading: workflowsLoading } = useFetch<any>(apiGetWorkflows);
   const { options: masterOptions } = useMasterOptions(['DeptMaster']);
 
+  // Full department master list, each option carrying its own real com_sno/div_sno/brn_sno —
+  // used as the source of truth for which branch a department actually belongs to (never a
+  // cross-join guess). Exposed separately from the filtered dropdown options below.
+  const allDepartments: CascadeOption[] = useMemo(
+    () => (masterOptions?.DeptMaster ?? []) as CascadeOption[],
+    [masterOptions?.DeptMaster]
+  );
+
+  // Branch name lookup, used to disambiguate departments when more than one branch is selected
+  // (e.g. two different companies can each have a branch/dept with the same name).
+  const branchNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of (hierarchyData?.companies ?? []) as Company[]) {
+      for (const d of c.divisions ?? []) {
+        for (const b of d.branches ?? []) {
+          map.set(String(b.brn_sno), b.brn_name);
+        }
+      }
+    }
+    return map;
+  }, [hierarchyData]);
+
   // Filter departments to only those belonging to the selected branches, deduped by dept_sno
   const deptOptions: Option[] = useMemo(() => {
-    const all = (masterOptions?.DeptMaster ?? []) as CascadeOption[];
-    if (selectedBranch.length === 0) return all;
+    const filtered =
+      selectedBranch.length === 0
+        ? allDepartments
+        : allDepartments.filter((d) => d.brn_sno != null && selectedBranch.includes(Number(d.brn_sno)));
     const seen = new Set<string>();
-    return all.filter((d) => {
-      if (d.brn_sno == null || !selectedBranch.includes(Number(d.brn_sno))) return false;
+    const multiBranch = selectedBranch.length > 1;
+    const out: Option[] = [];
+    for (const d of filtered) {
       const key = String(d.value);
-      if (seen.has(key)) return false;
+      if (seen.has(key)) continue;
       seen.add(key);
-      return true;
-    });
-  }, [masterOptions?.DeptMaster, selectedBranch]);
+      const brnName = d.brn_sno != null ? branchNameById.get(String(d.brn_sno)) : undefined;
+      out.push({
+        value: d.value,
+        label: multiBranch && brnName ? `${d.label} (${brnName})` : d.label,
+      });
+    }
+    return out;
+  }, [allDepartments, selectedBranch, branchNameById]);
 
   const entityTypeOptions: Option[] = useMemo(() => {
     const list: any[] = Array.isArray(workflowsData?.data) ? workflowsData.data : [];
@@ -107,20 +139,28 @@ export const useApprovalFlowHierarchy = (
 
   const divisionOptions: Option[] = useMemo(() => {
     if (!hierarchyData?.companies || selectedCompany.length === 0) return [];
+    const multiCompany = selectedCompany.length > 1;
     return hierarchyData.companies
       .filter((c: Company) => selectedCompany.includes(Number(c.com_sno)))
       .flatMap((c: Company) =>
-        c.divisions.map((d: Division) => ({ label: d.div_name, value: d.div_sno }))
+        c.divisions.map((d: Division) => ({
+          label: multiCompany ? `${d.div_name} (${c.com_name})` : d.div_name,
+          value: d.div_sno,
+        }))
       );
   }, [hierarchyData, selectedCompany]);
 
   const branchOptions: Option[] = useMemo(() => {
     if (!hierarchyData?.companies || selectedDivision.length === 0) return [];
+    const multiDivision = selectedDivision.length > 1;
     return hierarchyData.companies
-      .flatMap((c: Company) => c.divisions)
-      .filter((d: Division) => selectedDivision.includes(Number(d.div_sno)))
-      .flatMap((d: Division) =>
-        d.branches.map((b: Branch) => ({ label: b.brn_name, value: b.brn_sno }))
+      .flatMap((c: Company) => c.divisions.map((d: Division) => ({ ...d, com_name: c.com_name })))
+      .filter((d: Division & { com_name: string }) => selectedDivision.includes(Number(d.div_sno)))
+      .flatMap((d: Division & { com_name: string }) =>
+        d.branches.map((b: Branch) => ({
+          label: multiDivision ? `${b.brn_name} (${d.div_name})` : b.brn_name,
+          value: b.brn_sno,
+        }))
       );
   }, [hierarchyData, selectedDivision]);
 
@@ -240,6 +280,7 @@ export const useApprovalFlowHierarchy = (
     divisionOptions,
     branchOptions,
     departmentOptions: deptOptions,
+    allDepartments,
     entityTypeCount,
     workflowsLoading,
     workflowFields,

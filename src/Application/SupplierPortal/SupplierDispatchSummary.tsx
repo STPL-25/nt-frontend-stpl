@@ -38,7 +38,7 @@ const SupplierDispatchSummary: React.FC<Props> = ({ result, onBack, onPrint }) =
               <TableBody>
                 {result.deliveries.map((d) => (
                   <TableRow key={d.delivery_sno}>
-                    <TableCell className="font-medium">{d.lr_no}</TableCell>
+                    <TableCell className="font-medium">{d.lr_no ?? '— (Direct)'}</TableCell>
                     <TableCell>{d.invoice_no}</TableCell>
                     <TableCell className="text-right">
                       <Button size="sm" variant="outline" onClick={() => onPrint(d.delivery_sno)}>

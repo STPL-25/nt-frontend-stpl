@@ -39,6 +39,7 @@ export const apiPostKycData = baseUrl + "/api/kyc/create_kyc_records";
 export const apiGetKycPendingApprovals = baseUrl + "/api/kyc/get_pending_approvals";
 export const apiKycApproveAction = baseUrl + "/api/kyc/approve_kyc";
 export const apiGetGSTNDetails = baseUrl + "/api/kyc/Get_GSTN_Details";
+export const apiGetKycOrgMappings = (kycId: number | string) => baseUrl + `/api/kyc/get_kyc_org_mappings/${kycId}`;
 
 // Common Masters
 export const apiFetchCommonMaster = baseUrl + "/api/common_master/";

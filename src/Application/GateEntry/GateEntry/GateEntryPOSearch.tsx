@@ -3,18 +3,25 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Search, PackageSearch, FileText, Truck, CalendarDays, DoorOpen } from 'lucide-react';
+import { Search, PackageSearch, FileText, Truck, CalendarDays, DoorOpen, QrCode } from 'lucide-react';
 import type { PORecord } from './types';
 import { getPODisplayNo, formatDate as formatGRNDate, getPOItems } from '@/Application/GRN/GRN/helpers';
 
 interface GateEntryPOSearchProps {
   poList: PORecord[];
   onStartGateEntry: (po: PORecord) => void;
+  /** Open the camera QR scanner (scan the supplier's dispatch slip). */
+  onScanQR?: () => void;
+  /** Look a dispatch up by manually-typed LR number. */
+  onLookupLr?: (lr_code: string) => void;
 }
 
-const GateEntryPOSearch: React.FC<GateEntryPOSearchProps> = ({ poList, onStartGateEntry }) => {
+const GateEntryPOSearch: React.FC<GateEntryPOSearchProps> = ({
+  poList, onStartGateEntry, onScanQR, onLookupLr,
+}) => {
   const [query, setQuery] = useState('');
   const [searched, setSearched] = useState(false);
+  const [lrQuery, setLrQuery] = useState('');
 
   const match = useMemo(() => {
     if (!searched) return null;
@@ -60,6 +67,43 @@ const GateEntryPOSearch: React.FC<GateEntryPOSearchProps> = ({ poList, onStartGa
             <p className="text-xs text-red-600 mt-2">
               No purchase order found for "{query.trim()}". Check the PO number and try again.
             </p>
+          )}
+
+          {(onScanQR || onLookupLr) && (
+            <div className="mt-4 border-t pt-3">
+              <p className="text-xs text-muted-foreground font-medium mb-2">
+                Or start from the supplier's dispatch slip
+              </p>
+              <div className="flex flex-wrap items-end gap-2 max-w-md">
+                {onScanQR && (
+                  <Button size="sm" variant="outline" onClick={onScanQR}>
+                    <QrCode size={14} className="mr-1" /> Scan QR
+                  </Button>
+                )}
+                {onLookupLr && (
+                  <>
+                    <div className="flex-1 min-w-40 space-y-1">
+                      <Label className="text-xs text-muted-foreground">LR Number</Label>
+                      <Input
+                        placeholder="e.g. LR-8451"
+                        value={lrQuery}
+                        onChange={e => setLrQuery(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && lrQuery.trim()) onLookupLr(lrQuery.trim()); }}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!lrQuery.trim()}
+                      onClick={() => onLookupLr(lrQuery.trim())}
+                    >
+                      <Truck size={14} className="mr-1" /> Fetch by LR
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

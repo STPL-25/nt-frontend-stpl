@@ -158,6 +158,7 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
                     <TableHead className="text-xs text-center w-24">Received *</TableHead>
                     <TableHead className="text-xs text-center w-24">Rejected</TableHead>
                     <TableHead className="text-xs w-28">Condition</TableHead>
+                    <TableHead className="text-xs w-28">HSN Code</TableHead>
                     <TableHead className="text-xs">Item Remarks</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -228,6 +229,16 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
                             ))}
                           </SelectContent>
                         </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          placeholder="From invoice"
+                          value={item.hsn_code ?? ''}
+                          maxLength={10}
+                          disabled={!item.selected}
+                          onChange={e => updateItem(idx, { hsn_code: e.target.value.replace(/[^0-9A-Za-z]/g, '') })}
+                          className="h-7 text-xs w-24"
+                        />
                       </TableCell>
                       <TableCell>
                         <Input

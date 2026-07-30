@@ -1,9 +1,10 @@
 import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Building2, MapPin, FileText, CreditCard, Users, Upload, CheckCircle2, Loader2,
-  type LucideIcon,
+  Plus, X, Star, type LucideIcon,
 } from "lucide-react";
 import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
 import {
@@ -23,6 +24,7 @@ import {
   AddressModalContent, BankModalContent,
   ContactModalContent, DocumentModalContent,
 } from "./KycModalSections";
+import type { OrgMapping } from "./types/KycEntryType";
 
 const SECTION_META: Record<string, { title: string; description: string; icon: LucideIcon }> = {
   address:   { title: "Address Details",      description: "Business locations and registered addresses",                   icon: MapPin },
@@ -291,15 +293,22 @@ export default function KycEntryForm() {
   const [gstDetails, setGstDetails]             = useState<UnknownRecord | null>(null);
   const [gstSubmissionFields, setGstSubmissionFields] = useState<GstSubmissionFields | null>(null);
   const [currentSection, setCurrentSection]     = useState("");
-  const [selectedCompany, setSelectedCompany]   = useState<number[]>([]);
-  const [selectedDivision, setSelectedDivision] = useState<number[]>([]);
-  const [selectedBranch, setSelectedBranch]     = useState<number[]>([]);
-  const [selectedDepartment, setSelectedDepartment] = useState<string[]>([]);
+  // In-progress company -> division -> branch -> department chain being built via the
+  // cascading selects below; committed into `orgMappings` by "Add mapping".
+  const [draftCompany, setDraftCompany]   = useState<number | "">("");
+  const [draftDivision, setDraftDivision] = useState<number | "">("");
+  const [draftBranch, setDraftBranch]     = useState<number | "">("");
+  const [draftDept, setDraftDept]         = useState<number | "">("");
+  const [orgMappings, setOrgMappings]     = useState<OrgMapping[]>([]);
 
-  const { fields: hierarchyFields, error: hierarchyError } = useComDivBranchDeptFields(
-    selectedCompany,
-    selectedDivision
-  );
+  // const {
+  //   fields: hierarchyFields,
+  //   companyOptions,
+  //   divisionOptions,
+  //   branchOptions,
+  //   departmentOptions,
+  //   error: hierarchyError,
+  // } = useComDivBranchDeptFields(draftCompany, draftDivision, draftBranch);
   const basicInfoFields = useBasicInfoFields(basicInfo);
 
   const kyc = useKycSections(addressFields, bankFields, contactFields, documentFields);
@@ -447,28 +456,76 @@ export default function KycEntryForm() {
     }
   };
 
-  const handleHierarchyChange = (field: string, vals: (number | string)[]) => {
+  const handleHierarchyChange = (field: string, val: number | string) => {
+    const num = val === "" ? "" : Number(val);
     switch (field) {
       case "com_sno":
-        setSelectedCompany(vals.map(Number));
-        setSelectedDivision([]);
-        setSelectedBranch([]);
+        setDraftCompany(num);
+        setDraftDivision("");
+        setDraftBranch("");
+        setDraftDept("");
         break;
       case "div_sno":
-        setSelectedDivision(vals.map(Number));
-        setSelectedBranch([]);
+        setDraftDivision(num);
+        setDraftBranch("");
+        setDraftDept("");
         break;
       case "brn_sno":
-        setSelectedBranch(vals.map(Number));
+        setDraftBranch(num);
+        setDraftDept("");
         break;
       case "dept_sno":
-        setSelectedDepartment(vals.map(String));
+        setDraftDept(num);
         break;
     }
   };
 
   const getHierarchyValue = (field: string) =>
-    ({ com_sno: selectedCompany, div_sno: selectedDivision, brn_sno: selectedBranch, dept_sno: selectedDepartment }[field] ?? []);
+    ({ com_sno: draftCompany, div_sno: draftDivision, brn_sno: draftBranch, dept_sno: draftDept }[field] ?? "");
+
+  // const handleAddMapping = () => {
+  //   if (draftCompany === "" || draftDivision === "" || draftBranch === "" || draftDept === "") {
+  //     toast.error("Select a company, division, branch and department first");
+  //     return;
+  //   }
+  //   const com_name  = companyOptions.find((o) => o.value === draftCompany)?.label ?? "";
+  //   const div_name  = divisionOptions.find((o) => o.value === draftDivision)?.label ?? "";
+  //   const brn_name  = branchOptions.find((o) => o.value === draftBranch)?.label ?? "";
+  //   const dept_name = departmentOptions.find((o) => o.value === draftDept)?.label ?? "";
+
+  //   setOrgMappings((prev) => {
+  //     const isDuplicate = prev.some(
+  //       (m) => m.com_sno === draftCompany && m.div_sno === draftDivision &&
+  //              m.brn_sno === draftBranch && m.dept_sno === draftDept
+  //     );
+  //     if (isDuplicate) {
+  //       toast.error("That combination has already been added");
+  //       return prev;
+  //     }
+  //     const mapping: OrgMapping = {
+  //       com_sno: draftCompany, div_sno: draftDivision, brn_sno: draftBranch, dept_sno: draftDept,
+  //       is_primary: prev.length === 0, // first mapping added defaults to primary
+  //       com_name, div_name, brn_name, dept_name,
+  //     };
+  //     return [...prev, mapping];
+  //   });
+  //   setDraftCompany(""); setDraftDivision(""); setDraftBranch(""); setDraftDept("");
+  // };
+
+  // const handleRemoveMapping = (index: number) => {
+  //   setOrgMappings((prev) => {
+  //     const next = prev.filter((_, i) => i !== index);
+  //     // Keep exactly one primary if any mappings remain
+  //     if (next.length > 0 && !next.some((m) => m.is_primary)) {
+  //       next[0] = { ...next[0], is_primary: true };
+  //     }
+  //     return next;
+  //   });
+  // };
+
+  // const handleSetPrimaryMapping = (index: number) => {
+  //   setOrgMappings((prev) => prev.map((m, i) => ({ ...m, is_primary: i === index })));
+  // };
 
   const openModal = (section: string) => { setCurrentSection(section); setIsModalOpen(true); };
   const closeModal = () => { setIsModalOpen(false); setCurrentSection(""); };
@@ -481,11 +538,15 @@ export default function KycEntryForm() {
     lastFetchedGstRef.current = "";
     lastFetchedIfscRef.current = {};
     latestIfscRef.current = {};
-    setSelectedCompany([]); setSelectedDivision([]); setSelectedBranch([]); setSelectedDepartment([]);
+    setDraftCompany(""); setDraftDivision(""); setDraftBranch(""); setDraftDept(""); setOrgMappings([]);
     kyc.resetSections();
   };
 
   const handleSubmit = async () => {
+    // if (orgMappings.length === 0) {
+    //   toast.error("Add at least one company / division / branch / department mapping");
+    //   return;
+    // }
     try {
       const formData = new FormData();
 
@@ -497,10 +558,12 @@ export default function KycEntryForm() {
       );
 
       formData.append("_ep", await encryptFormMeta({
-        companyIds:    selectedCompany,
-        divisionIds:   selectedDivision,
-        branchIds:     selectedBranch,
-        departmentIds: selectedDepartment,
+        // Each mapping carries its own real com/div/brn/dept — never independent arrays
+        // for the backend to pair up (that's what used to make it ambiguous which
+        // company a given division/branch/department selection actually belonged to).
+        orgMappings: orgMappings.map(({ com_sno, div_sno, brn_sno, dept_sno, is_primary }) => (
+          { com_sno, div_sno, brn_sno, dept_sno, is_primary }
+        )),
         created_by:    userData[0]?.ecno || "",
         addresses:     kyc.addresses.map(({ id, ...a }) => ({ id, ...a })),
         bankDetails:   bankData,
@@ -592,11 +655,11 @@ export default function KycEntryForm() {
   return (
     <div className="min-h-full bg-muted/20 py-6 px-4 lg:px-8">
       <div className="mx-auto space-y-6">
-        {hierarchyError && (
+        {/* {hierarchyError && (
           <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg text-sm">
             Failed to load hierarchy data: {hierarchyError}
           </div>
-        )}
+        )} */}
 
         {/* Basic Information */}
         <Card>
@@ -609,22 +672,78 @@ export default function KycEntryForm() {
             </div>
           </CardHeader>
           <CardContent className="pt-2 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {hierarchyFields.filter((f) => f.input).map((field) => (
-                <CustomInputField
-                  key={field.field}
-                  field={field.field}
-                  label={field.label}
-                  type={field.type}
-                  options={field.options || []}
-                  value={getHierarchyValue(field.field)}
-                  onChange={(vals: (number | string)[]) => handleHierarchyChange(field.field, vals)}
-                  require={field.require}
-                  disabled={field.disabled}
-                  placeholder={field.placeholder}
-                />
-              ))}
-            </div>
+            {/* <div>
+              <p className="text-sm font-medium mb-3">
+                Company / Division / Branch / Department
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {hierarchyFields.filter((f) => f.input).map((field) => (
+                  <CustomInputField
+                    key={field.field}
+                    field={field.field}
+                    label={field.label}
+                    type={field.type}
+                    options={field.options || []}
+                    value={getHierarchyValue(field.field)}
+                    onChange={(val: number | string) => handleHierarchyChange(field.field, val)}
+                    require={field.require}
+                    disabled={field.disabled}
+                    placeholder={field.placeholder}
+                  />
+                ))}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={handleAddMapping}
+                disabled={draftCompany === "" || draftDivision === "" || draftBranch === "" || draftDept === ""}
+              >
+                <Plus className="mr-1 h-4 w-4" /> Add mapping
+              </Button>
+
+              {orgMappings.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {orgMappings.map((m, index) => (
+                    <div
+                      key={`${m.com_sno}-${m.div_sno}-${m.brn_sno}-${m.dept_sno}`}
+                      className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm"
+                    >
+                      <span className="font-medium">{m.com_name}</span>
+                      <span className="text-muted-foreground">›</span>
+                      <span>{m.div_name}</span>
+                      <span className="text-muted-foreground">›</span>
+                      <span>{m.brn_name}</span>
+                      <span className="text-muted-foreground">›</span>
+                      <span>{m.dept_name}</span>
+                      {m.is_primary && (
+                        <Badge variant="secondary" className="ml-1 text-xs">Primary</Badge>
+                      )}
+                      <div className="ml-auto flex items-center gap-1">
+                        {!m.is_primary && (
+                          <Button
+                            type="button" variant="ghost" size="icon" className="h-7 w-7"
+                            title="Set as primary"
+                            onClick={() => handleSetPrimaryMapping(index)}
+                          >
+                            <Star className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        <Button
+                          type="button" variant="ghost" size="icon"
+                          className="h-7 w-7 text-red-500 hover:text-red-600"
+                          title="Remove"
+                          onClick={() => handleRemoveMapping(index)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div> */}
 
             {basicInfoFields?.some((f) => f.input) && (
               <>

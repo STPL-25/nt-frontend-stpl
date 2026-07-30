@@ -1,7 +1,7 @@
 import React, { ReactElement, useMemo } from "react";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import {  Building, MapPin, FileCheck, IndianRupee, Package, FolderOpen,
-  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch,} from "lucide-react";
+  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck,} from "lucide-react";
 import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
 import type { FieldType, OptionType } from "./fieldType/fieldType";
 
@@ -35,6 +35,7 @@ const masterItems: MasterItemType[] = [
   { icon: <FolderOpen className="w-5 h-5" />, name: "Product Category", category: "inventory", color: "bg-yellow-500", id: "ProductCategoryMaster" },
   { icon: <Package className="w-5 h-5" />, name: "Product", category: "inventory", color: "bg-indigo-500", id: "ProductMaster" },
    { icon: <Hash className="w-5 h-5" />, name: "UOM", category: "inventory", color: "bg-green-600", id: "UomMaster" },
+  { icon: <Truck className="w-5 h-5" />, name: "Transporter Master", category: "logistics", color: "bg-red-600", id: "TransportMaster" },
 
   // { icon: <FileText className="w-5 h-5" />, name: "KYC", category: "compliance", color: "bg-teal-500", id: "kyc_master" },
   // { icon: <Tag className="w-5 h-5" />, name: "Product Rate and Discount", category: "inventory", color: "bg-cyan-500", id: "product_rate_discount" },
@@ -143,6 +144,22 @@ const useUomMasterFields = (formData?: any): FieldType[] => {
       { field: "uom_class", label: "UOM Class", require: true, view: true, type: "text", input: true },
       { field: "uom_base_uom_flag", label: "UOM Base", require: true, view: true, type: "text", input: true },
       { field: "uom_con_factor", label: "UOM Conversion Factor ", require: true, view: true, type: "text", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    []
+  );
+};
+
+const useTransportMasterFields = (formData?: any): FieldType[] => {
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "transport_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "transport_code", label: "Code", require: false, view: true, type: "text", input: true },
+      { field: "transport_name", label: "Transporter Name", require: true, view: true, type: "text", input: true },
+      { field: "contact_person", label: "Contact Person", require: false, view: true, type: "text", input: true },
+      { field: "phone_no", label: "Phone No", require: false, view: true, type: "text", input: true },
+      { field: "gst_no", label: "GST No", require: false, view: true, type: "text", input: true },
+      { field: "address", label: "Address", require: false, view: true, type: "textarea", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
     []
@@ -339,6 +356,7 @@ export {
   useDivisionMasterFields,
   useBranchMasterFields,
   useUomMasterFields,
+  useTransportMasterFields,
   useAcYearFields,
   useGSTMasterFields,
   useDeptMasterFields,

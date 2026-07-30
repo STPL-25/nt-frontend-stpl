@@ -7,6 +7,7 @@ import {
   supplierAxios,
   supplierGetDispatchDelivery,
   formatFromAddress,
+  dispatchQrCode,
   type SupplierDispatchDelivery,
 } from '@/Services/SupplierService';
 import { formatDate } from './helpers';
@@ -28,8 +29,8 @@ const SupplierDispatchSlip: React.FC<Props> = ({ delivery_sno, onBack }) => {
         const res = await supplierAxios.get(supplierGetDispatchDelivery(delivery_sno));
         const data: SupplierDispatchDelivery = res.data?.data;
         setDelivery(data);
-        if (data?.lr_no) {
-          const url = await QRCode.toDataURL(data.lr_no, {
+        if (data) {
+          const url = await QRCode.toDataURL(dispatchQrCode(data), {
             margin: 0,
             width: 256,
             color: { dark: '#1E3A5F', light: '#FFFFFF' },
@@ -90,7 +91,9 @@ const SupplierDispatchSlip: React.FC<Props> = ({ delivery_sno, onBack }) => {
 
           <div className="flex w-28 shrink-0 flex-col items-center gap-1">
             {qrDataUrl && <img src={qrDataUrl} alt="LR QR code" className="h-24 w-24" />}
-            <span className="text-center text-[10px] text-muted-foreground">LR: {delivery.lr_no}</span>
+            <span className="text-center text-[10px] text-muted-foreground">
+              {delivery.lr_no ? `LR: ${delivery.lr_no}` : `Ref: ${dispatchQrCode(delivery)}`}
+            </span>
           </div>
         </div>
 
@@ -98,7 +101,7 @@ const SupplierDispatchSlip: React.FC<Props> = ({ delivery_sno, onBack }) => {
           <span className="text-muted-foreground">PO No.</span>
           <span className="text-right font-medium">{delivery.po_no}</span>
           <span className="text-muted-foreground">LR No.</span>
-          <span className="text-right font-medium">{delivery.lr_no}</span>
+          <span className="text-right font-medium">{delivery.lr_no ?? '—'}</span>
           <span className="text-muted-foreground">Invoice No.</span>
           <span className="text-right font-medium">{delivery.invoice_no}</span>
           <span className="text-muted-foreground">Invoice Date</span>
@@ -110,7 +113,9 @@ const SupplierDispatchSlip: React.FC<Props> = ({ delivery_sno, onBack }) => {
           <span className="text-muted-foreground">Bundles</span>
           <span className="text-right font-medium">{delivery.bundles ?? '—'}</span>
           <span className="text-muted-foreground">Transport</span>
-          <span className="text-right font-medium">{delivery.transport_name || '—'}</span>
+          <span className="text-right font-medium">
+            {delivery.dispatch_mode === 'Direct' ? 'Direct / Self Delivery' : delivery.transport_name || '—'}
+          </span>
         </div>
       </div>
     </div>
