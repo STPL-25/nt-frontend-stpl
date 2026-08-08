@@ -1,28 +1,31 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { toast } from 'sonner';
 import {
-  AlertCircle, CheckCircle2, XCircle, FileText,
+  CheckCircle2, XCircle, FileText, Star, User,
   ShieldCheck, MapPin, CreditCard, Calendar, Eye, Download,
   ExternalLink, GitBranch, History, Search, RefreshCw,
-  Loader2,
+  Loader2, Menu, Hash, Building2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import { TwoPaneLayout, EmptyState, LoadingState, ErrorState } from '@/CustomComponent/PageComponents';
 import useFetch from '@/hooks/useFetchHook';
 import usePost from '@/hooks/usePostHook';
 import { apiGetKycPendingApprovals, apiKycApproveAction } from '@/Services/Api';
 import { useAppState } from '@/imports';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { getAuthFileUrl } from '@/Services/authUrl';
-import { getStatusInfo } from '@/utils/statusUtils';
+import { StatusBadge } from '@/utils/statusUtils';
 import { socket, SOCKET_JOIN_KYC_APPROVAL, SOCKET_LEAVE_KYC_APPROVAL, SOCKET_KYC_APPROVAL_UPDATED } from '@/Services/Socket';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -76,9 +79,42 @@ const getInitials = (name: string) =>
 const isImageUrl = (url: string) => /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i.test(url);
 const isPdfUrl   = (url: string) => /\.pdf(\?.*)?$/i.test(url);
 
-function getStatus(s: string | undefined) {
-  const info = getStatusInfo(s ?? 'P');
-  return { label: info.label, badgeCls: info.cls, dotCls: info.dotCls };
+// ─── Field (label-over-value display cell) ─────────────────────────────────────
+
+function Field({ label, value, mono = false, fullWidth = false }: {
+  label: string; value?: string | React.ReactNode; mono?: boolean; fullWidth?: boolean;
+}) {
+  return (
+    <div className={fullWidth ? 'sm:col-span-2 lg:col-span-3' : ''}>
+      <p className="text-xs text-muted-foreground font-medium">{label}</p>
+      <p className={`text-sm font-medium text-foreground mt-0.5 ${mono ? 'font-mono text-xs' : 'capitalize'}`}>
+        {value || '—'}
+      </p>
+    </div>
+  );
+}
+
+// ─── ItemCard (address / bank / contact entry wrapper) ─────────────────────────
+
+function ItemCard({ icon: Icon, title, isPrimary, children }: {
+  icon: any; title: string; isPrimary?: boolean; children: React.ReactNode;
+}) {
+  return (
+    <div className={`rounded-xl border p-4 ${
+      isPrimary ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/20'
+    }`}>
+      <div className="flex items-center gap-2 mb-3">
+        <Icon className="h-4 w-4 text-primary flex-shrink-0" />
+        <span className="text-sm font-semibold text-foreground capitalize truncate">{title}</span>
+        {isPrimary && (
+          <Badge className="ml-auto bg-amber-500 hover:bg-amber-500 text-white text-[10px] gap-1 flex-shrink-0">
+            <Star className="h-3 w-3" /> Primary
+          </Badge>
+        )}
+      </div>
+      {children}
+    </div>
+  );
 }
 
 // ─── Sidebar KYC Row ──────────────────────────────────────────────────────────
@@ -88,14 +124,11 @@ function KYCSidebarRow({ kyc, isSelected, onClick }: {
   isSelected: boolean;
   onClick: () => void;
 }) {
-  const { label, badgeCls, dotCls } = getStatus(kyc.status);
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-4 py-3 border-b border-border hover:bg-primary/10 transition-colors ${
-        isSelected
-          ? 'bg-primary/10 border-l-4 border-l-primary'
-          : 'border-l-4 border-l-transparent'
+      className={`w-full text-left px-4 py-3 border-b border-border hover:bg-primary/10 transition-colors border-l-4 ${
+        isSelected ? 'bg-primary/10 border-l-primary' : 'border-l-transparent'
       }`}
     >
       <div className="flex items-start justify-between gap-2 mb-1">
@@ -104,10 +137,7 @@ function KYCSidebarRow({ kyc, isSelected, onClick }: {
         }`}>
           {kyc.company_name}
         </span>
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border flex-shrink-0 ${badgeCls}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${dotCls}`} />
-          {label}
-        </span>
+        <StatusBadge status={kyc.status ?? 'P'} withDot className="flex-shrink-0" />
       </div>
       <div className="text-xs text-muted-foreground truncate capitalize">{kyc.business_type}</div>
       <div className="flex items-center justify-between mt-1">
@@ -120,43 +150,14 @@ function KYCSidebarRow({ kyc, isSelected, onClick }: {
       {(kyc.is_gst_avail === 'Y' || kyc.is_msme_avail === 'Y') && (
         <div className="flex gap-1 mt-1.5">
           {kyc.is_gst_avail === 'Y' && (
-            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">GST</span>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-800">GST</span>
           )}
           {kyc.is_msme_avail === 'Y' && (
-            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 border border-violet-100">MSME</span>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-100 dark:bg-purple-950/20 dark:text-purple-400 dark:border-purple-800">MSME</span>
           )}
         </div>
       )}
     </button>
-  );
-}
-
-// ─── Section Header ───────────────────────────────────────────────────────────
-
-function SectionHeader({ icon: Icon, title, count }: { icon: any; title: string; count?: number }) {
-  return (
-    <div className="flex items-center gap-2 px-0 pb-2 mb-1">
-      <Icon className="h-4 w-4 text-primary" />
-      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-      {count !== undefined && (
-        <span className="ml-1 text-xs text-muted-foreground/70">({count})</span>
-      )}
-    </div>
-  );
-}
-
-// ─── Data Row ─────────────────────────────────────────────────────────────────
-
-function DataRow({ label, value, mono = false, fullWidth = false }: {
-  label: string; value: string | React.ReactNode; mono?: boolean; fullWidth?: boolean;
-}) {
-  return (
-    <div className={`flex ${fullWidth ? 'flex-col gap-0.5' : 'items-start justify-between gap-4'} py-2 border-b border-border last:border-0`}>
-      <span className="text-xs text-muted-foreground/70 flex-shrink-0 min-w-[110px]">{label}</span>
-      <span className={`text-sm text-foreground font-medium capitalize ${fullWidth ? '' : 'text-right'} ${mono ? 'font-mono tracking-wide text-xs uppercase' : ''}`}>
-        {value || '—'}
-      </span>
-    </div>
   );
 }
 
@@ -167,29 +168,25 @@ function AddressSection({ addresses }: { addresses: any[] }) {
     <div className="py-6 text-center text-sm text-muted-foreground/70">No addresses found</div>
   );
   return (
-    <div className="divide-y divide-border">
+    <div className="space-y-3">
       {addresses.map((addr: any, idx: number) => (
-        <div key={idx} className="py-4 first:pt-0">
-          <div className="flex items-center gap-2 mb-2">
-            <MapPin className="h-3.5 w-3.5 text-muted-foreground/70" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {addr.isPrimary ? 'Primary Address' : `Address ${idx + 1}`}
-            </span>
-            {addr.isPrimary && (
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">Primary</span>
-            )}
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
+        <ItemCard
+          key={idx}
+          icon={MapPin}
+          title={addr.isPrimary ? 'Primary Address' : `Address ${idx + 1}`}
+          isPrimary={addr.isPrimary}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
             {(addr.door_no || addr.street) && (
-              <DataRow label="Street / Door" value={[addr.door_no, addr.street].filter(Boolean).join(', ')} />
+              <Field label="Street / Door" value={[addr.door_no, addr.street].filter(Boolean).join(', ')} />
             )}
-            {addr.area && <DataRow label="Area" value={addr.area} />}
-            <DataRow label="City" value={addr.city} />
-            <DataRow label="State" value={addr.state} />
-            <DataRow label="Pincode" value={addr.pincode} />
+            {addr.area && <Field label="Area" value={addr.area} />}
+            <Field label="City" value={addr.city} />
+            <Field label="State" value={addr.state} />
+            <Field label="Pincode" value={addr.pincode} mono />
             {addr.location_link && (
-              <div className="py-2 border-b border-border last:border-0">
-                <span className="text-xs text-muted-foreground/70 block mb-1">Location</span>
+              <div>
+                <p className="text-xs text-muted-foreground font-medium mb-1">Location</p>
                 <a
                   href={addr.location_link}
                   target="_blank"
@@ -201,7 +198,7 @@ function AddressSection({ addresses }: { addresses: any[] }) {
               </div>
             )}
           </div>
-        </div>
+        </ItemCard>
       ))}
     </div>
   );
@@ -214,27 +211,23 @@ function BankSection({ bankInfo }: { bankInfo: any[] }) {
     <div className="py-6 text-center text-sm text-muted-foreground/70">No bank accounts found</div>
   );
   return (
-    <div className="divide-y divide-border">
+    <div className="space-y-3">
       {bankInfo.map((bank: any, idx: number) => (
-        <div key={idx} className="py-4 first:pt-0">
-          <div className="flex items-center gap-2 mb-2">
-            <CreditCard className="h-3.5 w-3.5 text-muted-foreground/70" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {bank.bank_name || `Bank ${idx + 1}`}
-            </span>
-            {bank.isPrimary && (
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-50 text-green-600 border border-green-200">Primary</span>
-            )}
+        <ItemCard
+          key={idx}
+          icon={CreditCard}
+          title={bank.bank_name || `Bank ${idx + 1}`}
+          isPrimary={bank.isPrimary}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+            <Field label="Bank Name"    value={bank.bank_name} />
+            <Field label="Branch"       value={bank.bank_branch_name} />
+            <Field label="Account No."  value={bank.ac_number} mono />
+            <Field label="IFSC Code"    value={bank.ifsc} mono />
+            <Field label="Account Type" value={bank.ac_type} />
+            <Field label="Holder Name"  value={bank.ac_holder_name} />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
-            <DataRow label="Bank Name"     value={bank.bank_name} />
-            <DataRow label="Branch"        value={bank.bank_branch_name} />
-            <DataRow label="Account No."   value={bank.ac_number} mono />
-            <DataRow label="IFSC Code"     value={bank.ifsc} mono />
-            <DataRow label="Account Type"  value={bank.ac_type} />
-            <DataRow label="Holder Name"   value={bank.ac_holder_name} />
-          </div>
-        </div>
+        </ItemCard>
       ))}
     </div>
   );
@@ -247,41 +240,29 @@ function ContactsSection({ contacts }: { contacts: any[] }) {
     <div className="py-6 text-center text-sm text-muted-foreground/70">No contacts found</div>
   );
   return (
-    <div className="divide-y divide-border">
+    <div className="space-y-3">
       {contacts.map((contact: any, idx: number) => {
         const name   = contact.contact_name  || contact.ownername    || '—';
         const pos    = contact.contact_position || contact.ownerposition || '';
         const mobile = contact.contact_mobile || contact.ownermobile  || '';
         const email  = contact.contact_email  || contact.owneremail   || '';
         return (
-          <div key={idx} className="py-4 first:pt-0">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-primary font-bold text-xs flex-shrink-0">
-                {name[0]?.toUpperCase() ?? '?'}
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground capitalize">{name}</p>
-                {pos && <p className="text-xs text-muted-foreground/70 capitalize">{pos}</p>}
-              </div>
-              {contact.isPrimary && (
-                <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200">Primary</span>
-              )}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
+          <ItemCard key={idx} icon={User} title={pos ? `${name} — ${pos}` : name} isPrimary={contact.isPrimary}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
               {mobile && (
-                <div className="py-2 border-b border-border last:border-0 flex items-center justify-between gap-4">
-                  <span className="text-xs text-muted-foreground/70 flex-shrink-0 min-w-[110px]">Mobile</span>
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium">Mobile</p>
                   <a href={`tel:${mobile}`} className="text-sm font-medium text-primary hover:underline">{mobile}</a>
                 </div>
               )}
               {email && (
-                <div className="py-2 border-b border-border last:border-0 flex items-center justify-between gap-4">
-                  <span className="text-xs text-muted-foreground/70 flex-shrink-0 min-w-[110px]">Email</span>
-                  <a href={`mailto:${email}`} className="text-sm font-medium text-primary hover:underline truncate">{email}</a>
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium">Email</p>
+                  <a href={`mailto:${email}`} className="text-sm font-medium text-primary hover:underline truncate block">{email}</a>
                 </div>
               )}
             </div>
-          </div>
+          </ItemCard>
         );
       })}
     </div>
@@ -301,7 +282,7 @@ function DocumentsSection({
     <div className="py-6 text-center text-sm text-muted-foreground/70">No documents uploaded</div>
   );
   return (
-    <div className="divide-y divide-border">
+    <div className="space-y-2">
       {documents.map((doc: any, idx: number) => {
         const docUrl  = doc.document_path || doc.url || '';
         const docName = doc.document_name || doc.filename || `Document ${idx + 1}`;
@@ -310,11 +291,11 @@ function DocumentsSection({
         const isImg   = isImageUrl(authUrl);
         const isPdf   = isPdfUrl(authUrl);
         return (
-          <div key={idx} className="py-3 flex items-center gap-3">
+          <div key={idx} className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 p-3">
             <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-              isImg ? 'bg-violet-100' : isPdf ? 'bg-red-100' : 'bg-muted'
+              isImg ? 'bg-violet-100 dark:bg-violet-950/30' : isPdf ? 'bg-red-100 dark:bg-red-950/30' : 'bg-muted'
             }`}>
-              <FileText className={`h-4 w-4 ${isImg ? 'text-violet-600' : isPdf ? 'text-red-600' : 'text-muted-foreground'}`} />
+              <FileText className={`h-4 w-4 ${isImg ? 'text-violet-600 dark:text-violet-400' : isPdf ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">{docName}</p>
@@ -351,26 +332,26 @@ function DocumentsSection({
 // ─── History Section ──────────────────────────────────────────────────────────
 
 function HistorySection({ history }: { history: any[] }) {
-  if (!history.length) return null;
+  if (!history.length) return <p className="text-sm text-muted-foreground/70 text-center py-6">No history yet</p>;
   return (
-    <div className="divide-y divide-border">
+    <div className="space-y-3">
       {history.map((entry: any, idx: number) => (
-        <div key={idx} className="py-3 flex items-start gap-3">
-          <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+        <div key={idx} className="flex items-start gap-3">
+          <div className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-950/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <p className="text-sm font-semibold text-foreground">{entry.ename ?? '—'}</p>
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">
+              <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-800">
                 {entry.status_by}
-              </span>
+              </Badge>
             </div>
             {entry.status_date && (
               <p className="text-xs text-muted-foreground/70 mt-0.5">{formatDate(entry.status_date)}</p>
             )}
             {entry.commends && (
-              <p className="text-xs text-muted-foreground mt-1.5 italic border-l-2 border-green-300 pl-2">"{entry.commends}"</p>
+              <p className="text-xs text-muted-foreground mt-1.5 italic border-l-2 border-emerald-300 dark:border-emerald-700 pl-2">"{entry.commends}"</p>
             )}
           </div>
         </div>
@@ -382,26 +363,26 @@ function HistorySection({ history }: { history: any[] }) {
 // ─── Stages Section ───────────────────────────────────────────────────────────
 
 function StagesSection({ stages, currentApproverId }: { stages: any[]; currentApproverId?: string }) {
-  if (!stages.length) return null;
+  if (!stages.length) return <p className="text-sm text-muted-foreground/70 text-center py-6">No workflow configured</p>;
   return (
-    <div className="divide-y divide-border">
+    <div className="space-y-3">
       {stages.map((stage: any, idx: number) => {
         const isCurrent = stage.approver_ecno === currentApproverId;
         return (
-          <div key={idx} className="py-3 flex items-center gap-3">
+          <div key={idx} className="flex items-center gap-3">
             <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
               isCurrent ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
             }`}>
               {idx + 1}
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground">{stage.stage ?? `Stage ${idx + 1}`}</p>
               <p className="text-xs text-muted-foreground/70 font-mono">{stage.approver_ecno}</p>
             </div>
             {isCurrent && (
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+              <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 flex-shrink-0">
                 Current
-              </span>
+              </Badge>
             )}
           </div>
         );
@@ -428,7 +409,6 @@ function KYCDetailPanel({
   const documents = useMemo(() => parseJSON(kyc.kyc_uploaded_doc), [kyc]);
   const stages    = useMemo(() => parseJSON(kyc.stage_order_json), [kyc]);
   const history   = useMemo(() => parseJSON(kyc.kyc_history_data), [kyc]);
-  const { label: statusLabel, badgeCls, dotCls } = getStatus(kyc.status);
 
   const basicFields: { label: string; value: string; mono?: boolean }[] = [
     { label: 'Company Name',   value: kyc.company_name },
@@ -442,62 +422,64 @@ function KYCDetailPanel({
     { label: 'Submitted On',   value: formatDate(kyc.created_date) },
   ];
 
-  return (
-    <div className="flex flex-col lg:flex-row h-full min-h-0">
-      {/* ── Main scrollable content ───────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto">
-        {/* Company hero bar */}
-        <div className="px-6 py-5 border-b bg-card flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg flex-shrink-0">
-            {getInitials(kyc.company_name) || '?'}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-bold text-foreground capitalize">{kyc.company_name}</h2>
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${badgeCls}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${dotCls}`} />
-                {statusLabel}
-              </span>
-            </div>
-            <p className="text-sm text-muted-foreground capitalize mt-0.5">{kyc.business_type}</p>
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {kyc.supp_code && (
-                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                  {kyc.supp_code}
-                </span>
-              )}
-              {kyc.is_gst_avail === 'Y' && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">GST Registered</span>
-              )}
-              {kyc.is_msme_avail === 'Y' && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 border border-violet-100">MSME Certified</span>
-              )}
-            </div>
-          </div>
-          {/* Mobile action buttons */}
-          {canEdit('KYCApprovalScreen') && (
-            <div className="lg:hidden flex flex-col gap-2 flex-shrink-0">
-              <Button
-                size="sm"
-                onClick={() => handleAction('approve')}
-                className="bg-green-600 hover:bg-green-700 text-white gap-1.5 text-xs h-8"
-              >
-                <CheckCircle2 className="h-3.5 w-3.5" /> Approve
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleAction('reject')}
-                className="border-red-300 text-red-600 hover:bg-red-50 gap-1.5 text-xs h-8"
-              >
-                <XCircle className="h-3.5 w-3.5" /> Reject
-              </Button>
-            </div>
-          )}
-        </div>
+  const canReview = canEdit('KYCApprovalScreen');
 
-        {/* Tabs */}
-        <div className="px-6 pt-5">
+  return (
+    <div className="space-y-4">
+      {/* Hero card: identity + review actions */}
+      <Card>
+        <CardHeader className="pb-4 border-b">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <div className="flex items-start gap-3 min-w-0">
+              <Avatar className="h-11 w-11 rounded-xl flex-shrink-0">
+                <AvatarFallback className="rounded-xl bg-primary text-primary-foreground font-bold text-base">
+                  {getInitials(kyc.company_name) || '?'}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <CardTitle className="text-base capitalize">{kyc.company_name}</CardTitle>
+                  <StatusBadge status={kyc.status ?? 'P'} withDot />
+                </div>
+                <p className="text-sm text-muted-foreground capitalize mt-0.5">{kyc.business_type}</p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {kyc.supp_code && (
+                    <Badge variant="outline" className="font-mono text-[10px]">{kyc.supp_code}</Badge>
+                  )}
+                  {kyc.is_gst_avail === 'Y' && (
+                    <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-800">GST Registered</Badge>
+                  )}
+                  {kyc.is_msme_avail === 'Y' && (
+                    <Badge variant="outline" className="text-[10px] bg-purple-50 text-purple-600 border-purple-200 dark:bg-purple-950/20 dark:text-purple-400 dark:border-purple-800">MSME Certified</Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+            {canReview ? (
+              <div className="flex gap-2 flex-shrink-0">
+                <Button
+                  size="sm"
+                  onClick={() => handleAction('approve')}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+                >
+                  <CheckCircle2 className="h-4 w-4" /> Approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleAction('reject')}
+                  className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:hover:bg-red-950/30 gap-1.5"
+                >
+                  <XCircle className="h-4 w-4" /> Reject
+                </Button>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground/70 flex-shrink-0">View only — no approval permission</p>
+            )}
+          </div>
+        </CardHeader>
+
+        <CardContent className="pt-5">
           <Tabs defaultValue="basic">
             <TabsList className="h-9 bg-muted border border-border p-1 rounded-lg mb-5 flex flex-wrap gap-0.5">
               {[
@@ -521,9 +503,9 @@ function KYCDetailPanel({
             </TabsList>
 
             <TabsContent value="basic" className="mt-0">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
                 {basicFields.map(({ label, value, mono }) => (
-                  <DataRow key={label} label={label} value={value} mono={mono} />
+                  <Field key={label} label={label} value={value} mono={mono} />
                 ))}
               </div>
             </TabsContent>
@@ -544,78 +526,42 @@ function KYCDetailPanel({
               <DocumentsSection documents={documents} onPreview={setDocPreview} />
             </TabsContent>
           </Tabs>
-        </div>
+        </CardContent>
+      </Card>
 
-        {/* Workflow & History */}
-        {(stages.length > 0 || history.length > 0) && (
-          <div className="px-6 pb-6 mt-2">
-            <Separator className="mb-5" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-              {stages.length > 0 && (
-                <div>
-                  <SectionHeader icon={GitBranch} title="Approval Workflow" count={stages.length} />
-                  <StagesSection stages={stages} currentApproverId={kyc.current_approver_id} />
-                </div>
-              )}
-              {history.length > 0 && (
-                <div>
-                  <SectionHeader icon={History} title="Approval History" count={history.length} />
-                  <HistorySection history={history} />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── Right action panel (sticky on desktop) ───────────────────────── */}
-      <div className="hidden lg:flex w-64 xl:w-72 flex-shrink-0 border-l bg-muted/40 flex-col">
-        <div className="p-5 border-b bg-card">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Review Actions</p>
-          {canEdit('KYCApprovalScreen') ? (
-            <div className="space-y-2">
-              <Button
-                onClick={() => handleAction('approve')}
-                className="w-full h-10 text-sm font-semibold bg-green-600 hover:bg-green-700 text-white gap-2"
-              >
-                <CheckCircle2 className="h-4 w-4" /> Approve KYC
-              </Button>
-              <Button
-                onClick={() => handleAction('reject')}
-                variant="outline"
-                className="w-full h-10 text-sm font-semibold border-2 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 gap-2"
-              >
-                <XCircle className="h-4 w-4" /> Reject KYC
-              </Button>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground/70 text-center py-2">View only — no approval permission</p>
+      {/* Workflow & History */}
+      {(stages.length > 0 || history.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {stages.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3 border-b">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <GitBranch className="h-4 w-4 text-primary" /> Approval Workflow
+                  <Badge variant="secondary" className="text-xs">{stages.length}</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <StagesSection stages={stages} currentApproverId={kyc.current_approver_id} />
+              </CardContent>
+            </Card>
+          )}
+          {history.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3 border-b">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <History className="h-4 w-4 text-primary" /> Approval History
+                  <Badge variant="secondary" className="text-xs">{history.length}</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <HistorySection history={history} />
+              </CardContent>
+            </Card>
           )}
         </div>
+      )}
 
-        <div className="p-5 flex-1 overflow-y-auto">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Summary</p>
-          <div className="space-y-0">
-            {[
-              { label: 'Status',       value: statusLabel },
-              { label: 'Business Type',value: kyc.business_type || '—' },
-              { label: 'GST',          value: kyc.is_gst_avail === 'Y' ? (kyc.gst_no || 'Yes') : 'No' },
-              { label: 'MSME',         value: kyc.is_msme_avail === 'Y' ? (kyc.msme_no || 'Yes') : 'No' },
-              { label: 'Addresses',    value: String(addresses.length) },
-              { label: 'Bank Accounts',value: String(bankInfo.length) },
-              { label: 'Documents',    value: String(documents.length) },
-              ...(kyc.current_approver_id ? [{ label: 'Curr. Approver', value: kyc.current_approver_id }] : []),
-            ].map(({ label, value }) => (
-              <div key={label} className="flex items-start justify-between gap-3 py-2 border-b border-border last:border-0">
-                <span className="text-xs text-muted-foreground/70 flex-shrink-0">{label}</span>
-                <span className="text-xs font-semibold text-foreground text-right capitalize truncate">{value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Document preview drawer ───────────────────────────────────────── */}
+      {/* Document preview drawer */}
       {docPreview && (
         <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[520px] lg:w-[45%] flex flex-col bg-card border-l shadow-2xl">
           <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/40 flex-shrink-0">
@@ -639,7 +585,7 @@ function KYCDetailPanel({
               </a>
               <button
                 onClick={() => setDocPreview(null)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground/70 hover:bg-red-50 hover:text-red-500 transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground/70 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30 transition-colors"
               >
                 <XCircle className="h-4 w-4" />
               </button>
@@ -683,12 +629,11 @@ const KYCApprovalScreen: React.FC = () => {
   const [selectedKYC, setSelectedKYC] = useState<KYCApprovalRecord | null>(null);
   const [kycList, setKycList]         = useState<KYCApprovalRecord[]>([]);
   const [search, setSearch]           = useState('');
-  const [mobileOpen, setMobileOpen]   = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showDialog, setShowDialog]   = useState(false);
   const [actionType, setActionType]   = useState<'approve' | 'reject'>('approve');
   const [comments, setComments]       = useState('');
   const [refreshKey, setRefreshKey]   = useState(0);
-  const [toast, setToast]             = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const { userData } = useAppState();
   const { postData, loading } = usePost();
@@ -702,17 +647,11 @@ const KYCApprovalScreen: React.FC = () => {
   }, [data, fetchLoading]);
 
   useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3500);
-    return () => clearTimeout(t);
-  }, [toast]);
-
-  useEffect(() => {
     socket.emit(SOCKET_JOIN_KYC_APPROVAL);
     const onUpdated = (d: { kyc_basic_info_sno: number; action: string; approved_by: string }) => {
       if (d.approved_by === userData[0]?.ecno) return;
       setRefreshKey(k => k + 1);
-      setToast({ message: `KYC ${d.action === 'approve' ? 'approved' : 'rejected'} — refreshing…`, type: 'success' });
+      toast.info(`KYC ${d.action === 'approve' ? 'approved' : 'rejected'} — refreshing…`);
     };
     socket.on(SOCKET_KYC_APPROVAL_UPDATED, onUpdated);
     return () => {
@@ -750,9 +689,9 @@ const KYCApprovalScreen: React.FC = () => {
       setSelectedKYC(null);
       setShowDialog(false);
       setComments('');
-      setToast({ message: `KYC ${actionType === 'approve' ? 'approved' : 'rejected'} successfully`, type: 'success' });
+      toast.success(`KYC ${actionType === 'approve' ? 'approved' : 'rejected'} successfully`);
     } catch (err: any) {
-      setToast({ message: err?.response?.data?.error || err?.message || 'Action failed', type: 'error' });
+      toast.error(err?.response?.data?.error || err?.message || 'Action failed');
     }
   };
 
@@ -763,24 +702,12 @@ const KYCApprovalScreen: React.FC = () => {
     [kycList, search],
   );
 
-  // ── Sidebar JSX (shared between desktop & mobile sheet) ────────────────────
+  const gstCount  = useMemo(() => kycList.filter(k => k.is_gst_avail === 'Y').length, [kycList]);
+  const msmeCount = useMemo(() => kycList.filter(k => k.is_msme_avail === 'Y').length, [kycList]);
+
+  // ── Sidebar JSX ──────────────────────────────────────────────────────────
   const sidebarContent = (
     <div className="flex flex-col h-full">
-      {/* Stats header */}
-      <div className="px-4 py-3 border-b bg-muted/40 flex items-center gap-3 text-xs font-medium flex-shrink-0">
-        <span className="text-muted-foreground">{kycList.length} pending</span>
-        <span className="text-amber-600">
-          {kycList.filter(k => (k.status ?? 'P').toUpperCase() === 'P').length} awaiting action
-        </span>
-        {fetchLoading && <Loader2 size={12} className="animate-spin text-muted-foreground/70 ml-auto" />}
-        <button
-          onClick={() => setRefreshKey(k => k + 1)}
-          className="ml-auto text-muted-foreground/70 hover:text-primary transition-colors"
-          title="Refresh"
-        >
-          <RefreshCw size={13} />
-        </button>
-      </div>
       {/* Search */}
       <div className="px-3 py-2 border-b flex-shrink-0">
         <div className="relative">
@@ -806,7 +733,7 @@ const KYCApprovalScreen: React.FC = () => {
               key={kyc.kyc_basic_info_sno}
               kyc={kyc}
               isSelected={selectedKYC?.kyc_basic_info_sno === kyc.kyc_basic_info_sno}
-              onClick={() => { setSelectedKYC(kyc); setMobileOpen(false); }}
+              onClick={() => { setSelectedKYC(kyc); setSidebarOpen(false); }}
             />
           ))
         )}
@@ -816,107 +743,62 @@ const KYCApprovalScreen: React.FC = () => {
 
   // ── Error / Loading states ─────────────────────────────────────────────────
   if (error) {
-    return (
-      <div className="min-h-full bg-muted/40 flex items-center justify-center p-4">
-        <div className="text-center space-y-4 max-w-sm">
-          <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center mx-auto">
-            <AlertCircle className="h-7 w-7 text-red-500" />
-          </div>
-          <h3 className="text-lg font-bold text-foreground">Failed to load</h3>
-          <p className="text-sm text-muted-foreground">{error}</p>
-          <Button onClick={() => setRefreshKey(k => k + 1)} variant="outline" className="gap-2">
-            <RefreshCw className="h-4 w-4" /> Retry
-          </Button>
-        </div>
-      </div>
-    );
+    return <ErrorState message={error} onRetry={() => setRefreshKey(k => k + 1)} fullPage />;
   }
 
   if (fetchLoading && kycList.length === 0) {
-    return (
-      <div className="min-h-full bg-muted/40 flex items-center justify-center p-4">
-        <div className="text-center space-y-3">
-          <Loader2 className="h-8 w-8 text-primary animate-spin mx-auto" />
-          <p className="text-sm font-medium text-muted-foreground">Loading KYC Approvals…</p>
-        </div>
-      </div>
-    );
+    return <LoadingState message="Loading KYC Approvals…" fullPage />;
   }
 
   return (
     <>
-      {/* Toast */}
-      {toast && (
-        <div className={`fixed top-4 right-4 z-[60] px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${
-          toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-        }`}>
-          {toast.message}
-        </div>
-      )}
-
-      <div className="flex flex-col h-full bg-muted/40 overflow-hidden">
-        {/* Page header */}
-        <div className="bg-card border-b px-4 sm:px-6 py-4 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-              <ShieldCheck className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-base sm:text-lg font-semibold text-foreground">KYC Approvals</h1>
-              <p className="text-xs text-muted-foreground/70">Review and approve supplier KYC submissions</p>
-            </div>
+      <TwoPaneLayout
+        icon={ShieldCheck}
+        title="KYC Approvals"
+        description="Review and approve supplier KYC submissions"
+        stats={[
+          { label: 'Pending',         value: kycList.length, icon: FileText },
+          { label: 'GST Registered',  value: gstCount,        icon: Hash },
+          { label: 'MSME Certified',  value: msmeCount,       icon: Building2 },
+        ]}
+        sidebarOpen={sidebarOpen}
+        onSidebarOpenChange={setSidebarOpen}
+        sidebar={sidebarContent}
+        headerChildren={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="lg:hidden bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <Menu size={16} className="mr-1" /> KYC List
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+              onClick={() => setRefreshKey(k => k + 1)}
+              disabled={fetchLoading}
+            >
+              <RefreshCw size={15} className={fetchLoading ? 'animate-spin mr-1' : 'mr-1'} />
+              Refresh
+            </Button>
           </div>
-          {/* Mobile list toggle */}
-          <Button
-            variant="outline"
-            size="sm"
-            className="lg:hidden gap-1.5 text-xs"
-            onClick={() => setMobileOpen(true)}
-          >
-            <FileText className="h-3.5 w-3.5" />
-            KYC List
-            {kycList.length > 0 && (
-              <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-primary/15 text-primary text-[10px] font-bold">
-                {kycList.length}
-              </span>
-            )}
-          </Button>
+        }
+      >
+        <div className="px-4 sm:px-6 py-4">
+          {selectedKYC ? (
+            <KYCDetailPanel kyc={selectedKYC} handleAction={handleAction} />
+          ) : (
+            <EmptyState
+              icon={ShieldCheck}
+              message="Select a KYC Submission"
+              description="Choose a submission from the list on the left to review its details"
+            />
+          )}
         </div>
-
-        {/* Body */}
-        <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-          {/* Desktop sidebar */}
-          <div className="hidden lg:flex w-80 flex-shrink-0 bg-card border-r flex-col overflow-hidden">
-            {sidebarContent}
-          </div>
-
-          {/* Mobile sheet */}
-          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetContent side="left" className="w-[85vw] sm:w-80 p-0 flex flex-col">
-              {sidebarContent}
-            </SheetContent>
-          </Sheet>
-
-          {/* Main content */}
-          <div className="flex-1 overflow-hidden flex flex-col">
-            {selectedKYC ? (
-              <div className="flex-1 overflow-hidden">
-                <KYCDetailPanel kyc={selectedKYC} handleAction={handleAction} />
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground/70">
-                <div className="bg-muted rounded-full p-6">
-                  <ShieldCheck size={40} className="opacity-30" />
-                </div>
-                <div className="text-center">
-                  <p className="text-base font-medium text-muted-foreground">Select a KYC Submission</p>
-                  <p className="text-sm mt-1">Choose from the list on the left to review details</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      </TwoPaneLayout>
 
       {/* Confirmation dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
@@ -924,11 +806,11 @@ const KYCApprovalScreen: React.FC = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3 text-base">
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                actionType === 'approve' ? 'bg-green-100' : 'bg-red-100'
+                actionType === 'approve' ? 'bg-emerald-100 dark:bg-emerald-950/30' : 'bg-red-100 dark:bg-red-950/30'
               }`}>
                 {actionType === 'approve'
-                  ? <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  : <XCircle className="h-4 w-4 text-red-600" />}
+                  ? <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  : <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />}
               </div>
               {actionType === 'approve' ? 'Approve KYC' : 'Reject KYC'}
             </DialogTitle>
@@ -941,11 +823,11 @@ const KYCApprovalScreen: React.FC = () => {
 
           <div className="space-y-4 py-2">
             {actionType === 'approve' && (
-              <div className="p-3 rounded-lg bg-green-50 border border-green-200">
-                <p className="text-sm font-semibold text-green-800 flex items-center gap-1.5">
+              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800">
+                <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
                   <CheckCircle2 className="h-4 w-4" /> Confirming Approval
                 </p>
-                <p className="text-xs text-green-700 mt-1">
+                <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
                   This submission will proceed to the next workflow stage.
                 </p>
               </div>
@@ -992,7 +874,7 @@ const KYCApprovalScreen: React.FC = () => {
               onClick={handleSubmit}
               disabled={loading || (actionType === 'reject' && !comments.trim())}
               className={`w-full sm:w-auto text-sm font-semibold gap-2 ${
-                actionType === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                actionType === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'
               }`}
             >
               {loading ? (

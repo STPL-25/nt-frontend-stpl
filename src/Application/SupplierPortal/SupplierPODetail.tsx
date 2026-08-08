@@ -126,7 +126,7 @@ const SupplierPODetail: React.FC<Props> = ({ po_basic_sno, onBack, onDispatch })
               <TableHeader>
                 <TableRow>
                   <TableHead>Product</TableHead>
-                  <TableHead>Specification</TableHead>
+                  {/* <TableHead>Specification</TableHead> */}
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead>Unit</TableHead>
                   <TableHead className="text-right">Unit Price</TableHead>
@@ -137,7 +137,7 @@ const SupplierPODetail: React.FC<Props> = ({ po_basic_sno, onBack, onDispatch })
                 {items.map((item) => (
                   <TableRow key={item.po_item_sno}>
                     <TableCell>{item.prod_name}</TableCell>
-                    <TableCell className="text-muted-foreground">{item.specification || '—'}</TableCell>
+                    {/* <TableCell className="text-muted-foreground">{item.specification || '—'}</TableCell> */}
                     <TableCell className="text-right">{item.ordered_qty}</TableCell>
                     <TableCell>{item.unit_name || '—'}</TableCell>
                     <TableCell className="text-right">{item.unit_price?.toFixed?.(2) ?? item.unit_price}</TableCell>

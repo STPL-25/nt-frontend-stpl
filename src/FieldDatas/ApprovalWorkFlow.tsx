@@ -221,6 +221,16 @@ export const useApprovalFlowHierarchy = (
         view: true,
       },
       {
+        field: "workflow_types_description",
+        label: "Type Description",
+        require: false,
+        type: "textarea",
+        placeholder: "Describe the purpose of this type...",
+        input: true,
+        view: true,
+        rows: 2,
+      },
+      {
         field: "com_snos",
         label: "Company",
         require: true,

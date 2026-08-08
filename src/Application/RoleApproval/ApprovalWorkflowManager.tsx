@@ -76,6 +76,7 @@ type WorkflowApiStageRow = {
 type WorkflowApiTypeRow = {
   workflow_types_id?: number;
   workflow_types_name?: string;
+  workflow_types_description?: string;
   com_sno?: string | number;
   div_sno?: string | number;
   brn_sno?: string | number;
@@ -112,6 +113,7 @@ const emptyStage = (): StageOrderItem => ({
 
 const emptyType = (): WorkflowTypeExtended => ({
   workflow_types_name: "",
+  workflow_types_description: "",
   com_snos: [],
   div_snos: [],
   brn_snos: [],
@@ -340,8 +342,13 @@ const WorkflowTypeCard: React.FC<{
             value={type.workflow_types_name}
             onChange={(v) => onChange(typeIndex, "workflow_types_name", v)}
           />
+          <CustomInputField
+            {...workflowTypeFields[1]}
+            value={type.workflow_types_description}
+            onChange={(v) => onChange(typeIndex, "workflow_types_description", v)}
+          />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {workflowTypeFields.slice(1, 5).map((fc) => (
+            {workflowTypeFields.slice(2, 6).map((fc) => (
               <CustomInputField
                 key={fc.field}
                 {...fc}
@@ -351,7 +358,7 @@ const WorkflowTypeCard: React.FC<{
             ))}
           </div>
           <CustomInputField
-            {...workflowTypeFields[5]}
+            {...workflowTypeFields[6]}
             value={type.is_active}
             onChange={(v) => onChange(typeIndex, "is_active", v)}
           />
@@ -600,6 +607,7 @@ export default function ApprovalFlowDynamic() {
           if (!groups[groupKey]) {
             groups[groupKey] = {
               workflow_types_name: name,
+              workflow_types_description: String(row.workflow_types_description ?? ""),
               com_snos: [],
               div_snos: [],
               brn_snos: [],
@@ -674,8 +682,8 @@ export default function ApprovalFlowDynamic() {
     if (!createWorkflow.workflow_name || !createWorkflow.entity_type) {
       toast.error("Workflow name and entity type are required"); return false;
     }
-    for (const t of createTypes) {
-      if (!t.workflow_types_name) { toast.error("Each type must have a name"); return false; }
+    for (const [i, t] of createTypes.entries()) {
+      if (!t.workflow_types_name?.trim()) { toast.error(`Type ${i + 1} must have a name`); return false; }
       if (!t.brn_snos.length || !t.dept_snos.length) {
         toast.error(`"${t.workflow_types_name}" needs at least one branch and department`); return false;
       }
@@ -687,7 +695,7 @@ export default function ApprovalFlowDynamic() {
   }, [createWorkflow, createTypes]);
 
   const handleCreateSubmit = useCallback(async () => {
-    // if (!validateCreate()) return;
+    if (!validateCreate()) return;
     setCreateSaving(true);
     const count = entityTypeCount[createWorkflow.entity_type] || 0;
     const autoCode = `WF_${createWorkflow.entity_type}_${String(count + 1).padStart(3, "0")}`;
@@ -697,9 +705,10 @@ export default function ApprovalFlowDynamic() {
     // branch is silently dropped rather than paired with the wrong branch).
     const expandedTypes = createTypes.flatMap((t) =>
       t.dept_snos
-        .filter((dept) => dp[String(dept)] && t.brn_snos.includes(dp[String(dept)].brn_sno))
+        .filter((dept) => dp[String(dept)] && t.brn_snos.map(String).includes(dp[String(dept)].brn_sno))
         .map((dept) => ({
           workflow_types_name: t.workflow_types_name,
+          workflow_types_description: t.workflow_types_description,
           com_sno: dp[String(dept)].com_sno,
           div_sno: dp[String(dept)].div_sno,
           brn_sno: dp[String(dept)].brn_sno,
@@ -708,6 +717,15 @@ export default function ApprovalFlowDynamic() {
           stage_order_json: JSON.stringify(t.stages),
         }))
     );
+    // The stored procedure rejects an empty workflow_types array. A type/branch/department
+    // combination can pass validateCreate() but still expand to zero rows if none of the
+    // selected departments actually belong to one of the selected branches — catch that
+    // here instead of sending a request the backend will reject with a 500.
+    if (expandedTypes.length === 0) {
+      toast.error("No department belongs to the selected branch(es) for any type — check branch/department selection");
+      setCreateSaving(false);
+      return;
+    }
     try {
 
       const data = await postData(apiSaveFullWorkflow, {
@@ -750,6 +768,7 @@ export default function ApprovalFlowDynamic() {
             await updateData(apiUpdateWorkflowType, null, {
               workflow_types_id: typeId,
               workflow_types_name: type.workflow_types_name,
+              workflow_types_description: type.workflow_types_description,
               is_active: type.is_active ? "Y" : "N",
             });
             await updateData(apiUpdateWorkflowStage, null, {
@@ -762,12 +781,13 @@ export default function ApprovalFlowDynamic() {
           // One row per selected department, using that department's own real
           // com/div/brn — same rule as create (no branch × department cross-join).
           const validDepts = type.dept_snos.filter(
-            (dept) => dp[String(dept)] && type.brn_snos.includes(dp[String(dept)].brn_sno)
+            (dept) => dp[String(dept)] && type.brn_snos.map(String).includes(dp[String(dept)].brn_sno)
           );
           for (const dept of validDepts) {
             const res = await postData(apiSaveWorkflowType, {
               workflow_id: selectedRow.workflow_id,
               workflow_types_name: type.workflow_types_name,
+              workflow_types_description: type.workflow_types_description,
               com_sno: dp[String(dept)].com_sno,
               div_sno: dp[String(dept)].div_sno,
               brn_sno: dp[String(dept)].brn_sno,

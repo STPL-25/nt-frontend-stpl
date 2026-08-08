@@ -15,6 +15,9 @@ export const gateGetEntriesByPO = (po_basic_sno: number) =>
 export const gateCreateEntry = `${base}/createGateEntry`;
 export const gateUpdateStatus = (gate_entry_sno: number) =>
   `${base}/updateGateEntryStatus/${gate_entry_sno}`;
+/** Full-record edit — only succeeds while the entry hasn't reached 'GRN Done'. */
+export const gateUpdateEntry = (gate_entry_sno: number) =>
+  `${base}/updateGateEntry/${gate_entry_sno}`;
 /** Resolve a dispatch-slip QR code (LR no, or DSD-<delivery_sno>) to its dispatch delivery. */
 export const gateGetDispatchByLr = (lr_code: string) =>
   `${base}/dispatchByLr/${encodeURIComponent(lr_code)}`;

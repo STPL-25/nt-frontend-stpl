@@ -14,6 +14,17 @@ let _cachedKey: CryptoKey | null = null;
 async function getApiKey(): Promise<CryptoKey> {
   if (_cachedKey) return _cachedKey;
 
+  // crypto.subtle only exists in a secure context — https, or http://localhost.
+  // Served over http on a LAN/public IP it is undefined, and the failure
+  // surfaces as an opaque "Cannot read properties of undefined (reading
+  // 'importKey')" on every request. Fail with the actual cause instead.
+  if (!globalThis.crypto?.subtle) {
+    throw new Error(
+      `Web Crypto unavailable: ${window.location.origin} is not a secure context. ` +
+        `Serve the app over https (see server.js) or via http://localhost.`
+    );
+  }
+
   const secret = import.meta.env.VITE_CRYPTO_SECRET as string;
   const encoder = new TextEncoder();
 

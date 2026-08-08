@@ -25,6 +25,7 @@ import {
   ContactModalContent, DocumentModalContent,
 } from "./KycModalSections";
 import type { OrgMapping } from "./types/KycEntryType";
+import { IFSC_PATTERN, buildIfscBankPatch, getErrorMessage } from "./ifscUtils";
 
 const SECTION_META: Record<string, { title: string; description: string; icon: LucideIcon }> = {
   address:   { title: "Address Details",      description: "Business locations and registered addresses",                   icon: MapPin },
@@ -34,15 +35,9 @@ const SECTION_META: Record<string, { title: string; description: string; icon: L
 };
 
 const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
-const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 
 type GstAddressPatch = Partial<Record<
   "door_no" | "street" | "area" | "taluk" | "city" | "state" | "pincode",
-  string
->>;
-
-type IfscBankPatch = Partial<Record<
-  "bank_name" | "bank_branch_name" | "bank_address",
   string
 >>;
 
@@ -248,32 +243,6 @@ const buildGstAddressPatch = (payload: unknown): GstAddressPatch => {
   ) as GstAddressPatch;
 };
 
-const buildIfscBankPatch = (payload: unknown): IfscBankPatch => {
-  const record = asRecord(payload);
-
-  const patch: IfscBankPatch = {
-    bank_name: firstText(record?.BANK, record?.bank),
-    bank_branch_name: firstText(record?.BRANCH, record?.branch),
-    bank_address: firstText(record?.ADDRESS, record?.address),
-  };
-
-  return Object.fromEntries(
-    Object.entries(patch).filter(([, value]) => Boolean(value))
-  ) as IfscBankPatch;
-};
-
-const getErrorMessage = (error: unknown, fallback: string) => {
-  const requestError = error as {
-    response?: { data?: { error?: string; message?: string } };
-    message?: string;
-  };
-
-  return requestError.response?.data?.error ||
-    requestError.response?.data?.message ||
-    requestError.message ||
-    fallback;
-};
-
 export default function KycEntryForm() {
   const addressFields  = useAddressFields();
   const documentFields = useDocumentFields();
@@ -315,6 +284,7 @@ export default function KycEntryForm() {
   const lastFetchedGstRef = useRef("");
   const lastFetchedIfscRef = useRef<Record<string, string>>({});
   const latestIfscRef = useRef<Record<string, string>>({});
+  const [fetchingIfscId, setFetchingIfscId] = useState<string | null>(null);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -415,6 +385,7 @@ export default function KycEntryForm() {
     }
 
     lastFetchedIfscRef.current[bankId] = ifsc;
+    setFetchingIfscId(bankId);
 
     try {
       const response = await fetch(`https://ifsc.razorpay.com/${ifsc}`);
@@ -440,6 +411,10 @@ export default function KycEntryForm() {
       if (latestIfscRef.current[bankId] === ifsc) {
         lastFetchedIfscRef.current[bankId] = "";
         toast.error(getErrorMessage(error, "Unable to fetch IFSC details"));
+      }
+    } finally {
+      if (latestIfscRef.current[bankId] === ifsc) {
+        setFetchingIfscId((current) => (current === bankId ? null : current));
       }
     }
   };
@@ -538,6 +513,7 @@ export default function KycEntryForm() {
     lastFetchedGstRef.current = "";
     lastFetchedIfscRef.current = {};
     latestIfscRef.current = {};
+    setFetchingIfscId(null);
     setDraftCompany(""); setDraftDivision(""); setDraftBranch(""); setDraftDept(""); setOrgMappings([]);
     kyc.resetSections();
   };
@@ -611,6 +587,7 @@ export default function KycEntryForm() {
             onChange={handleBankChange}
             onSetPrimary={kyc.setPrimaryBank}
             onChequeChange={kyc.changeBankCheque}
+            fetchingIfscId={fetchingIfscId}
           />
         );
       case "contacts":

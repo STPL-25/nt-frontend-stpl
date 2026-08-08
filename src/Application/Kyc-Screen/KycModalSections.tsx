@@ -5,10 +5,11 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { MapPin, CreditCard, Users, Upload, Plus, CheckCircle2 } from "lucide-react";
+import { MapPin, CreditCard, Users, Upload, Plus, CheckCircle2, Loader2 } from "lucide-react";
 import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
 import { PrimaryItemCard } from "@/CustomComponent/PageComponents/PrimaryItemCard";
 import type { AddressWithPrimary, BankDetailWithPrimary, ContactDetailWithPrimary } from "@/hooks/useKycSections";
+import { IFSC_DERIVED_BANK_FIELDS } from "./ifscUtils";
 
 // ─── Address ──────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,8 @@ interface BankSectionProps {
   onChange: (i: number, field: string, value: string) => void;
   onSetPrimary: (i: number) => void;
   onChequeChange: (i: number, file: File | null) => void;
+  /** bank.id of the account whose IFSC lookup is in flight, if any */
+  fetchingIfscId?: string | null;
 }
 
 export function BankModalContent({
@@ -93,6 +96,7 @@ export function BankModalContent({
   onChange,
   onSetPrimary,
   onChequeChange,
+  fetchingIfscId = null,
 }: BankSectionProps) {
   return (
     <div className="space-y-6">
@@ -110,18 +114,28 @@ export function BankModalContent({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {bankFields
               .filter((f) => f.input)
-              .map((f) => (
-                <CustomInputField
-                  key={`${f.field}-${bank.id}`}
-                  field={`${f.field}-${bank.id}`}
-                  label={f.label}
-                  require={f.require && bank.isPrimary}
-                  value={bank[f.field] || ""}
-                  onChange={(value) => onChange(index, f.field, value)}
-                  placeholder={f.placeholder}
-                  type={f.type}
-                />
-              ))}
+              .map((f) => {
+                const isFetchingThisIfsc = f.field === "ifsc" && fetchingIfscId === bank.id;
+                // Auto-filled from the IFSC lookup — locked so values can't drift from the looked-up branch
+                const isIfscDerived = IFSC_DERIVED_BANK_FIELDS.includes(f.field);
+                return (
+                  <div key={`${f.field}-${bank.id}`} className="relative">
+                    <CustomInputField
+                      field={`${f.field}-${bank.id}`}
+                      label={f.label}
+                      require={f.require && bank.isPrimary}
+                      value={bank[f.field] || ""}
+                      onChange={(value) => onChange(index, f.field, value)}
+                      placeholder={f.placeholder}
+                      type={f.type}
+                      disabled={isFetchingThisIfsc || isIfscDerived}
+                    />
+                    {isFetchingThisIfsc && (
+                      <Loader2 className="absolute right-2 top-9 h-4 w-4 animate-spin text-muted-foreground" />
+                    )}
+                  </div>
+                );
+              })}
           </div>
           <Separator className="my-4" />
           <div className="space-y-2">

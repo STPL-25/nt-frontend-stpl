@@ -149,7 +149,6 @@ export const useBasicInfoFields = (basicInfo: any) => {
   const isGstAvail = basicInfo?.is_gst_avail === "true";
   const isMsmeAvail = basicInfo?.is_msme_avail === "true";
   const { options } = useMasterOptions(['SupplierCatagoryMaster','BusinessDetailsMatster']);
-console.log(options)
   return useMemo<FieldType[]>(
     () => [
       {
@@ -264,7 +263,7 @@ console.log(options)
         view: true,
       },
     ],
-    [isGstAvail, isMsmeAvail]
+    [isGstAvail, isMsmeAvail, options]
   );
 };
 

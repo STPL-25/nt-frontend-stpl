@@ -25,6 +25,7 @@ export interface StageOrderItem {
 // department's own real com_sno/div_sno/brn_sno (never a branch × department cross-join).
 export interface WorkflowType {
   workflow_types_name: string;
+  workflow_types_description: string;
   com_snos: string[];  // multi-select — UI only
   div_snos: string[];  // multi-select — UI only
   brn_snos: string[];  // multi-select → FK branch_master

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -20,6 +20,10 @@ import {
   AddressModalContent, BankModalContent,
   ContactModalContent, DocumentModalContent,
 } from "./KycModalSections";
+import { IFSC_PATTERN, buildIfscBankPatch, getErrorMessage } from "./ifscUtils";
+
+const toText = (value: unknown) =>
+  value === null || value === undefined ? "" : String(value).trim();
 
 const SECTION_META: Record<string, { title: string; description: string; icon: any }> = {
   address:   { title: "Address Details",   description: "Business locations and registered addresses",          icon: MapPin },
@@ -41,15 +45,78 @@ export default function SupplierKYCEntry() {
 
   const basicInfoFields = useBasicInfoFields(basicInfo);
   const kyc = useKycSections(addressFields, bankFields, contactFields, documentFields);
+  const lastFetchedIfscRef = useRef<Record<string, string>>({});
+  const latestIfscRef = useRef<Record<string, string>>({});
+  const [fetchingIfscId, setFetchingIfscId] = useState<string | null>(null);
 
   const handleBasicChange = (field: string, value: any) =>
     setBasicInfo((prev) => ({ ...prev, [field]: value }));
+
+  const maybeFetchIfscDetails = async (bankId: string, ifscValue: unknown) => {
+    const ifsc = toText(ifscValue).toUpperCase();
+
+    if (
+      !IFSC_PATTERN.test(ifsc) ||
+      lastFetchedIfscRef.current[bankId] === ifsc
+    ) {
+      return;
+    }
+
+    lastFetchedIfscRef.current[bankId] = ifsc;
+    setFetchingIfscId(bankId);
+
+    try {
+      const response = await fetch(`https://ifsc.razorpay.com/${ifsc}`);
+
+      if (!response.ok) {
+        throw new Error(response.status === 404 ? "IFSC code not found" : "Unable to fetch IFSC details");
+      }
+
+      const bankPatch = buildIfscBankPatch(await response.json());
+
+      if (latestIfscRef.current[bankId] !== ifsc) {
+        return;
+      }
+
+      if (Object.keys(bankPatch).length === 0) {
+        toast.error("IFSC details found, but bank information was unavailable");
+        return;
+      }
+
+      kyc.patchBank(bankId, bankPatch);
+      toast.success("Bank details loaded from IFSC");
+    } catch (error: unknown) {
+      if (latestIfscRef.current[bankId] === ifsc) {
+        lastFetchedIfscRef.current[bankId] = "";
+        toast.error(getErrorMessage(error, "Unable to fetch IFSC details"));
+      }
+    } finally {
+      if (latestIfscRef.current[bankId] === ifsc) {
+        setFetchingIfscId((current) => (current === bankId ? null : current));
+      }
+    }
+  };
+
+  const handleBankChange = (index: number, field: string, value: string) => {
+    const nextValue = field === "ifsc" ? toText(value).toUpperCase() : value;
+    const bankId = kyc.bankDetails[index]?.id;
+
+    kyc.changeBank(index, field, nextValue);
+
+    if (field === "ifsc" && bankId) {
+      latestIfscRef.current[bankId] = nextValue;
+      void maybeFetchIfscDetails(bankId, nextValue);
+    }
+  };
 
   const openModal  = (section: string) => { setCurrentSection(section); setIsModalOpen(true); };
   const closeModal = () => { setIsModalOpen(false); setCurrentSection(""); };
 
   const handleReset = () => {
     setBasicInfo({});
+    lastFetchedIfscRef.current = {};
+    latestIfscRef.current = {};
+    setFetchingIfscId(null);
     kyc.resetSections();
   };
 
@@ -112,9 +179,10 @@ export default function SupplierKYCEntry() {
             bankFields={bankFields}
             onAdd={kyc.addBank}
             onRemove={kyc.removeBank}
-            onChange={kyc.changeBank}
+            onChange={handleBankChange}
             onSetPrimary={kyc.setPrimaryBank}
             onChequeChange={kyc.changeBankCheque}
+            fetchingIfscId={fetchingIfscId}
           />
         );
       case "contacts":

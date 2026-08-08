@@ -1399,15 +1399,33 @@ async function rasterizeToPngDataUrl(src: string): Promise<string | undefined> {
   });
 }
 
+const API_BASE = String(import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
+
+// The DB can store a fully-qualified logo URL baked in from whichever backend
+// host was active at upload time (e.g. a dev/UAT host). Re-basing it onto the
+// currently configured API host keeps the request same-origin (or routed
+// through the app's own proxy) instead of hitting a foreign host that has no
+// CORS headers for the production origin.
+function resolveLogoUrl(rawUrl: string): string {
+  if (!rawUrl || rawUrl.startsWith('data:')) return rawUrl;
+  try {
+    const parsed = new URL(rawUrl, window.location.origin);
+    return `${API_BASE}${parsed.pathname}${parsed.search}`;
+  } catch {
+    return `${API_BASE}/${rawUrl.replace(/^\//, '')}`;
+  }
+}
+
 async function loadLogoDataUrl(url: string): Promise<string | undefined> {
   if (!url) return undefined;
-  if (url.startsWith('data:image/png') || url.startsWith('data:image/jpeg')) return url;
-  if (url.startsWith('data:')) return rasterizeToPngDataUrl(url);
-
+  const resolvedUrl = resolveLogoUrl(url);
+  if (resolvedUrl.startsWith('data:image/png') || resolvedUrl.startsWith('data:image/jpeg')) return resolvedUrl;
+  if (resolvedUrl.startsWith('data:')) return rasterizeToPngDataUrl(resolvedUrl);
+console.log(resolvedUrl)
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 4000);
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(resolvedUrl, { signal: controller.signal });
     if (!response.ok) throw new Error(`Logo request failed with status ${response.status}`);
     const blob = await response.blob();
     if (blob.type === 'image/png' || blob.type === 'image/jpeg') {
@@ -1416,7 +1434,7 @@ async function loadLogoDataUrl(url: string): Promise<string | undefined> {
     return await rasterizeToPngDataUrl(await blobToDataUrl(blob));
   } catch (error) {
     console.warn('Falling back to direct image load for company logo:', error);
-    return rasterizeToPngDataUrl(url);
+    return rasterizeToPngDataUrl(resolvedUrl);
   } finally {
     window.clearTimeout(timeout);
   }

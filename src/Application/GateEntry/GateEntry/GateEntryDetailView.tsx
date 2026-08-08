@@ -1,7 +1,8 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { DoorOpen, FileText, Truck } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { DoorOpen, FileText, Truck, Pencil } from 'lucide-react';
 import type { GateEntryRecord } from './types';
 import { formatDate } from './helpers';
 
@@ -19,7 +20,13 @@ const Field: React.FC<{ label: string; value?: React.ReactNode }> = ({ label, va
   </div>
 );
 
-const GateEntryDetailView: React.FC<{ entry: GateEntryRecord }> = ({ entry }) => (
+interface GateEntryDetailViewProps {
+  entry: GateEntryRecord;
+  canEdit?: boolean;
+  onEdit?: () => void;
+}
+
+const GateEntryDetailView: React.FC<GateEntryDetailViewProps> = ({ entry, canEdit, onEdit }) => (
   <Card>
     <CardHeader className="pb-3 border-b">
       <div className="flex items-center justify-between">
@@ -27,7 +34,14 @@ const GateEntryDetailView: React.FC<{ entry: GateEntryRecord }> = ({ entry }) =>
           <DoorOpen size={16} className="text-primary" />
           {entry.gate_entry_no ?? `Gate Entry #${entry.gate_entry_sno}`}
         </CardTitle>
-        <Badge className={`text-xs ${statusBadge[entry.status ?? 'In']}`}>{entry.status ?? 'In'}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge className={`text-xs ${statusBadge[entry.status ?? 'In']}`}>{entry.status ?? 'In'}</Badge>
+          {canEdit && entry.status !== 'GRN Done' && onEdit && (
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onEdit}>
+              <Pencil size={13} className="mr-1" /> Edit
+            </Button>
+          )}
+        </div>
       </div>
     </CardHeader>
     <CardContent className="pt-4 space-y-4">

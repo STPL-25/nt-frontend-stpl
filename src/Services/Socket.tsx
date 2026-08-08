@@ -18,6 +18,34 @@ export const SOCKET_RECONNECT_ATTEMPT = "reconnect_attempt";
 export const SOCKET_RECONNECT = "reconnect";
 export const SOCKET_RECONNECT_FAILED = "reconnect_failed";
 
+// ── Connection diagnostics ───────────────────────────────────────────────────
+// A socket that never connects is otherwise completely silent — nothing in the
+// UI changes, real-time updates just stop arriving. These listeners make the
+// failure visible in the browser console (and in production, where the usual
+// culprits are CORS/cookie or proxy misconfiguration rather than app code).
+socket.on(SOCKET_CONNECT, () => {
+  console.info(`[socket] connected to ${baseUrl || window.location.origin} (${socket.id})`);
+});
+
+socket.on(SOCKET_CONNECT_ERROR, (err: Error) => {
+  console.error(
+    `[socket] connect_error → ${err.message}`,
+    { url: baseUrl || window.location.origin, transport: socket.io.engine?.transport?.name }
+  );
+});
+
+socket.on(SOCKET_DISCONNECT, (reason: string) => {
+  console.warn(`[socket] disconnected → ${reason}`);
+});
+
+socket.io.on(SOCKET_RECONNECT_ATTEMPT, (attempt: number) => {
+  console.info(`[socket] reconnect attempt ${attempt}`);
+});
+
+socket.io.on(SOCKET_RECONNECT_FAILED, () => {
+  console.error("[socket] reconnection gave up — real-time updates are off until reload");
+});
+
 // ── Room events ───────────────────────────────────────────────────────────────
 export const SOCKET_JOIN_COMPANY = "join-company";
 export const SOCKET_LEAVE_COMPANY = "leave-company";
@@ -67,6 +95,7 @@ export const SOCKET_GRN_DRAFT_UPDATED       = "grn:draft:updated";
 export const SOCKET_GRN_DRAFT_DELETED       = "grn:draft:deleted";
 export const SOCKET_GRN_DRAFT_SUBMITTED     = "grn:draft:submitted";
 export const SOCKET_GATE_ENTRY_CREATED        = "gate_entry:created";
+export const SOCKET_GATE_ENTRY_UPDATED        = "gate_entry:updated";
 export const SOCKET_GATE_ENTRY_STATUS_UPDATED = "gate_entry:status_updated";
 
 // ── Inventory room + real-time events ─────────────────────────────────────────

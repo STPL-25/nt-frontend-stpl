@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "start": "node server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -44,8 +45,10 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "exceljs": "^4.4.0",
+    "express": "^5.2.1",
     "file-saver": "^2.0.5",
     "html5-qrcode": "^2.3.8",
+    "http-proxy-middleware": "^4.2.0",
     "input-otp": "^1.4.2",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",

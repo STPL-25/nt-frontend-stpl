@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { DoorOpen, Send, RotateCcw, Paperclip, X } from 'lucide-react';
+import { DoorOpen, Send, RotateCcw, Paperclip, X, Pencil } from 'lucide-react';
 import type { PORecord, TransportOption, GateEntryFormState } from './types';
 import { getPODisplayNo } from '@/Application/GRN/GRN/helpers';
 import { today } from './helpers';
@@ -18,8 +18,14 @@ interface GateEntryFormProps {
   onSubmit: (form: GateEntryFormState) => Promise<void> | void;
   onCancel?: () => void;
   submitting: boolean;
-  /** Prefill from a scanned dispatch slip (LR no, transport, invoice, qty…). */
+  /** Prefill from a scanned dispatch slip (LR no, transport, invoice, qty…), or from an existing entry when editing. */
   initial?: Partial<GateEntryFormState>;
+  /** 'edit' shows the entry's gate no in the header, an "Update" submit label, and the existing photo. */
+  mode?: 'create' | 'edit';
+  /** Gate entry number shown in the header when mode='edit'. */
+  gateEntryNo?: string;
+  /** Existing photo URL shown when editing, replaced only if the user picks a new file. */
+  existingPhotoUrl?: string;
 }
 
 const blankForm = (receiverEcno: string, initial?: Partial<GateEntryFormState>): GateEntryFormState => ({
@@ -37,6 +43,7 @@ const blankForm = (receiverEcno: string, initial?: Partial<GateEntryFormState>):
 
 const GateEntryForm: React.FC<GateEntryFormProps> = ({
   po, transportList, receiverEcno, onSubmit, onCancel, submitting, initial,
+  mode = 'create', gateEntryNo, existingPhotoUrl,
 }) => {
   const [form, setForm] = useState<GateEntryFormState>(() => blankForm(receiverEcno, initial));
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -59,7 +66,7 @@ const GateEntryForm: React.FC<GateEntryFormProps> = ({
     !submitting;
 
   const handleReset = () => {
-    setForm(blankForm(receiverEcno));
+    setForm(blankForm(receiverEcno, initial));
     handlePhoto(null);
   };
 
@@ -67,8 +74,10 @@ const GateEntryForm: React.FC<GateEntryFormProps> = ({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          <DoorOpen size={16} className="text-primary" />
-          Gate Entry — {getPODisplayNo(po)}
+          {mode === 'edit' ? <Pencil size={16} className="text-primary" /> : <DoorOpen size={16} className="text-primary" />}
+          {mode === 'edit'
+            ? `Edit Gate Entry — ${gateEntryNo ?? getPODisplayNo(po)}`
+            : `Gate Entry — ${getPODisplayNo(po)}`}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -132,6 +141,21 @@ const GateEntryForm: React.FC<GateEntryFormProps> = ({
                 <X size={12} className="mr-1" /> Remove
               </Button>
             </div>
+          ) : existingPhotoUrl ? (
+            <div className="flex items-center gap-3">
+              <img src={existingPhotoUrl} alt="Product" className="h-16 w-16 object-cover rounded border" />
+              <div className="flex-1 text-xs text-muted-foreground">Current photo — choose a file to replace it</div>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs border border-primary/40 rounded px-2.5 py-1.5 bg-card hover:bg-primary/10 text-primary">
+                <Paperclip size={13} /> Replace…
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={e => handlePhoto(e.target.files?.[0] ?? null)}
+                />
+              </label>
+            </div>
           ) : (
             <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-primary">
               <span className="inline-flex items-center gap-1.5 border border-primary/40 rounded px-2.5 py-1.5 bg-card hover:bg-primary/10">
@@ -159,7 +183,7 @@ const GateEntryForm: React.FC<GateEntryFormProps> = ({
           </Button>
           <Button size="sm" className="text-xs" disabled={!canSubmit} onClick={() => onSubmit(form)}>
             <Send size={13} className="mr-1" />
-            {submitting ? 'Saving…' : 'Save Gate Entry'}
+            {submitting ? 'Saving…' : mode === 'edit' ? 'Update Gate Entry' : 'Save Gate Entry'}
           </Button>
         </div>
       </CardContent>

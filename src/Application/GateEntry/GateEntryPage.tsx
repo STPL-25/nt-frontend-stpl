@@ -7,12 +7,15 @@ import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
 import axios from 'axios';
 import {
-  gateGetApprovedPOs, gateGetAllEntries, gateCreateEntry, gateGetDispatchByLr,
+  gateGetApprovedPOs, gateGetAllEntries, gateCreateEntry, gateUpdateEntry, gateGetDispatchByLr,
   type DispatchDeliveryLookup,
 } from '@/Services/GrnService/gateEntryApi';
 import { apiFetchCommonMaster } from '@/Services/Api';
 import { normalisePORows } from '@/Application/GRN/GRN/helpers';
-import { socket, SOCKET_JOIN_GRN, SOCKET_LEAVE_GRN, SOCKET_GATE_ENTRY_CREATED } from '@/Services/Socket';
+import {
+  socket, SOCKET_JOIN_GRN, SOCKET_LEAVE_GRN,
+  SOCKET_GATE_ENTRY_CREATED, SOCKET_GATE_ENTRY_UPDATED, SOCKET_GATE_ENTRY_STATUS_UPDATED,
+} from '@/Services/Socket';
 
 import type { PORecord, GateEntryRecord, GateEntryFormState, TransportOption } from './GateEntry/types';
 
@@ -24,7 +27,7 @@ import GateEntryDetailView from './GateEntry/GateEntryDetailView';
 
 const GateEntryPage: React.FC = () => {
   const { userData } = useAppState();
-  const { canCreate } = usePermissions();
+  const { canCreate, canEdit } = usePermissions();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const currentUserEcno: string = useMemo(() => {
@@ -32,27 +35,42 @@ const GateEntryPage: React.FC = () => {
     return u?.ecno ?? '';
   }, [userData]);
 
+  // poList is already scoped to POs with no gate entry yet (sp_nt_GetPOsPendingGateEntry —
+  // a PO only ever gets one gate entry), and entries is already scoped to
+  // pending ones (sp_nt_GetAllGateEntries with pending_only=1 — nothing left
+  // to verify/edit once an entry reaches GRN Done). Both filters live in the
+  // stored procedures, not here.
   const [poList, setPOList] = useState<PORecord[]>([]);
   const [entries, setEntries] = useState<GateEntryRecord[]>([]);
   const [transportList, setTransportList] = useState<TransportOption[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<GateEntryRecord | null>(null);
+
+  // Selection is tracked by sno and re-derived from `entries` on every
+  // change, so the open detail/edit view always reflects the latest fetched/
+  // updated record without a sync effect — and auto-clears if the entry
+  // flips to GRN Done and drops out of the fetched (pending-only) list.
+  const [selectedSno, setSelectedSno] = useState<number | null>(null);
+  const selected = useMemo<GateEntryRecord | null>(
+    () => (selectedSno == null ? null : entries.find(e => e.gate_entry_sno === selectedSno) ?? null),
+    [entries, selectedSno]
+  );
   const [activePO, setActivePO] = useState<PORecord | null>(null);
   const [prefill, setPrefill] = useState<Partial<GateEntryFormState> | null>(null);
   const [scanning, setScanning] = useState(false);
   const [isNew, setIsNew] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // ── Fetchers ──────────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [posRes] = await Promise.all([
+      const [posRes, entriesRes] = await Promise.all([
         axios.get(gateGetApprovedPOs),
-        // axios.get(gateGetAllEntries),
+        axios.get(gateGetAllEntries, { params: { pending_only: true } }),
       ]);
       setPOList(normalisePORows(posRes.data?.data ?? []));
-      // setEntries(entriesRes.data?.data ?? []);
+      setEntries(entriesRes.data?.data ?? []);
     } catch (err: any) {
       toast.error(err?.response?.data?.error ?? 'Failed to load gate entry data');
     } finally {
@@ -80,27 +98,81 @@ const GateEntryPage: React.FC = () => {
     if (!socket) return;
     socket.emit(SOCKET_JOIN_GRN);
     socket.on(SOCKET_GATE_ENTRY_CREATED, fetchAll);
+    socket.on(SOCKET_GATE_ENTRY_UPDATED, fetchAll);
+    socket.on(SOCKET_GATE_ENTRY_STATUS_UPDATED, fetchAll);
     return () => {
       socket.emit(SOCKET_LEAVE_GRN);
       socket.off(SOCKET_GATE_ENTRY_CREATED, fetchAll);
+      socket.off(SOCKET_GATE_ENTRY_UPDATED, fetchAll);
+      socket.off(SOCKET_GATE_ENTRY_STATUS_UPDATED, fetchAll);
     };
   }, [fetchAll]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleSelect = (entry: GateEntryRecord) => {
-    setSelected(entry);
+    setSelectedSno(entry.gate_entry_sno ?? null);
     setIsNew(false);
+    setIsEditing(false);
     setActivePO(null);
     setPrefill(null);
     setScanning(false);
   };
 
   const handleNew = () => {
-    setSelected(null);
+    setSelectedSno(null);
     setActivePO(null);
     setPrefill(null);
     setScanning(false);
     setIsNew(true);
+    setIsEditing(false);
+  };
+
+  const handleEditStart = () => {
+    if (!selected) return;
+    setIsEditing(true);
+  };
+
+  const handleUpdate = async (form: GateEntryFormState) => {
+    if (!selected?.gate_entry_sno) return;
+    if (!form.invoice_no.trim()) { toast.error('Invoice number is required'); return; }
+    if (!form.received_qty || Number(form.received_qty) <= 0) { toast.error('Received quantity is required'); return; }
+    if (!form.received_date) { toast.error('Received date is required'); return; }
+
+    setSubmitting(true);
+    try {
+      const entry: Partial<GateEntryRecord> = {
+        invoice_no: form.invoice_no,
+        invoice_date: form.invoice_date,
+        received_qty: Number(form.received_qty),
+        received_date: form.received_date,
+        bundles: form.bundles ? Number(form.bundles) : undefined,
+        transport_name: form.transport_name || undefined,
+        lr_no: form.lr_no || undefined,
+        receiver_ecno: form.receiver_ecno || undefined,
+      };
+
+      let body: Partial<GateEntryRecord> | FormData = entry;
+      if (form.photo) {
+        const fd = new FormData();
+        Object.entries(entry).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) fd.append(key, String(value));
+        });
+        fd.append('photo', form.photo);
+        body = fd;
+      }
+
+      const res = await axios.put(gateUpdateEntry(selected.gate_entry_sno), body);
+      const updated = res.data?.data?.[0];
+
+      const updatedEntry: GateEntryRecord = { ...selected, ...entry, photo_url: updated?.photo_url ?? selected.photo_url };
+      setEntries(prev => prev.map(e => e.gate_entry_sno === selected.gate_entry_sno ? updatedEntry : e));
+      setIsEditing(false);
+      toast.success(`Gate entry ${selected.gate_entry_no} updated`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to update gate entry');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // QR scan-to-fill: resolve the scanned code (LR no / DSD-<sno>) to its
@@ -182,7 +254,7 @@ const GateEntryPage: React.FC = () => {
         created_at: new Date().toISOString(),
       };
       setEntries(prev => [newEntry, ...prev]);
-      setSelected(newEntry);
+      setSelectedSno(newEntry.gate_entry_sno ?? null);
       setActivePO(null);
       setPrefill(null);
       setIsNew(false);
@@ -196,7 +268,8 @@ const GateEntryPage: React.FC = () => {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   const showSearch = isNew;
-  const showDetail = !isNew && selected;
+  const showEdit = !isNew && isEditing && selected;
+  const showDetail = !isNew && !isEditing && selected;
 
   return (
     <TwoPaneLayout
@@ -257,8 +330,35 @@ const GateEntryPage: React.FC = () => {
               onLookupLr={handleScanned}
             />
           )
+        ) : showEdit ? (
+          <GateEntryForm
+            key={`edit-${selected!.gate_entry_sno}`}
+            mode="edit"
+            gateEntryNo={selected!.gate_entry_no}
+            po={{ po_basic_sno: selected!.po_basic_sno, po_no: selected!.po_no, vendor_name: selected!.vendor_name }}
+            transportList={transportList}
+            receiverEcno={currentUserEcno}
+            existingPhotoUrl={selected!.photo_url}
+            initial={{
+              invoice_no: selected!.invoice_no ?? '',
+              invoice_date: selected!.invoice_date ?? '',
+              received_qty: selected!.received_qty != null ? String(selected!.received_qty) : '',
+              received_date: selected!.received_date ?? '',
+              bundles: selected!.bundles != null ? String(selected!.bundles) : '',
+              transport_name: selected!.transport_name ?? '',
+              lr_no: selected!.lr_no ?? '',
+              receiver_ecno: selected!.receiver_ecno ?? currentUserEcno,
+            }}
+            onSubmit={handleUpdate}
+            onCancel={() => setIsEditing(false)}
+            submitting={submitting}
+          />
         ) : showDetail ? (
-          <GateEntryDetailView entry={selected!} />
+          <GateEntryDetailView
+            entry={selected!}
+            canEdit={canEdit('GateEntryPage')}
+            onEdit={handleEditStart}
+          />
         ) : (
           <EmptyState
             icon={DoorOpen}
