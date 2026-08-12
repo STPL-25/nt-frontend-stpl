@@ -71,13 +71,30 @@ const useCompanyMasterFields = (): FieldType[] => {
       {
         field: "add_gst",
         label: "Gst No",
-        require: true,
+        // Required unless the company has explicitly said GST doesn't
+        // apply — matches real data (e.g. "Sri Nachammal Vidyavani" has
+        // Gst Applicable = N with Gst/Tan/Cin all blank).
+        require: formData?.is_gst_applicable !== "N",
         view: true,
         type: "text",
         input: formData?.is_gst_applicable === "N" ? false : true,
       },
-      { field: "add_tan", label: "Tan No", require: true, view: true, type: "text", input: true },
-      { field: "add_cin", label: "Cin No", require: true, view: true, type: "text", input: true },
+      {
+        field: "add_tan",
+        label: "Tan No",
+        require: formData?.is_gst_applicable !== "N",
+        view: true,
+        type: "text",
+        input: formData?.is_gst_applicable === "N" ? false : true,
+      },
+      {
+        field: "add_cin",
+        label: "Cin No",
+        require: formData?.is_gst_applicable !== "N",
+        view: true,
+        type: "text",
+        input: formData?.is_gst_applicable === "N" ? false : true,
+      },
       { field: "add_door_no", label: "Door No", require: false, view: true, type: "text", input: true },
       { field: "add_street", label: "Street", require: false, view: true, type: "text", input: true },
       { field: "add_city", label: "City", require: true, view: true, type: "text", input: true },

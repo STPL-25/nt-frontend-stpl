@@ -181,18 +181,21 @@ export function useKycSections(
   };
 
   // ── Completion checks ─────────────────────────────────────────────────────
+  // A section is "complete" when at least one row has EVERY required field
+  // filled — checking `.some(...require && filled)` instead of `.every()`
+  // let a row with only one of several required fields read as complete.
   const getCompletionStatus = (section: string): boolean => {
     switch (section) {
       case "address":
-        return addresses.some((a) => addressFields.some((f) => f.require && a[f.field]));
+        return addresses.some((a) => addressFields.filter((f) => f.require).every((f) => Boolean(a[f.field])));
       case "documents":
-        return documentFields.some((f) => documentInfo[f.field]);
+        return documentFields.filter((f) => f.require).every((f) => Boolean(documentInfo[f.field]));
       case "account":
         return bankDetails.some(
-          (b) => bankFields.some((f) => f.require && b[f.field]) && b.cancelChequeFile !== null
+          (b) => bankFields.filter((f) => f.require).every((f) => Boolean(b[f.field])) && b.cancelChequeFile !== null
         );
       case "contacts":
-        return contacts.some((c) => contactFields.some((f) => f.require && c[f.field]));
+        return contacts.some((c) => contactFields.filter((f) => f.require).every((f) => Boolean(c[f.field])));
       default:
         return false;
     }

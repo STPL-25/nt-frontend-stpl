@@ -518,11 +518,61 @@ export default function KycEntryForm() {
     kyc.resetSections();
   };
 
+  // Required-field validation, mirrored against the same field metadata the
+  // form renders from. The backend now rejects an incomplete submission
+  // (422), but the form itself should refuse first rather than let a user
+  // submit a form that was always going to be rejected.
+  const getMissingKycFields = (): string[] => {
+    const missing: string[] = [];
+
+    basicInfoFields.filter((f) => f.input && f.require).forEach((f) => {
+      if (!toText(basicInfo[f.field])) missing.push(f.label);
+    });
+
+    const primaryAddress = kyc.addresses.find((a) => a.isPrimary) ?? kyc.addresses[0];
+    addressFields.filter((f) => f.input && f.require).forEach((f) => {
+      if (!toText(primaryAddress?.[f.field])) missing.push(`Address: ${f.label}`);
+    });
+
+    const primaryBank = kyc.bankDetails.find((b) => b.isPrimary) ?? kyc.bankDetails[0];
+    bankFields.filter((f) => f.input && f.require).forEach((f) => {
+      if (!toText(primaryBank?.[f.field])) missing.push(`Bank: ${f.label}`);
+    });
+
+    const primaryContact = kyc.contacts.find((c) => c.isPrimary) ?? kyc.contacts[0];
+    contactFields.filter((f) => f.input && f.require).forEach((f) => {
+      if (!toText(primaryContact?.[f.field])) missing.push(`Contact: ${f.label}`);
+    });
+
+    documentFields.filter((f) => f.input && f.require).forEach((f) => {
+      if (!kyc.documentInfo[f.field]) missing.push(f.label);
+    });
+
+    return missing;
+  };
+
+  const kycIsValid = getMissingKycFields().length === 0;
+
+  // A 2xx response is not proof a record now exists — verify the API
+  // actually handed back the created entity before telling the user their
+  // KYC was saved.
+  const responseHasEntity = (resp: unknown) => {
+    if (!resp || typeof resp !== "object") return false;
+    const envelope = resp as { success?: boolean; data?: unknown };
+    if (envelope.success === false) return false;
+    const payload = envelope.data;
+    if (payload === undefined || payload === null) return false;
+    if (Array.isArray(payload)) return payload.length > 0;
+    if (typeof payload === "object") return Object.keys(payload as object).length > 0;
+    return Boolean(payload);
+  };
+
   const handleSubmit = async () => {
-    // if (orgMappings.length === 0) {
-    //   toast.error("Add at least one company / division / branch / department mapping");
-    //   return;
-    // }
+    const missing = getMissingKycFields();
+    if (missing.length > 0) {
+      toast.error(`Fill in the required fields: ${missing.join(", ")}`);
+      return;
+    }
     try {
       const formData = new FormData();
 
@@ -553,9 +603,11 @@ export default function KycEntryForm() {
       Object.entries(kyc.documentInfo).forEach(([k, v]) => { if (v instanceof File) formData.append(k, v); });
 
       const response = await postData(apiPostKycData, formData, { headers: { "Content-Type": "multipart/form-data" } });
-      if (response) {
+      if (responseHasEntity(response)) {
         toast.success("KYC submitted successfully!");
         handleReset();
+      } else {
+        toast.error(response?.error || "Save did not complete. Please try again.");
       }
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, "An error occurred while submitting KYC"));
@@ -778,7 +830,8 @@ export default function KycEntryForm() {
                   <Button
                     onClick={handleSubmit}
                     className="bg-emerald-600 hover:bg-emerald-700"
-                    disabled={submitting}
+                    disabled={submitting || !kycIsValid}
+                    title={!kycIsValid ? "Complete all required fields (see Basic Information and the section cards below) before submitting" : undefined}
                   >
                     {submitting ? (
                       <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting...</>

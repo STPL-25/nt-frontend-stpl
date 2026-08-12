@@ -126,6 +126,43 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
     });
   }, [setFormData]);
 
+  /* ── Required-field validation ──
+   * The backend now rejects an incomplete write (422), but that should
+   * never be the first place a user learns a field is missing — this
+   * mirrors the same `require` flags so the form itself refuses to submit.
+   */
+  const isFieldBlank = (value: unknown) =>
+    value === undefined || value === null || (typeof value === "string" && value.trim() === "");
+
+  const getMissingRequiredLabels = useCallback(
+    (fd: RowData) =>
+      formHeaders.filter((h) => h.require && isFieldBlank(fd[h.field])).map((h) => h.label),
+    [formHeaders]
+  );
+
+  const isAddFormValid = useMemo(
+    () => showAddModal && getMissingRequiredLabels(formState).length === 0,
+    [showAddModal, formState, getMissingRequiredLabels]
+  );
+  const isEditFormValid = useMemo(
+    () => showEditModal && getMissingRequiredLabels(formState).length === 0,
+    [showEditModal, formState, getMissingRequiredLabels]
+  );
+
+  // A 2xx response is not proof a record now exists — verify the API
+  // actually handed back the created/updated entity before telling the
+  // user their data was saved.
+  const responseHasEntity = (resp: unknown) => {
+    if (!resp || typeof resp !== "object") return false;
+    const envelope = resp as { success?: boolean; data?: unknown };
+    if (envelope.success === false) return false;
+    const payload = envelope.data;
+    if (payload === undefined || payload === null) return false;
+    if (Array.isArray(payload)) return payload.length > 0;
+    if (typeof payload === "object") return Object.keys(payload as object).length > 0;
+    return Boolean(payload);
+  };
+
   /* ── Sorting ── */
   const handleSort = (key: string) => {
     if (!sortable) return;
@@ -172,10 +209,19 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
 
   /* ── CRUD ── */
   const handleAddSave = async (fd: RowData) => {
+    const missing = getMissingRequiredLabels(fd);
+    if (missing.length > 0) {
+      toast.error(`Fill in the required fields: ${missing.join(", ")}`);
+      return;
+    }
     try {
       if (master) {
         // fd.created_by = userData[0]?.ecno || "";
         const resp = await postData(apiPostCommonMaster(master), fd);
+        if (!responseHasEntity(resp)) {
+          toast.error(resp?.error || "Save did not complete. Please try again.");
+          return;
+        }
         if (resp?.data && Array.isArray(resp.data)) setTableData(resp.data);
         else if (resp?.data) setTableData((p) => [...p, resp.data]);
         toast.success(resp?.data?.[0]?.Message || resp?.message || "Item added");
@@ -192,9 +238,18 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
 
   const handleEditSave = async (fd: RowData) => {
     if (!editingItem) return;
+    const missing = getMissingRequiredLabels(fd);
+    if (missing.length > 0) {
+      toast.error(`Fill in the required fields: ${missing.join(", ")}`);
+      return;
+    }
     try {
       if (master) {
         const resp = await updateData(apiUpdateCommonMaster(master), null, { ...editingItem, ...fd });
+        if (!responseHasEntity(resp)) {
+          toast.error(resp?.error || "Update did not complete. Please try again.");
+          return;
+        }
         setTableData((prev) =>
           prev.map((it) => (it.id ?? it.Sno) === (editingItem.id ?? editingItem.Sno) ? { ...it, ...fd } : it)
         );
@@ -632,7 +687,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
             <Button variant="outline" onClick={() => setShowAddModal(false)}>
               Cancel
             </Button>
-            <Button onClick={() => handleAddSave(formState)} >
+            <Button onClick={() => handleAddSave(formState)} disabled={isAdding || !isAddFormValid}>
               {isAdding ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
@@ -669,7 +724,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
             >
               Cancel
             </Button>
-            <Button onClick={() => handleEditSave(formState)} disabled={isUpdating}>
+            <Button onClick={() => handleEditSave(formState)} disabled={isUpdating || !isEditFormValid}>
               {isUpdating ? "Updating…" : "Update"}
             </Button>
           </DialogFooter>
