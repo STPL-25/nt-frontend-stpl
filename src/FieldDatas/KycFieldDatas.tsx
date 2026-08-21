@@ -32,7 +32,7 @@ export const useComDivBranchDeptFields = (
   const hierarchyError = useAppSelector(selectCompanyHierarchyError);
   // Real department master rows (each carries its own brn_sno/div_sno/com_sno) — not the
   // old static placeholder list, which had no relationship to the masters at all.
-  const { options: masterOptions } = useMasterOptions(["DeptMaster"]);
+  const { options: masterOptions } = useMasterOptions(["DeptMaster","BankAccountTypeMaster"]);
 
   const companyOptions: Option[] = useMemo(() => {
     if (!hierarchyData?.companies) return [];
@@ -148,7 +148,7 @@ export const useComDivBranchDeptFields = (
 export const useBasicInfoFields = (basicInfo: any) => {
   const isGstAvail = basicInfo?.is_gst_avail === "true";
   const isMsmeAvail = basicInfo?.is_msme_avail === "true";
-  const { options } = useMasterOptions(['SupplierCatagoryMaster','BusinessDetailsMatster']);
+  const { options } = useMasterOptions(['SupplierCatagoryMaster','BusinessDetailsMatster','BankAccountTypeMaster']);
   return useMemo<FieldType[]>(
     () => [
       {
@@ -380,6 +380,10 @@ export const useDocumentFields = (): FieldType[] => {
 };
 
 export const useBankFields = (): FieldType[] => {
+  // Real bank-account-type master (Savings/Current/Cash Credit/Overdraft, admin-managed
+  // via the Masters screen) instead of the old free-text "Savings / Current" placeholder.
+  const { options: masterOptions } = useMasterOptions(["BankAccountTypeMaster"]);
+
   return useMemo<FieldType[]>(
     () => [
       {
@@ -404,8 +408,9 @@ export const useBankFields = (): FieldType[] => {
         field: "ac_type",
         label: "Account Type",
         require: true,
-        type: "text",
-        placeholder: "Savings / Current",
+        type: "select",
+        placeholder: "Select account type",
+        options: masterOptions?.BankAccountTypeMaster || [],
         input: true,
         view: true,
       },
@@ -446,7 +451,7 @@ export const useBankFields = (): FieldType[] => {
         view: true,
       },
     ],
-    []
+    [masterOptions]
   );
 };
 

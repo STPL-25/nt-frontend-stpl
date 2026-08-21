@@ -858,7 +858,7 @@ export default function ApprovalFlowDynamic() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full bg-muted/30 min-h-full">
+    <div className="flex flex-col min-h-full lg:h-full bg-muted/30">
 
       {/* ── Page header ─────────────────────────────────────────────────── */}
       <PageHeader
@@ -868,10 +868,10 @@ export default function ApprovalFlowDynamic() {
       />
 
       {/* ── Body ────────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden flex-col lg:flex-row" style={{ minHeight: 0 }}>
+      <div className="flex flex-1 flex-col lg:flex-row lg:overflow-hidden" style={{ minHeight: 0 }}>
 
         {/* ── LEFT PANEL ──────────────────────────────────────────────── */}
-        <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 bg-background border-b lg:border-b-0 lg:border-r overflow-y-auto">
+        <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 bg-background border-b lg:border-b-0 lg:border-r lg:overflow-y-auto">
           <div className="p-5 space-y-5">
 
             {/* Select Workflow */}
@@ -1002,7 +1002,7 @@ export default function ApprovalFlowDynamic() {
         </div>
 
         {/* ── RIGHT PANEL ─────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 lg:overflow-y-auto">
 
           {/* Idle state */}
           {mode === "idle" && (

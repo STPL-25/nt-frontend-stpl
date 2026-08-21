@@ -385,14 +385,16 @@ export function CustomInputField({
       case "multi-select":
         return (
           <div className={cn("space-y-2", className)}>
-            {/* Show selected items inline (scrollable on large screens), wrap on mobile */}
+            {/* Selected items wrap onto new lines once they run out of width,
+                on every screen size — a location with several companies/
+                divisions/branches selected must not spill off the row. */}
             {value?.length > 0 && (
-              <div className="flex flex-wrap md:flex-nowrap items-center gap-1   whitespace-nowrap text-xs text-slate-600 py-1">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600 py-1">
                 {value
                   .map((val: string) => optionsArray.find((opt) => opt.value === val)?.label)
                   .filter(Boolean)
                   .map((label: string, idx: number) => (
-                    <span key={idx} className="bg-slate-100 px-2 py-1 rounded mb-1 md:mb-0">
+                    <span key={idx} className="bg-slate-100 px-2 py-1 rounded">
                       {label}
                     </span>
                   ))}

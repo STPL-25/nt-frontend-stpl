@@ -87,6 +87,7 @@ export const buildGRNItems = (po: PORecord): GRNItemEntry[] => {
       hsn_code: '',
       remarks: '',
       selected: pending > 0,
+      warehouse_location_sno: undefined,
     };
   });
 };

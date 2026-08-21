@@ -11,6 +11,8 @@ import { lazy, LazyExoticComponent, ComponentType } from "react";
  export const PurchaseRequisitionPage = lazy(() => import("../Application/PR/PurchaseRequisitionPage"));
  export const RoutineRequisitionPage = lazy(() => import("../Application/PR/RoutineRequisitionPage"));
  export const CivilWorksRequisitionPage = lazy(() => import("../Application/PR/CivilWorksRequisitionPage"));
+ export const ElectricalWorksRequisitionPage = lazy(() => import("../Application/PR/ElectricalWorksRequisitionPage"));
+ export const TransportationRequisitionPage = lazy(() => import("../Application/PR/TransportationRequisitionPage"));
  export const ApprovalWorkflowPage = lazy(() => import("../Application/RoleApproval/ApprovalWorkflowManager"));
  export const PRApprovalScreen = lazy(() => import("../Application/PR/PRApprovalScreen"));
  export const StoreRequisition = lazy(() => import("../Application/Store/StoreRequisition"));
@@ -30,6 +32,12 @@ import { lazy, LazyExoticComponent, ComponentType } from "react";
  export const AccountEntryPage = lazy(() => import("../Application/AccountEntry/AccountEntryPage"));
  export const AccountsBillPage = lazy(() => import("../Application/Accounts/AccountsBillPage"));
  export const PaymentPage = lazy(() => import("../Application/Payment/PaymentPage"));
+ export const ServicePOPage = lazy(() => import("../Application/ServicePO/ServicePOPage"));
+ export const ServicePOApprovalScreen = lazy(() => import("../Application/ServicePO/ServicePOApprovalScreen"));
+ export const ServiceAgreementPage = lazy(() => import("../Application/ServiceAgreement/ServiceAgreementPage"));
+ export const ServiceAgreementApprovalScreen = lazy(() => import("../Application/ServiceAgreement/ServiceAgreementApprovalScreen"));
+ export const ServiceEntryPage = lazy(() => import("../Application/ServiceEntry/ServiceEntryPage"));
+ export const ServiceEntryApprovalScreen = lazy(() => import("../Application/ServiceEntry/ServiceEntryApprovalScreen"));
 // Interface for the component map
 export interface SectionComponentsMap {
   [key: string]: LazyExoticComponent<ComponentType<any>>;
@@ -46,6 +54,8 @@ export const sectionComponents: SectionComponentsMap = {
   PurchaseRequisitionPage,
   RoutineRequisitionPage,
   CivilWorksRequisitionPage,
+  ElectricalWorksRequisitionPage,
+  TransportationRequisitionPage,
   ApprovalWorkflowPage,
   PRApprovalScreen,
   StoreRequisition,
@@ -65,4 +75,10 @@ export const sectionComponents: SectionComponentsMap = {
   AccountEntryPage,
   AccountsBillPage,
   PaymentPage,
+  ServicePOPage,
+  ServicePOApprovalScreen,
+  ServiceAgreementPage,
+  ServiceAgreementApprovalScreen,
+  ServiceEntryPage,
+  ServiceEntryApprovalScreen,
 };

@@ -318,10 +318,10 @@ console.log('InventoryItemDialog', { open, item, form });
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={() => onSubmit(form)} disabled={saving}>
+          {/* <Button onClick={() => onSubmit(form)} disabled={saving}>
             {saving && <Loader2 size={14} className="mr-1.5 animate-spin" />}
             {isEdit ? 'Save Changes' : 'Add Item'}
-          </Button>
+          </Button> */}
         </DialogFooter>
       </DialogContent>
     </Dialog>

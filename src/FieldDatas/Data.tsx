@@ -1,7 +1,7 @@
 import React, { ReactElement, useMemo } from "react";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import {  Building, MapPin, FileCheck, IndianRupee, Package, FolderOpen,
-  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck,} from "lucide-react";
+  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck, Landmark, Warehouse,} from "lucide-react";
 import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
 import type { FieldType, OptionType } from "./fieldType/fieldType";
 
@@ -36,6 +36,8 @@ const masterItems: MasterItemType[] = [
   { icon: <Package className="w-5 h-5" />, name: "Product", category: "inventory", color: "bg-indigo-500", id: "ProductMaster" },
    { icon: <Hash className="w-5 h-5" />, name: "UOM", category: "inventory", color: "bg-green-600", id: "UomMaster" },
   { icon: <Truck className="w-5 h-5" />, name: "Transporter Master", category: "logistics", color: "bg-red-600", id: "TransportMaster" },
+  { icon: <Landmark className="w-5 h-5" />, name: "Bank Account Type", category: "compliance", color: "bg-cyan-600", id: "BankAccountTypeMaster" },
+  { icon: <Warehouse className="w-5 h-5" />, name: "Warehouse Location", category: "inventory", color: "bg-orange-600", id: "WarehouseLocationMaster" },
 
   // { icon: <FileText className="w-5 h-5" />, name: "KYC", category: "compliance", color: "bg-teal-500", id: "kyc_master" },
   // { icon: <Tag className="w-5 h-5" />, name: "Product Rate and Discount", category: "inventory", color: "bg-cyan-500", id: "product_rate_discount" },
@@ -251,6 +253,41 @@ const usePriorityFieldsMaster = (formData?: any): FieldType[] => {
     []
   );
 };
+const useBankAccountTypeFieldsMaster = (formData?: any): FieldType[] => {
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "bank_account_type_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "account_type_code", label: "Code", require: true, view: true, type: "text", input: true },
+      { field: "account_type_name", label: "Account Type Name", require: true, view: true, type: "text", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    []
+  );
+};
+
+const useWarehouseLocationFieldsMaster = (formData?: any): FieldType[] => {
+  const { options, loading } = useMasterOptions(['CompanyMaster', 'DivisionMaster', 'BranchMaster']);
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "location_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "location_code", label: "Location Code", require: true, view: true, type: "text", input: true },
+      { field: "location_name", label: "Location Name", require: true, view: true, type: "text", input: true },
+      // Multiple companies/divisions/branches can share one physical
+      // location — division/branch are optional (blank = not restricted
+      // within the selected companies).
+      { field: "com_snos", label: "Companies", require: true, view: false, type: "multi-select", options: options?.CompanyMaster || [], input: true },
+      { field: "div_snos", label: "Divisions", require: false, view: false, type: "multi-select", options: options?.DivisionMaster || [], input: true },
+      { field: "brn_snos", label: "Branches", require: false, view: false, type: "multi-select", options: options?.BranchMaster || [], input: true },
+      { field: "com_names", label: "Companies", require: false, view: true, type: "text", input: false },
+      { field: "div_names", label: "Divisions", require: false, view: true, type: "text", input: false },
+      { field: "brn_names", label: "Branches", require: false, view: true, type: "text", input: false },
+      { field: "description", label: "Description", require: false, view: true, type: "textarea", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    [options, loading]
+  );
+};
+
 const useScreensFieldsMaster = (formData?: any): FieldType[] => {
   const { options, loading } = useMasterOptions(['ScreenMaster']);
   return useMemo<FieldType[]>(
@@ -379,6 +416,8 @@ export {
   useDeptMasterFields,
   usePrefixFieldsMaster,
   usePriorityFieldsMaster,
+  useBankAccountTypeFieldsMaster,
+  useWarehouseLocationFieldsMaster,
   useScreensFieldsMaster,
   usePermissionFieldsMaster,
   useProductFieldsMaster,

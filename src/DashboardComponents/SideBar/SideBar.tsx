@@ -7,7 +7,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import type { IconComponent, MenuItem, Screen, HandleClickParams } from "./SideBar.types";
@@ -194,7 +193,7 @@ const Sidebar: React.FC = () => {
         </div>
 
         {/* ── Navigation ──────────────────────────────────────────────── */}
-        <ScrollArea className="flex-1 px-3 py-4">
+        <div className="scrollbar-none flex-1 overflow-y-auto overscroll-contain px-3 py-4">
           {loading && (
             <p className="px-2 py-1 text-xs text-muted-foreground">Loading menu…</p>
           )}
@@ -249,7 +248,7 @@ const Sidebar: React.FC = () => {
               );
             })}
           </nav>
-        </ScrollArea>
+        </div>
 
         {/* ── Resize handle — follows primary color ────────────────────── */}
         {!isCollapsed && (

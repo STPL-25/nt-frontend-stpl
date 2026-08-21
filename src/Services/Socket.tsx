@@ -62,6 +62,22 @@ export const SOCKET_PR_APPROVAL_UPDATED = "pr:approval:updated";
 // ── PO approval real-time events ─────────────────────────────────────────────
 export const SOCKET_PO_APPROVAL_UPDATED = "po:approval:updated";
 
+// ── Service PO approval room + real-time events ──────────────────────────────
+export const SOCKET_JOIN_SERVICE_PO_APPROVAL = "join-service_po-approval";
+export const SOCKET_LEAVE_SERVICE_PO_APPROVAL = "leave-service_po-approval";
+export const SOCKET_SERVICE_PO_APPROVAL_UPDATED = "service_po:approval:updated";
+
+// ── Service Agreement approval room + real-time events ───────────────────────
+export const SOCKET_JOIN_SERVICE_AGREEMENT_APPROVAL = "join-service_agreement-approval";
+export const SOCKET_LEAVE_SERVICE_AGREEMENT_APPROVAL = "leave-service_agreement-approval";
+export const SOCKET_SERVICE_AGREEMENT_APPROVAL_UPDATED = "service_agreement:approval:updated";
+
+// ── Service Entry room + real-time events ────────────────────────────────────
+export const SOCKET_JOIN_SERVICE_ENTRY = "join-service_entry";
+export const SOCKET_LEAVE_SERVICE_ENTRY = "leave-service_entry";
+export const SOCKET_SERVICE_ENTRY_CREATED = "service_entry:created";
+export const SOCKET_SERVICE_ENTRY_APPROVAL_UPDATED = "service_entry:approval:updated";
+
 // ── KYC room + real-time events ───────────────────────────────────────────────
 export const SOCKET_JOIN_KYC_APPROVAL    = "join-kyc-approval";
 export const SOCKET_LEAVE_KYC_APPROVAL   = "leave-kyc-approval";

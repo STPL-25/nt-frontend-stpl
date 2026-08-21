@@ -128,6 +128,7 @@ export function BankModalContent({
                       onChange={(value) => onChange(index, f.field, value)}
                       placeholder={f.placeholder}
                       type={f.type}
+                      options={f.options}
                       disabled={isFetchingThisIfsc || isIfscDerived}
                     />
                     {isFetchingThisIfsc && (

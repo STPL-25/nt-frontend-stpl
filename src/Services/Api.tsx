@@ -99,6 +99,42 @@ export const prApproveAction = baseUrl + "/api/pr/approvePr";
 export const getPoRecords = baseUrl + "/api/po/getPoRecords";
 export const poApproveAction = baseUrl + "/api/po/approvePo";
 
+// Service Purchase Order — DB
+export const createServicePO = baseUrl + "/api/service_po/createServicePO";
+export const createCallOffPO = baseUrl + "/api/service_po/createCallOffPO";
+export const getServicePORecords = baseUrl + "/api/service_po/getServicePORecords";
+export const servicePoApproveAction = baseUrl + "/api/service_po/approveServicePO";
+export const getAllServicePOs = baseUrl + "/api/service_po/getAllServicePOs";
+export const getEligiblePrLinesForServicePO = baseUrl + "/api/service_po/getEligiblePrLinesForServicePO";
+
+// Service Agreement — DB
+export const createServiceAgreement = baseUrl + "/api/service_agreement/createServiceAgreement";
+export const approveServiceAgreement = baseUrl + "/api/service_agreement/approveServiceAgreement";
+export const getServiceAgreements = baseUrl + "/api/service_agreement/getServiceAgreements";
+export const getActiveServiceAgreement = baseUrl + "/api/service_agreement/getActiveServiceAgreement";
+export const getServiceAgreementsForApproval = baseUrl + "/api/service_agreement/getServiceAgreementsForApproval";
+
+// Service Entry — DB (grn-service)
+export const getPendingServicePOsForServiceEntry = baseUrl + "/api/service_entry/getPendingServicePOs";
+export const getServiceEntriesByPO = (po_basic_sno: number | string) => `${baseUrl}/api/service_entry/getServiceEntriesByPO/${po_basic_sno}`;
+export const createServiceEntry = baseUrl + "/api/service_entry/createServiceEntry";
+export const serviceEntryApproveAction = baseUrl + "/api/service_entry/approveServiceEntry";
+export const getAllServiceEntries = baseUrl + "/api/service_entry/getAllServiceEntries";
+
+// Invoice — DB (grn-service)
+export const createInvoice = baseUrl + "/api/invoice/createInvoice";
+export const linkInvoiceToPO = baseUrl + "/api/invoice/linkInvoiceToPO";
+export const allocateInvoice = baseUrl + "/api/invoice/allocateInvoice";
+export const matchInvoice = baseUrl + "/api/invoice/matchInvoice";
+export const getInvoicesByPO = (po_basic_sno: number | string) => `${baseUrl}/api/invoice/getInvoicesByPO/${po_basic_sno}`;
+export const getAllInvoices = baseUrl + "/api/invoice/getAllInvoices";
+export const getPendingInvoiceMatches = baseUrl + "/api/invoice/getPendingMatches";
+
+// Payment — DB (grn-service)
+export const getPayableBills = baseUrl + "/api/payment/getPayableBills";
+export const createPayment = baseUrl + "/api/payment/createPayment";
+export const getPaymentHistory = baseUrl + "/api/payment/getPaymentHistory";
+
 // Purchase Requisition — Draft (Redis, per-user)
 export const prSaveDraft = baseUrl + "/api/pr/saveDraft";
 export const prGetDrafts = baseUrl + "/api/pr/getDrafts";
@@ -175,13 +211,13 @@ export const inventoryGetMovements = (item_sno: number) => `${baseUrl}/api/inven
 export const inventoryAdjustStock = baseUrl + "/api/inventory/adjustStock";
 
 // A/C Double Entry — Journal Entries
-export const acGetEntries         = baseUrl + "/api/ac_entry/getEntries";
-export const acCreateEntry        = baseUrl + "/api/ac_entry/createEntry";
-export const acUpdateEntry        = (entry_sno: number) => `${baseUrl}/api/ac_entry/updateEntry/${entry_sno}`;
-export const acPostEntry          = (entry_sno: number) => `${baseUrl}/api/ac_entry/postEntry/${entry_sno}`;
-export const acReverseEntry       = (entry_sno: number) => `${baseUrl}/api/ac_entry/reverseEntry/${entry_sno}`;
+// export const acGetEntries         = baseUrl + "/api/ac_entry/getEntries";
+// export const acCreateEntry        = baseUrl + "/api/ac_entry/createEntry";
+// export const acUpdateEntry        = (entry_sno: number) => `${baseUrl}/api/ac_entry/updateEntry/${entry_sno}`;
+// export const acPostEntry          = (entry_sno: number) => `${baseUrl}/api/ac_entry/postEntry/${entry_sno}`;
+// export const acReverseEntry       = (entry_sno: number) => `${baseUrl}/api/ac_entry/reverseEntry/${entry_sno}`;
 
-// A/C Double Entry — Chart of Accounts / Ledgers
-export const acGetLedgers         = baseUrl + "/api/ac_entry/getLedgers";
-export const acCreateLedger       = baseUrl + "/api/ac_entry/createLedger";
-export const acUpdateLedger       = (ledger_sno: number) => `${baseUrl}/api/ac_entry/updateLedger/${ledger_sno}`;
+// // A/C Double Entry — Chart of Accounts / Ledgers
+// export const acGetLedgers         = baseUrl + "/api/ac_entry/getLedgers";
+// export const acCreateLedger       = baseUrl + "/api/ac_entry/createLedger";
+// export const acUpdateLedger       = (ledger_sno: number) => `${baseUrl}/api/ac_entry/updateLedger/${ledger_sno}`;

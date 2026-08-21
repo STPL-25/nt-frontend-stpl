@@ -41,6 +41,8 @@ export interface InventoryItem {
   dept_name?: string;
   created_at?: string;
   updated_at?: string;
+  location_name?: string; // Added for display purposes
+  location_code?: string; // Added for display purposes
 }
 
 export interface StockMovement {

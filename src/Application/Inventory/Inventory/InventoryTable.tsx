@@ -198,9 +198,8 @@ const InventoryTable: React.FC<InventoryTableProps> = ({
                 <Checkbox checked={allSelected} onCheckedChange={toggleSelectAll} aria-label="Select all" />
               </TableHead>
               <SortHead label="Product" k="item_name" />
-              <SortHead label="Company" k="com_name" />
-              <SortHead label="Division" k="div_name" />
-              <SortHead label="Branch" k="brn_name" />
+              <TableHead className="whitespace-nowrap">Bin</TableHead>
+              <TableHead className="whitespace-nowrap">Stock location_name</TableHead>
               <SortHead label="On Hand" k="current_stock" right />
               <TableHead className="text-right whitespace-nowrap">Min Stock</TableHead>
               <SortHead label="Reorder Qty" k="reorder_qty" right />
@@ -238,9 +237,9 @@ const InventoryTable: React.FC<InventoryTableProps> = ({
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{item.com_name || '—'}</TableCell>
-                  <TableCell className="text-muted-foreground">{item.div_name || '—'}</TableCell>
-                  <TableCell className="text-muted-foreground">{item.brn_name || '—'}</TableCell>
+                  {/* <TableCell className="text-muted-foreground">{item.com_name || '—'}</TableCell> */}
+                  <TableCell className="text-muted-foreground">{item.location_code || '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{item.location_name || '—'}</TableCell>
                   <TableCell className="text-right tabular-nums">
                     {item.current_stock.toLocaleString('en-IN')}
                     <span className="text-xs text-muted-foreground ml-1">{item.uom}</span>

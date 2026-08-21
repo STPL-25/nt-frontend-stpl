@@ -427,7 +427,7 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                       <thead className="bg-slate-50 dark:bg-slate-900 text-xs font-semibold text-slate-600 dark:text-slate-400">
                         <tr>
                           <th className="text-left p-2 lg:p-3">#</th>
-                          <th className="text-left p-2 lg:p-3">Item (Prod #)</th>
+                          <th className="text-left p-2 lg:p-3">Item </th>
                           <th className="text-right p-2 lg:p-3">Qty</th>
                           {/* <th className="text-right p-2 lg:p-3">Est. Cost</th>
                           <th className="text-right p-2 lg:p-3">Total</th> */}
@@ -440,8 +440,8 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                             <td className="p-2 lg:p-3 text-slate-400 dark:text-slate-500 text-xs">{idx + 1}</td>
                             <td className="p-2 lg:p-3">
                               
-                              <p className="font-medium text-slate-900 dark:text-slate-50">{item.prod_name}</p>
-                              <p className="text-xs text-slate-500">{item.remarks || '—'}</p>
+                              <p className="font-medium text-slate-900 dark:text-slate-50">{item.prod_name||item.service_name}</p>
+                              <p className="text-xs text-slate-500">{item.remarks || item.service_code}</p>
 
                                {/* <td className="p-2 lg:p-3 text-xs text-slate-500 dark:text-slate-400 max-w-[140px] truncate">
                               {item.remarks || '—'}

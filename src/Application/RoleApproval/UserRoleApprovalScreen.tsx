@@ -566,7 +566,7 @@ export default function PermissionManager() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full bg-muted/30 min-h-full">
+    <div className="flex flex-col min-h-full lg:h-full bg-muted/30">
 
       {/* ── Page header ───────────────────────────────────────────────────── */}
       <PageHeader
@@ -578,10 +578,10 @@ export default function PermissionManager() {
       </PageHeader>
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden flex-col lg:flex-row" style={{ minHeight: 0 }}>
+      <div className="flex flex-1 flex-col lg:flex-row lg:overflow-hidden" style={{ minHeight: 0 }}>
 
         {/* ── LEFT PANEL: selection ─────────────────────────────────────── */}
-        <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 bg-background border-b lg:border-b-0 lg:border-r overflow-y-auto">
+        <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 bg-background border-b lg:border-b-0 lg:border-r lg:overflow-y-auto">
           <div className="p-5 space-y-5">
 
             {/* User selector */}
@@ -719,7 +719,7 @@ export default function PermissionManager() {
         </div>
 
         {/* ── RIGHT PANEL: permission matrix ───────────────────────────── */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 lg:overflow-y-auto">
           {!selectedUser ? (
             <div className="flex flex-col items-center justify-center h-full min-h-64 gap-4 text-muted-foreground">
               <div className="bg-muted rounded-full p-6">

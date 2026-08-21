@@ -314,6 +314,7 @@ console.log(selectedPO);
           condition: it.condition,
           hsn_code: it.hsn_code || undefined,
           remarks: it.remarks,
+          warehouse_location_sno: it.warehouse_location_sno || undefined,
         })),
       };
 

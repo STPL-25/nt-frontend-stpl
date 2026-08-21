@@ -27,7 +27,9 @@ import {
   prSaveDeptDraft,
   prUpdateDeptDraft,
   getAllRequiredMasterForOptions,
+  getActiveServiceAgreement,
 } from '@/Services/Api';
+import useFetch from '@/hooks/useFetchHook';
 
 import { SOCKET_JOIN_PR_SCOPE, SOCKET_LEAVE_PR_SCOPE } from '@/Services/Socket';
 import { toast } from 'sonner';
@@ -226,7 +228,12 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
 
   const buildEmptyItem = useCallback(() => {
     const item: Record<string, any> = {
-      item_type: normalizedAllowedItemTypes.length === 1 ? normalizedAllowedItemTypes[0] : '',
+      // The item-detail fields already default to the first allowed type's
+      // inputs (usePRItemDetailsFields' isProduct falls back to true whenever
+      // itemType isn't explicitly 'service') — default the stored value to
+      // match, so a category badge is never blank just because the user
+      // didn't click the (already-selected-looking) toggle.
+      item_type: normalizedAllowedItemTypes[0] ?? '',
       item_attachment: null,
     };
     itemDetailsFields.forEach((field: FieldType) => {
@@ -407,6 +414,59 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
       });
     }
   };
+
+  // ── Fixed Recurring service agreement auto-fill (spec §4) ──────────────────
+  // Whenever the current item's service_sno + this PR's org scope are both
+  // set, look up whether an Approved, in-period Service Agreement exists for
+  // that exact combination. We don't need to know client-side whether the
+  // selected service is FIXED_RECURRING — if the lookup returns a match, this
+  // line is agreement-backed and gets agreement_sno attached (so the server
+  // overrides rate/UOM from the agreement); if not, it's just a normal
+  // service line. The server's own validation
+  // (usp_InsertPurchaseRequest v3, sql/12_pr_agreement_autofill.sql) is the
+  // real authority on whether an agreement was actually required — this is
+  // best-effort UI, not the enforcement point.
+  const agreementLookupUrl =
+    currentItemType === 'service' &&
+    currentItem.service_sno && basicFormData.com_sno && basicFormData.div_sno && basicFormData.brn_sno && basicFormData.dept_sno
+      ? getActiveServiceAgreement
+      : null;
+  const { data: agreementLookupData, loading: agreementLookupLoading } = useFetch<{ success: boolean; data: any }>(
+    agreementLookupUrl,
+    '',
+    agreementLookupUrl
+      ? {
+          com_sno: basicFormData.com_sno,
+          div_sno: basicFormData.div_sno,
+          brn_sno: basicFormData.brn_sno,
+          dept_sno: basicFormData.dept_sno,
+          service_sno: currentItem.service_sno,
+        }
+      : null
+  );
+
+  useEffect(() => {
+    setCurrentItem((prev) => {
+      if (!prev.service_sno) return prev; // item was reset/cleared since the lookup fired
+      const agreement = agreementLookupData?.data;
+      if (agreement) {
+        return {
+          ...prev,
+          agreement_sno: agreement.agreement_sno,
+          agreement_no: agreement.agreement_no,
+          agreement_rate_amount: agreement.rate_amount,
+          agreement_rate_uom_name: agreement.rate_uom_name,
+          agreement_period_end_date: agreement.period_end_date,
+        };
+      }
+      if (prev.agreement_sno) {
+        const { agreement_sno, agreement_no, agreement_rate_amount, agreement_rate_uom_name, agreement_period_end_date, ...rest } = prev;
+        return rest;
+      }
+      return prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agreementLookupData]);
 
   // ── Item CRUD ─────────────────────────────────────────────────────────────
 
@@ -971,7 +1031,20 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
 
                   </div>
 
-                
+                  {/* ── Fixed Recurring service agreement info (spec §4) ── */}
+                  {currentItemType === 'service' && currentItem.service_sno && (
+                    agreementLookupLoading ? (
+                      <p className="text-xs text-muted-foreground">Checking for an approved service agreement…</p>
+                    ) : currentItem.agreement_sno ? (
+                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                        Billed per agreement <strong>{currentItem.agreement_no}</strong> — ₹
+                        {Number(currentItem.agreement_rate_amount).toLocaleString('en-IN')}
+                        {currentItem.agreement_rate_uom_name ? `/${currentItem.agreement_rate_uom_name}` : ''}, valid until{' '}
+                        {String(currentItem.agreement_period_end_date).slice(0, 10)}. Rate is set by the agreement and can't be edited here.
+                      </div>
+                    ) : null
+                  )}
+
                   {/* ── Textarea fields (service description, remarks) ── */}
                   {itemTextareaFields.map((field) => (
                     <div key={field.field} data-error={!!itemErrors[field.field]}>
@@ -1072,6 +1145,8 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
                                     )}
                                     {item.item_type || '—'}
                                   </Badge>
+                                ) : field.field === 'prod_name' ? (
+                                  <span>{item.prod_name || item.service_name || '—'}</span>
                                 ) : (
                                   <span>{item[field.field] ?? '—'}</span>
                                 )}

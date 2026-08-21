@@ -498,10 +498,12 @@ export const usePRItemDetailsFields = (params?: PRItemFieldsParams): FieldType[]
       ? params.allowedItemTypes
       : (["product", "service"] as PRItemType[]);
 
-  const { options } = useMasterOptions(["ProductMaster", "UomMaster"]);
+  const { options } = useMasterOptions(["ProductMaster", "UomMaster", "ServiceMaster"]);
 
+  const supportsProducts = allowedItemTypes.includes("product");
   const supportsServices = allowedItemTypes.includes("service");
   const isService = supportsServices && itemType === "service";
+  const isProduct = supportsProducts && (!isService);
   const showCategory = allowedItemTypes.length > 1;
   const itemTypeOptions = allowedItemTypes.map((type) => ({
     value: type,
@@ -519,19 +521,51 @@ export const usePRItemDetailsFields = (params?: PRItemFieldsParams): FieldType[]
         input: false,
       },
       {
+        field: "item_type",
+        label: "Category",
+        require: showCategory,
+        view: showCategory,
+        type: "radio",
+        options: itemTypeOptions,
+        input: showCategory,
+      },
+      {
         field: "prod_sno",
         label: "Product",
-        require: false,
+        require: isProduct,
         view: false,
         type: "search-select",
         options: options?.ProductMaster,
-        input: true,
+        input: isProduct,
       },
       {
+        // Always visible (not gated on isProduct) so the saved-items table has
+        // a stable "Item" column regardless of which category is currently
+        // toggled in the add-item form — PurchaseRequisitionPage.tsx special-
+        // cases this field to show item.prod_name || item.service_name per row.
         field: "prod_name",
-        label: "Product",
+        label: "Item",
         require: false,
         view: true,
+        type: "text",
+        input: false,
+      },
+      {
+        field: "service_sno",
+        label: "Service",
+        require: isService,
+        view: false,
+        type: "search-select",
+        options: options?.ServiceMaster,
+        input: isService,
+      },
+      {
+        // Not its own table column — the "prod_name" field above shows
+        // item.prod_name || item.service_name for both categories.
+        field: "service_name",
+        label: "Service",
+        require: false,
+        view: false,
         type: "text",
         input: false,
       },
@@ -546,7 +580,7 @@ export const usePRItemDetailsFields = (params?: PRItemFieldsParams): FieldType[]
       {
         field: "unit_sno",
         label: "Unit",
-        require: false,
+        require: isProduct,
         view: false,
         type: "search-select",
         options: options?.UomMaster,
@@ -570,14 +604,14 @@ export const usePRItemDetailsFields = (params?: PRItemFieldsParams): FieldType[]
       },
       {
         field: "is_active",
-        label: "Active",
         require: false,
         view: false,
         type: "text",
         input: false,
         defaultValue: true,
+        label: "Active",
       },
     ],
-    [options, isService, showCategory, itemTypeOptions]
+    [options, isService, isProduct, showCategory, itemTypeOptions]
   );
 };

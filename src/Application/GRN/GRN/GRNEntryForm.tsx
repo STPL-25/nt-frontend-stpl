@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,8 +11,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { PackageCheck, Send, RotateCcw, Info, Save } from 'lucide-react';
-import type { PORecord, GRNFormState, GRNItemEntry } from './types';
+import type { PORecord, GRNFormState, GRNItemEntry, WarehouseLocationOption } from './types';
 import { today, formatINR, getPODisplayNo, buildGRNItems } from './helpers';
+import { grnSvcGetWarehouseLocations } from '@/Services/GrnService/grnApi';
 
 interface GRNEntryFormProps {
   po: PORecord;
@@ -35,6 +37,19 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
   );
 
   const [items, setItems] = useState<GRNItemEntry[]>(() => initialItems ?? buildGRNItems(po));
+
+  const [locations, setLocations] = useState<WarehouseLocationOption[]>([]);
+
+  // Warehouse locations valid for this PO's company/division/branch — the
+  // Location dropdown below is scoped to these so the user can only pick
+  // somewhere that actually applies to this org unit.
+  useEffect(() => {
+    let cancelled = false;
+    axios.get(grnSvcGetWarehouseLocations(po.com_sno, po.div_sno, po.brn_sno))
+      .then(res => { if (!cancelled) setLocations(res.data?.data ?? []); })
+      .catch(() => { if (!cancelled) setLocations([]); });
+    return () => { cancelled = true; };
+  }, [po.com_sno, po.div_sno, po.brn_sno]);
 
   // Reset form when the PO changes (not when resuming a draft — the parent
   // remounts this component with a `key` covering the draft too, so the
@@ -158,6 +173,7 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
                     <TableHead className="text-xs text-center w-24">Received *</TableHead>
                     <TableHead className="text-xs text-center w-24">Rejected</TableHead>
                     <TableHead className="text-xs w-28">Condition</TableHead>
+                    <TableHead className="text-xs w-32">Location</TableHead>
                     <TableHead className="text-xs w-28">HSN Code</TableHead>
                     <TableHead className="text-xs">Item Remarks</TableHead>
                   </TableRow>
@@ -226,6 +242,24 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
                           <SelectContent>
                             {CONDITIONS.map(c => (
                               <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={item.warehouse_location_sno ? String(item.warehouse_location_sno) : undefined}
+                          onValueChange={v => updateItem(idx, { warehouse_location_sno: Number(v) })}
+                          disabled={!item.selected || locations.length === 0}
+                        >
+                          <SelectTrigger className="h-7 text-xs w-28">
+                            <SelectValue placeholder={locations.length === 0 ? 'None set up' : 'Select…'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {locations.map(loc => (
+                              <SelectItem key={loc.location_sno} value={String(loc.location_sno)} className="text-xs">
+                                {loc.location_name}
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>

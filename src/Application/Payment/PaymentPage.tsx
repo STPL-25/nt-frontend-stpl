@@ -5,11 +5,11 @@ import { RefreshCw, Wallet, Menu } from 'lucide-react';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
+import axios from 'axios';
 
 import type { PayableBill, PaymentRecord, PaymentFormState } from './Payment/types';
-import {
-  MOCK_PAYABLE_BILLS, getPaymentsForBill, generatePaymentNo, requiresReference,
-} from './Payment/helpers';
+import { requiresReference } from './Payment/helpers';
+import { getPayableBills, createPayment, getPaymentHistory } from '@/Services/Api';
 
 import PayableBillSidebar from './Payment/PayableBillSidebar';
 import PaymentForm from './Payment/PaymentForm';
@@ -28,14 +28,31 @@ const PaymentPage: React.FC = () => {
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const fetchBills = useCallback(() => {
+  const fetchBills = useCallback(async (): Promise<PayableBill[]> => {
     setLoadingBills(true);
-    setTimeout(() => { setBills(MOCK_PAYABLE_BILLS); setLoadingBills(false); }, 300);
+    try {
+      const res = await axios.get(getPayableBills);
+      const freshBills: PayableBill[] = res.data?.data ?? [];
+      setBills(freshBills);
+      return freshBills;
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to load payable bills');
+      return [];
+    } finally {
+      setLoadingBills(false);
+    }
   }, []);
 
-  const fetchPayments = useCallback((bill_sno: number) => {
+  const fetchPayments = useCallback(async (bill_sno: number) => {
     setLoadingPayments(true);
-    setTimeout(() => { setPayments(getPaymentsForBill(bill_sno)); setLoadingPayments(false); }, 200);
+    try {
+      const res = await axios.get(getPaymentHistory, { params: { bill_sno } });
+      setPayments(res.data?.data ?? []);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to load payment history');
+    } finally {
+      setLoadingPayments(false);
+    }
   }, []);
 
   useEffect(() => { fetchBills(); }, [fetchBills]);
@@ -45,7 +62,7 @@ const PaymentPage: React.FC = () => {
     else setPayments([]);
   }, [selected?.bill_sno, fetchPayments]);
 
-  const handleSubmit = (form: PaymentFormState) => {
+  const handleSubmit = async (form: PaymentFormState) => {
     if (!selected) return;
     const amount = Number(form.amount) || 0;
     if (amount <= 0) { toast.error('Payment amount must be greater than 0'); return; }
@@ -53,41 +70,38 @@ const PaymentPage: React.FC = () => {
     if (requiresReference(form.mode) && !form.reference_no.trim()) {
       toast.error(`Reference number is required for ${form.mode} payments`); return;
     }
+    if (!selected.vendor_sno) { toast.error('This bill has no vendor on record'); return; }
 
     setSaving(true);
-    setTimeout(() => {
-      const newPayment: PaymentRecord = {
-        payment_sno: Date.now(),
-        payment_no: generatePaymentNo(),
-        bill_sno: selected.bill_sno,
-        bill_no: selected.bill_no,
-        supplier_invoice_no: selected.supplier_invoice_no,
-        po_no: selected.po_no,
+    try {
+      const res = await axios.post(createPayment, {
         vendor_sno: selected.vendor_sno,
-        vendor_name: selected.vendor_name,
         payment_date: form.payment_date,
         amount,
         mode: form.mode,
         bank_account: form.bank_account,
         reference_no: form.reference_no || undefined,
-        status: form.mode === 'Cash' ? 'Cleared' : 'Processed',
         remarks: form.remarks,
-        created_by_name: 'Current User',
-        created_at: new Date().toISOString(),
-      };
+        allocations: [{ invoice_alloc_sno: selected.bill_sno, amount }],
+      });
+      const payment = res.data?.data;
 
-      setPayments(prev => [newPayment, ...prev]);
+      // Re-fetch both — the bucket's outstanding and payment history are
+      // server-computed (release_amount minus everything already paid).
+      await fetchPayments(selected.bill_sno);
+      const freshBills = await fetchBills();
+      // A fully-settled bucket drops out of sp_nt_GetPayableBills entirely —
+      // if it's gone, treat it as settled rather than leaving `selected`
+      // pointing at stale (pre-payment) outstanding/paid_amount values.
+      const stillOpen = freshBills.find(b => b.bill_sno === selected.bill_sno);
+      setSelected(stillOpen ?? { ...selected, paid_amount: selected.paid_amount + amount, outstanding: 0 });
 
-      // update outstanding on the bill locally
-      const newPaid = selected.paid_amount + amount;
-      const newOutstanding = Math.max(0, selected.net_payable - newPaid);
-      const updatedBill: PayableBill = { ...selected, paid_amount: newPaid, outstanding: newOutstanding };
-      setBills(prev => prev.map(b => b.bill_sno === selected.bill_sno ? updatedBill : b));
-      setSelected(updatedBill);
-
-      toast.success(`Payment ${newPayment.payment_no} recorded${newOutstanding === 0 ? ' — bill fully settled' : ''}`);
+      toast.success(`Payment ${payment?.payment_no ?? ''} recorded${!stillOpen ? ' — bill fully settled' : ''}`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to record payment');
+    } finally {
       setSaving(false);
-    }, 400);
+    }
   };
 
   const canPay = canCreate('PaymentPage');

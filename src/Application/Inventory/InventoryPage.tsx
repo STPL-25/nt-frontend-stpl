@@ -312,7 +312,7 @@ const InventoryPage: React.FC = () => {
             <RefreshCw size={15} className={loadingItems ? 'animate-spin mr-1' : 'mr-1'} />
             Refresh
           </Button>
-          <Button
+          {/* <Button
             variant="outline"
             size="sm"
             className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
@@ -320,8 +320,8 @@ const InventoryPage: React.FC = () => {
             disabled={items.length === 0}
           >
             <FileDown size={15} className="mr-1" /> Export CSV
-          </Button>
-          {canCreate('InventoryPage') && (
+          </Button> */}
+          {/* {canCreate('InventoryPage') && (
             <Button
               size="sm"
               className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
@@ -329,7 +329,8 @@ const InventoryPage: React.FC = () => {
             >
               <Plus size={15} className="mr-1" /> Add Item
             </Button>
-          )}
+          )
+          } */}
         </div>
       </PageHeader>
 

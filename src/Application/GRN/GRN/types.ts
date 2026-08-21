@@ -57,6 +57,13 @@ export interface PORecord {
   gate_entry_status?: string;
 }
 
+export interface WarehouseLocationOption {
+  location_sno: number;
+  location_code: string;
+  location_name: string;
+  description?: string;
+}
+
 export interface GRNItem {
   grn_item_sno?: number;
   po_item_sno?: number;
@@ -71,6 +78,9 @@ export interface GRNItem {
   /** HSN code keyed in from the supplier's invoice. */
   hsn_code?: string;
   remarks: string;
+  /** Warehouse Location master row this receipt was placed into. */
+  warehouse_location_sno?: number;
+  warehouse_location_name?: string;
 }
 
 export interface GRNRecord {
@@ -116,4 +126,6 @@ export interface GRNItemEntry {
   hsn_code: string;
   remarks: string;
   selected: boolean;
+  /** Warehouse Location master row this receipt is being placed into. */
+  warehouse_location_sno?: number;
 }
