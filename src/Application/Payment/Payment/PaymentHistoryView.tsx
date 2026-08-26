@@ -55,6 +55,7 @@ const PaymentHistoryView: React.FC<PaymentHistoryViewProps> = ({ payments, loadi
                 <TableRow className="bg-muted/40">
                   <TableHead className="text-xs">Payment No</TableHead>
                   <TableHead className="text-xs">Date</TableHead>
+                  <TableHead className="text-xs">Bucket</TableHead>
                   <TableHead className="text-xs">Mode</TableHead>
                   <TableHead className="text-xs">Account</TableHead>
                   <TableHead className="text-xs">Reference</TableHead>
@@ -67,6 +68,13 @@ const PaymentHistoryView: React.FC<PaymentHistoryViewProps> = ({ payments, loadi
                   <TableRow key={p.payment_sno ?? idx}>
                     <TableCell className="text-xs font-medium text-primary">{p.payment_no}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{formatDate(p.payment_date)}</TableCell>
+                    <TableCell className="text-xs">
+                      {p.bucket_type && (
+                        <Badge className={`text-xs ${p.bucket_type === 'MATERIAL' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-purple-100 text-purple-700 border-purple-200'}`}>
+                          {p.bucket_type}
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-xs">{p.mode}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{p.bank_account ?? '—'}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{p.reference_no ?? '—'}</TableCell>

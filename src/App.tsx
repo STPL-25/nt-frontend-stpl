@@ -6,6 +6,7 @@ import { useAppState } from "./globalState/hooks/useAppState";
 import { useEffect } from "react";
 import Signup from "./ApplicationPages/SignupPage";
 import SupplierPortal from "./Application/SupplierPortal/SupplierPortal";
+import StoreInchargeApprovalPage from "./Application/Store/StoreInchargeApprovalPage";
 import { useInactivityLogout } from "./hooks/useInactivityLogout";
 import SessionTimeoutModal from "./LayoutComponent/SessionTimeoutModal";
 import SessionExpiredModal from "./LayoutComponent/SessionExpiredModal";
@@ -81,6 +82,7 @@ const router = createBrowserRouter([
   { path: "/", element: <RootRoute /> },
   { path: "/signup", element: <Signup /> },
    { path: "/Supplier", element: <SupplierPortal /> },
+   { path: "/store-incharge-approval", element: <StoreInchargeApprovalPage /> },
 ]);
 
 function App() {

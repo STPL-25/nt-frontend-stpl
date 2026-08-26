@@ -6,6 +6,8 @@ export type PaymentMode = 'NEFT' | 'RTGS' | 'Cheque' | 'Cash' | 'UPI' | 'DD';
 
 export type PaymentStatus = 'Pending' | 'Processed' | 'Cleared' | 'Failed';
 
+export type BucketType = 'MATERIAL' | 'SERVICE';
+
 export interface PayableBill {
   bill_sno: number;
   bill_no: string;
@@ -15,6 +17,10 @@ export interface PayableBill {
   vendor_name?: string;
   invoice_date?: string;
   due_date?: string;
+  bucket_type?: BucketType;
+  allocated_amount?: number;
+  hold_amount?: number;        // held back by the last match run (not yet payable)
+  matched_qty_ratio?: number | null;
   net_payable: number;
   paid_amount: number;
   outstanding: number;       // net_payable - paid_amount
@@ -29,6 +35,9 @@ export interface PaymentRecord {
   po_no?: string;
   vendor_sno?: number;
   vendor_name?: string;
+  bucket_type?: BucketType;
+  hold_amount?: number;
+  matched_qty_ratio?: number | null;
   payment_date: string;
   amount: number;
   mode: PaymentMode;

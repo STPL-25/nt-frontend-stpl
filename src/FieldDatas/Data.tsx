@@ -1,7 +1,7 @@
 import React, { ReactElement, useMemo } from "react";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import {  Building, MapPin, FileCheck, IndianRupee, Package, FolderOpen,
-  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck, Landmark, Warehouse,} from "lucide-react";
+  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck, Landmark, Warehouse, Wrench,} from "lucide-react";
 import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
 import type { FieldType, OptionType } from "./fieldType/fieldType";
 
@@ -33,7 +33,9 @@ const masterItems: MasterItemType[] = [
   // { icon: <FileCheck className="w-5 h-5" />, name: "PO Approval", category: "approvals", color: "bg-orange-500", id: "POApproval" },
   // { icon: <IndianRupee className="w-5 h-5" />, name: "Ledger Master", category: "finance", color: "bg-emerald-500", id: "ledger_master" },
   { icon: <FolderOpen className="w-5 h-5" />, name: "Product Category", category: "inventory", color: "bg-yellow-500", id: "ProductCategoryMaster" },
+  { icon: <FolderOpen className="w-5 h-5" />, name: "Product Sub Category", category: "inventory", color: "bg-amber-500", id: "ProductSubCategoryMaster" },
   { icon: <Package className="w-5 h-5" />, name: "Product", category: "inventory", color: "bg-indigo-500", id: "ProductMaster" },
+  { icon: <Wrench className="w-5 h-5" />, name: "Service Master", category: "inventory", color: "bg-teal-600", id: "ServiceMaster" },
    { icon: <Hash className="w-5 h-5" />, name: "UOM", category: "inventory", color: "bg-green-600", id: "UomMaster" },
   { icon: <Truck className="w-5 h-5" />, name: "Transporter Master", category: "logistics", color: "bg-red-600", id: "TransportMaster" },
   { icon: <Landmark className="w-5 h-5" />, name: "Bank Account Type", category: "compliance", color: "bg-cyan-600", id: "BankAccountTypeMaster" },
@@ -162,7 +164,10 @@ const useUomMasterFields = (formData?: any): FieldType[] => {
       { field: "uom_name", label: "Name", require: true, view: true, type: "text", input: true },
       { field: "uom_class", label: "UOM Class", require: true, view: true, type: "text", input: true },
       { field: "uom_base_uom_flag", label: "UOM Base", require: true, view: true, type: "text", input: true },
-      { field: "uom_con_factor", label: "UOM Conversion Factor ", require: true, view: true, type: "text", input: true },
+      // Leave blank for a packaging unit whose count varies per product
+      // (e.g. Box) — that product then supplies its own conversion via
+      // Product Master's "Pieces per Unit" field instead.
+      { field: "uom_con_factor", label: "UOM Conversion Factor (blank if it varies by product, e.g. Box)", require: false, view: true, type: "text", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
     []
@@ -321,23 +326,30 @@ const useProductCatagoryMaster = (formData?: any): FieldType[] => {
     () => [
       { field: "cat_sno", label: "Category ID", require: false, view: false, type: "text", input: false },
       { field: "cat_name", label: "Category Name", require: true, view: true, type: "text", input: true },
-      { field: "cat_notes", label: "Category Notes", require: true, view: true, type: "text", input: false },
+      // Not free-text notes — this is the product-code prefix (e.g. "STA" -> STA00001),
+      // used by sp_nt_CreateProductRecord to generate every product under this category.
+      { field: "cat_notes", label: "Product Code Prefix", require: true, view: true, type: "text", input: true },
       { field: "cat_description", label: "Category Description", require: false, view: true, type: "text", input: true },
       { field: "cat_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
     []
   );
 };
-const useProductSubCatagoryMaster = (formData?: any): FieldType[] => {
+const useProductSubCatagoryMaster = (): FieldType[] => {
+  const { options, loading } = useMasterOptions(['ProductCategoryMaster']);
   return useMemo<FieldType[]>(
     () => [
       { field: "subcat_sno", label: "Sub Category ID", require: false, view: false, type: "text", input: false },
+
+      { field: "cat_sno", label: "Category", require: true, view: false, type: "select", options: options?.ProductCategoryMaster, input: true },
+      { field: "cat_name", label: "Category", require: true, view: true, type: "select", options: options?.ProductCategoryMaster, input: false },
+
       { field: "subcat_name", label: "Sub Category Name", require: true, view: true, type: "text", input: true },
-      { field: "subcat_notes", label: "Sub Category Notes", require: true, view: true, type: "text", input: false },
       { field: "subcat_description", label: "Sub Category Description", require: false, view: true, type: "text", input: true },
+      { field: "subcat_notes", label: "Sub Category Notes", require: false, view: true, type: "text", input: true },
       { field: "subcat_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
-    []
+    [options, loading]
   );
 };
 
@@ -367,8 +379,24 @@ const useWorkflowMasterFields = (): FieldType[] => {
   );
 };
 
-const useProductFieldsMaster = (formData?: any): FieldType[] => {
+const useProductFieldsMaster = (): FieldType[] => {
+  const { formData } = useAppState();
   const {options, loading} = useMasterOptions(['ProductCategoryMaster','ProductSubCategoryMaster','UomMaster','TaxMaster']);
+
+  // The selected UOM's own base/conversion flags (uom_base_uom_flag,
+  // uom_con_factor) ride along as `extra` on each UomMaster option (see
+  // CommonMasterRepo.js fieldMappings). A non-base unit with no fixed
+  // uom_con_factor (e.g. Box) varies per product, so the moment one is
+  // selected here, "Pieces per Unit" appears and is required — that's the
+  // pop-up-on-selection behavior for capturing "1 Box = how many pieces".
+  const selectedUom: any = useMemo(
+    () => options?.UomMaster?.find((u: any) => String(u.value) === String(formData?.uom_sno)),
+    [options?.UomMaster, formData?.uom_sno]
+  );
+  const needsProdConFactor = !!selectedUom
+    && selectedUom.uom_base_uom_flag === 'N'
+    && (selectedUom.uom_con_factor === null || selectedUom.uom_con_factor === undefined);
+
   return useMemo<FieldType[]>(
     () => [
       { field: "prod_sno", label: "Product ID", require: false, view: false, type: "text", input: false },
@@ -387,6 +415,14 @@ const useProductFieldsMaster = (formData?: any): FieldType[] => {
       { field: "hsn_code", label: "HSN Code", require: false, view: true, type: "text", input: true },
       { field: "uom_sno", label: "Unit of Measurement", require: true, view: false, type: "select", options: options?.UomMaster, input: true },
       { field: "uom_name", label: "Unit of Measurement", require: true, view: true, type: "select", options: options?.UomMaster, input: false },
+      {
+        field: "prod_uom_con_factor",
+        label: "Pieces per Unit (e.g. pieces in 1 Box)",
+        require: needsProdConFactor,
+        view: true,
+        type: "number",
+        input: needsProdConFactor,
+      },
       { field: "tax_sno", label: "Tax", require: true, view: false, type: "select", options: options?.TaxMaster, input: false },
       { field: "sku", label: "SKU", require: false, view: false, type: "text", input: false },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
@@ -398,7 +434,60 @@ const useProductFieldsMaster = (formData?: any): FieldType[] => {
       // { field: "modified_date", label: "Modified Date", require: false, view: false, type: "date", input: false },
       // { field: "modified_by", label: "Modified By", require: false, view: false, type: "text", input: false },
     ],
-    [options,loading]
+    [options, loading, needsProdConFactor]
+  );
+};
+
+const useServiceMasterFields = (): FieldType[] => {
+  const { formData } = useAppState();
+  const { options, loading } = useMasterOptions(['ServiceTypeMaster', 'UomMaster']);
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "service_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "service_code", label: "Service Code", require: true, view: true, type: "text", input: true },
+      { field: "service_name", label: "Service Name", require: true, view: true, type: "text", input: true },
+
+      { field: "service_type_sno", label: "Service Type", require: true, view: false, type: "select", options: options?.ServiceTypeMaster || [], input: true },
+      { field: "service_type_name", label: "Service Type", require: true, view: true, type: "select", options: options?.ServiceTypeMaster || [], input: false },
+
+      { field: "default_uom_sno", label: "Default UOM", require: false, view: false, type: "select", options: options?.UomMaster || [], input: true },
+      { field: "default_uom_name", label: "Default UOM", require: false, view: true, type: "select", options: options?.UomMaster || [], input: false },
+
+      { field: "sac_code", label: "SAC Code", require: false, view: true, type: "text", input: true },
+
+      { field: "is_recurring", label: "Recurring", require: false, view: true, type: "checkbox", input: true },
+      // Only meaningful when Recurring is on — usp/sp_nt_CreateServiceRecords
+      // throws if is_recurring=1 with no cadence, so gate it the same way
+      // CompanyMaster gates its GST fields on is_gst_applicable.
+      {
+        field: "recurrence_cadence",
+        label: "Recurrence Cadence",
+        require: !!formData?.is_recurring,
+        view: true,
+        type: "select",
+        options: [
+          { value: "DAILY", label: "Daily" },
+          { value: "EVERY_N_DAYS", label: "Every N Days" },
+          { value: "MONTHLY", label: "Monthly" },
+          { value: "QUARTERLY", label: "Quarterly" },
+          { value: "HALF_YEARLY", label: "Half Yearly" },
+          { value: "YEARLY_FIXED_DATE", label: "Yearly (Fixed Date)" },
+        ],
+        input: !!formData?.is_recurring,
+      },
+      {
+        field: "recurrence_interval_days",
+        label: "Recurrence Interval (Days)",
+        require: formData?.recurrence_cadence === "EVERY_N_DAYS",
+        view: true,
+        type: "number",
+        input: !!formData?.is_recurring && formData?.recurrence_cadence === "EVERY_N_DAYS",
+      },
+
+      { field: "description", label: "Description", require: false, view: true, type: "textarea", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    [options, loading, formData?.is_recurring, formData?.recurrence_cadence]
   );
 };
 
@@ -423,6 +512,7 @@ export {
   useProductFieldsMaster,
   useProductCatagoryMaster,
   useProductSubCatagoryMaster,
+  useServiceMasterFields,
   useWorkflowMasterFields,
 };
 

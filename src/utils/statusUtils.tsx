@@ -90,6 +90,10 @@ const STATUS_DEFS: Record<string, StatusDef> = {
   ISSUED: { label: "Issued", tone: "success" },
   "PARTIALLY ISSUED": { label: "Partially Issued", tone: "warning" },
 
+  // Store Incharge Approval (StoreInchargeApprovalPage)
+  "FORWARDED TO PURCHASE": { label: "Forwarded to Purchase", tone: "info" },
+  "PARTIAL ISSUE + FORWARDED": { label: "Partial Issue + Forwarded", tone: "purple" },
+
   // Document lifecycle
   D: { label: "Draft", tone: "info" },
   DRAFT: { label: "Draft", tone: "info" },

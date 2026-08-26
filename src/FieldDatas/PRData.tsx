@@ -461,6 +461,20 @@ export const usePRBasicInfoFields = (params?: PRBasicInfoFieldsParams): FieldTyp
         input: true,
       },
       {
+        field: "source_invoice_sno",
+        label: "Source Invoice No. (vendor-bill-driven only)",
+        require: false,
+        view: true,
+        type: "number",
+        input: true,
+        // Must default to null, not 0 (the generic number-field default) —
+        // usp_InsertPurchaseRequest v4 casts this straight to
+        // pr_basic_info.source_invoice_sno, which FK-references
+        // invoice_info(invoice_sno); a stray 0 would fail that FK on every
+        // normal PR that doesn't set this field.
+        defaultValue: null,
+      },
+      {
         field: "pr_basic_sno",
         label: "PR No.",
         require: false,

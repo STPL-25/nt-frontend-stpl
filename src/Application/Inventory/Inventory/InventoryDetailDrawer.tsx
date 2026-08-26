@@ -74,12 +74,12 @@ const InventoryDetailDrawer: React.FC<InventoryDetailDrawerProps> = ({
                 <Field label="Reorder Qty">{item.reorder_qty.toLocaleString('en-IN')}</Field>
                 <Field label="Location">{item.location || '—'}</Field>
                 <Field label="Unit Cost">{formatINR(item.cost_price)}</Field>
-                <Field label="Stock Value" strong>{formatINR(item.current_stock * item.cost_price)}</Field>
-                <Field label="Selling Price">{formatINR(item.selling_price)}</Field>
+                {/* <Field label="Stock Value" strong>{formatINR(item.current_stock * item.cost_price)}</Field> */}
+                {/* <Field label="Selling Price">{formatINR(item.selling_price)}</Field> */}
                 <Field label="Last Updated">{formatDate(item.updated_at ?? item.created_at)}</Field>
               </div>
 
-              {canAdjust && item.status !== 'Discontinued' && (
+              {/* {canAdjust && item.status !== 'Discontinued' && (
                 <div>
                   <div className="text-sm font-semibold mb-2">Adjust Stock</div>
                   <div className="flex gap-2">
@@ -100,7 +100,7 @@ const InventoryDetailDrawer: React.FC<InventoryDetailDrawerProps> = ({
                     Positive to receive stock (IN), negative to issue stock (OUT). Every change is recorded as a movement.
                   </p>
                 </div>
-              )}
+              )} */}
 
               <div>
                 <div className="text-sm font-semibold mb-2">Recent Movements</div>

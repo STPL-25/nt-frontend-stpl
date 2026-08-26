@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   CheckCircle2, XCircle, Clock, FileText, ChevronRight,
   Package, GitBranch, History, ShoppingCart,
@@ -130,7 +129,7 @@ function PRListCard({ pr, isSelected, onClick }: {
       }`}
       onClick={onClick}
     >
-      <CardContent className="p-3 sm:p-4 space-y-2.5">
+      <CardContent className="p-5 sm:p-5 space-y-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -147,9 +146,13 @@ function PRListCard({ pr, isSelected, onClick }: {
         </div>
 
         {(pr.brn_name || pr.div_name) && (
-          <div className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
-            <Layers className="h-3 w-3 flex-shrink-0" />
-            <span className="truncate">{[pr.div_name, pr.brn_name].filter(Boolean).join(' · ')}</span>
+          <div className="space-y-0.5">
+            {[pr.div_name, pr.brn_name].filter(Boolean).map((name, idx) => (
+              <div key={idx} className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
+                <Layers className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{name}</span>
+              </div>
+            ))}
           </div>
         )}
 
@@ -648,86 +651,71 @@ function PRDetailPanel({ pr, handleAction }: {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex-1 overflow-auto p-4 sm:p-6">
-        <Tabs defaultValue="overview">
-          <TabsList className="w-full mb-5">
-            <TabsTrigger value="overview" className="flex-1 text-xs sm:text-sm">PR Info</TabsTrigger>
-            <TabsTrigger value="quotations" className="flex-1 text-xs sm:text-sm">
-              Quotations ({quotations.length})
-            </TabsTrigger>
-            <TabsTrigger value="workflow" className="flex-1 text-xs sm:text-sm">
-              Workflow
-            </TabsTrigger>
-          </TabsList>
-
-          {/* PR Info tab */}
-          <TabsContent value="overview" className="space-y-4 mt-0">
-            <Card className="shadow-sm">
-              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 p-4 pb-3">
-                {(pr.com_name || pr.div_name || pr.brn_name) && (
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                    <Layers className="h-3.5 w-3.5 flex-shrink-0" />
-                    {[pr.com_name, pr.div_name, pr.brn_name].filter(Boolean).join(' › ')}
-                  </div>
-                )}
-              </CardHeader>
-              <CardContent className="p-4 pt-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {prInfoRows.map(r => (
-                    <div key={r.label} className="p-3 rounded-lg bg-slate-50 dark:bg-slate-900/50">
-                      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{r.label}</p>
-                      <p className="text-sm font-semibold mt-0.5">{r.value}</p>
-                    </div>
-                  ))}
+      {/* Details */}
+      <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
+        <Card className="shadow-sm">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 p-4 pb-3">
+            {(pr.com_name || pr.div_name || pr.brn_name) && (
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <Layers className="h-3.5 w-3.5 flex-shrink-0" />
+                {[pr.com_name, pr.div_name, pr.brn_name].filter(Boolean).join(' › ')}
+              </div>
+            )}
+          </CardHeader>
+          <CardContent className="p-4 pt-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {prInfoRows.map(r => (
+                <div key={r.label} className="p-3 rounded-lg bg-slate-50 dark:bg-slate-900/50">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{r.label}</p>
+                  <p className="text-sm font-semibold mt-0.5">{r.value}</p>
                 </div>
-              </CardContent>
-            </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
-            <Card className="shadow-sm">
-              <CardHeader className="p-4 pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Package className="h-4 w-4" />Requested Items
-                  <Badge variant="secondary" className="text-xs">{prItems.length}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 pt-0">
-                <PRItemsTable prItems={prItems} />
-              </CardContent>
-            </Card>
-          </TabsContent>
+        <Card className="shadow-sm">
+          <CardHeader className="p-4 pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Package className="h-4 w-4" />Requested Items
+              <Badge variant="secondary" className="text-xs">{prItems.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <PRItemsTable prItems={prItems} />
+          </CardContent>
+        </Card>
 
-          {/* Quotations tab */}
-          <TabsContent value="quotations" className="mt-0 space-y-4">
-            {quotations.length === 0 ? (
-              <p className="text-sm text-slate-500 text-center py-8">No quotations found</p>
-            ) : (
-              quotations.map((q: any, idx: number) => (
+        <div>
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+            <ShoppingCart className="h-4 w-4" />Quotations
+            <Badge variant="secondary" className="text-xs">{quotations.length}</Badge>
+          </h2>
+          {quotations.length === 0 ? (
+            <p className="text-sm text-slate-500 text-center py-8">No quotations found</p>
+          ) : (
+            <div className="space-y-4">
+              {quotations.map((q: any, idx: number) => (
                 <QuotationCard key={q.sq_basic_sno ?? idx} quotation={q} index={idx} />
-              ))
-            )}
-          </TabsContent>
+              ))}
+            </div>
+          )}
+        </div>
 
-          {/* Workflow tab */}
-          <TabsContent value="workflow" className="mt-0 space-y-4">
-            {selectedQ ? (
-              <>
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-900/50 text-xs text-slate-500">
-                  <FileText className="h-3.5 w-3.5 flex-shrink-0" />
-                  Workflow for selected quotation:
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">
-                    {selectedQ.quotation_ref_no}
-                  </span>
-                  <span>({selectedQ.company_name})</span>
-                </div>
-                <ApprovalStages stages={stages} currentApproverEcno={selectedQ.approver_ecno} />
-                <HistoryTimeline history={history} />
-              </>
-            ) : (
-              <p className="text-sm text-slate-500 text-center py-8">No selected quotation</p>
-            )}
-          </TabsContent>
-        </Tabs>
+        {selectedQ && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-900/50 text-xs text-slate-500">
+              <FileText className="h-3.5 w-3.5 flex-shrink-0" />
+              Workflow for selected quotation:
+              <span className="font-semibold text-slate-700 dark:text-slate-300">
+                {selectedQ.quotation_ref_no}
+              </span>
+              <span>({selectedQ.company_name})</span>
+            </div>
+            <ApprovalStages stages={stages} currentApproverEcno={selectedQ.approver_ecno} />
+            <HistoryTimeline history={history} />
+          </div>
+        )}
       </div>
 
       {/* Action footer */}

@@ -29,20 +29,11 @@ interface Vendor {
   company_name: string;
 }
 
-const CADENCE_OPTIONS = [
-  { value: 'DAILY', label: 'Daily' },
-  { value: 'EVERY_N_DAYS', label: 'Every N Days' },
-  { value: 'MONTHLY', label: 'Monthly' },
-  { value: 'QUARTERLY', label: 'Quarterly' },
-  { value: 'HALF_YEARLY', label: 'Half-Yearly' },
-  { value: 'YEARLY_FIXED_DATE', label: 'Yearly (Fixed Date)' },
-];
-
 const ServiceAgreementPage: React.FC = () => {
   const { options } = useMasterOptions([
-    'CompanyMaster', 'DivisionMaster', 'BranchMaster', 'DeptMaster', 'ServiceMaster', 'UomMaster',
+    'CompanyMaster', 'DivisionMaster', 'BranchMaster', 'DeptMaster', 'ServiceMaster', 'UomMaster', 'RecurrenceCadenceMaster',
   ]);
-  const { CompanyMaster, DivisionMaster, BranchMaster, DeptMaster, ServiceMaster, UomMaster } = options || {};
+  const { CompanyMaster, DivisionMaster, BranchMaster, DeptMaster, ServiceMaster, UomMaster, RecurrenceCadenceMaster } = options || {};
 
   const [comSno, setComSno] = useState('');
   const [divSno, setDivSno] = useState('');
@@ -52,7 +43,7 @@ const ServiceAgreementPage: React.FC = () => {
   const [vendorSno, setVendorSno] = useState('');
   const [rateAmount, setRateAmount] = useState('');
   const [rateUomSno, setRateUomSno] = useState('');
-  const [cadence, setCadence] = useState('MONTHLY');
+  const [cadenceSno, setCadenceSno] = useState('');
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
   const [remarks, setRemarks] = useState('');
@@ -98,7 +89,7 @@ const ServiceAgreementPage: React.FC = () => {
   const resetForm = () => {
     setComSno(''); setDivSno(''); setBrnSno(''); setDeptSno('');
     setServiceSno(''); setVendorSno('');
-    setRateAmount(''); setRateUomSno(''); setCadence('MONTHLY');
+    setRateAmount(''); setRateUomSno(''); setCadenceSno('');
     setPeriodStart(''); setPeriodEnd(''); setRemarks(''); setDocument(null);
   };
 
@@ -109,6 +100,10 @@ const ServiceAgreementPage: React.FC = () => {
     }
     if (!rateAmount || Number(rateAmount) <= 0) {
       toast.error('Enter a valid rate amount');
+      return;
+    }
+    if (!cadenceSno) {
+      toast.error('Select a recurrence cadence');
       return;
     }
     if (!periodStart || !periodEnd) {
@@ -136,7 +131,7 @@ const ServiceAgreementPage: React.FC = () => {
     if (vendorSno) formData.append('vendor_sno', vendorSno);
     formData.append('rate_amount', rateAmount);
     if (rateUomSno) formData.append('rate_uom_sno', rateUomSno);
-    formData.append('recurrence_cadence', cadence);
+    formData.append('recurrence_cadence_sno', cadenceSno);
     formData.append('period_start_date', periodStart);
     formData.append('period_end_date', periodEnd);
     if (remarks) formData.append('remarks', remarks);
@@ -272,10 +267,11 @@ const ServiceAgreementPage: React.FC = () => {
                   <Label>Recurrence cadence</Label>
                   <select
                     className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={cadence}
-                    onChange={(e) => setCadence(e.target.value)}
+                    value={cadenceSno}
+                    onChange={(e) => setCadenceSno(e.target.value)}
                   >
-                    {CADENCE_OPTIONS.map((c) => (
+                    <option value="">Select cadence…</option>
+                    {(RecurrenceCadenceMaster ?? []).map((c: CascadeOption) => (
                       <option key={c.value} value={c.value}>{c.label}</option>
                     ))}
                   </select>

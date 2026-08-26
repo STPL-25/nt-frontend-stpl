@@ -72,15 +72,25 @@ const PayableBillSidebar: React.FC<PayableBillSidebarProps> = ({ bills, loading,
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm font-semibold text-primary truncate">{b.bill_no}</span>
-                  {overdue && (
-                    <Badge className="text-xs shrink-0 ml-1 bg-red-100 text-red-700 border-red-200">Overdue</Badge>
-                  )}
-                  {!overdue && b.paid_amount > 0 && (
-                    <Badge className="text-xs shrink-0 ml-1 bg-amber-100 text-amber-700 border-amber-200">Partial</Badge>
-                  )}
+                  <div className="flex items-center gap-1 shrink-0 ml-1">
+                    {b.bucket_type && (
+                      <Badge className={`text-xs ${b.bucket_type === 'MATERIAL' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-purple-100 text-purple-700 border-purple-200'}`}>
+                        {b.bucket_type}
+                      </Badge>
+                    )}
+                    {overdue && (
+                      <Badge className="text-xs bg-red-100 text-red-700 border-red-200">Overdue</Badge>
+                    )}
+                    {!overdue && b.paid_amount > 0 && (
+                      <Badge className="text-xs bg-amber-100 text-amber-700 border-amber-200">Partial</Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="text-xs text-foreground font-medium truncate">{b.vendor_name ?? '—'}</div>
                 <div className="text-xs text-muted-foreground/70 truncate">Due: {formatDate(b.due_date)}</div>
+                {!!b.hold_amount && b.hold_amount > 0 && (
+                  <div className="text-xs text-red-600/80 truncate">Held (unmatched): {formatINR(b.hold_amount)}</div>
+                )}
                 <div className="flex items-center justify-between mt-1">
                   <span className="text-xs font-semibold text-red-600">{formatINR(b.outstanding)}</span>
                   <ChevronRight size={14} className="text-muted-foreground/70" />

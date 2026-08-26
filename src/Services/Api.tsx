@@ -106,6 +106,7 @@ export const getServicePORecords = baseUrl + "/api/service_po/getServicePORecord
 export const servicePoApproveAction = baseUrl + "/api/service_po/approveServicePO";
 export const getAllServicePOs = baseUrl + "/api/service_po/getAllServicePOs";
 export const getEligiblePrLinesForServicePO = baseUrl + "/api/service_po/getEligiblePrLinesForServicePO";
+export const reviseServicePOCeiling = baseUrl + "/api/service_po/reviseServicePOCeiling";
 
 // Service Agreement — DB
 export const createServiceAgreement = baseUrl + "/api/service_agreement/createServiceAgreement";
@@ -113,6 +114,14 @@ export const approveServiceAgreement = baseUrl + "/api/service_agreement/approve
 export const getServiceAgreements = baseUrl + "/api/service_agreement/getServiceAgreements";
 export const getActiveServiceAgreement = baseUrl + "/api/service_agreement/getActiveServiceAgreement";
 export const getServiceAgreementsForApproval = baseUrl + "/api/service_agreement/getServiceAgreementsForApproval";
+
+// Service Bill Request — DB (Variable Recurring per-cycle invoice-first approval)
+export const createServiceBillRequest = baseUrl + "/api/service_bill_request/createServiceBillRequest";
+export const approveServiceBillRequest = baseUrl + "/api/service_bill_request/approveServiceBillRequest";
+export const getServiceBillRequests = baseUrl + "/api/service_bill_request/getServiceBillRequests";
+export const getActiveCeilingAgreementsForBilling = baseUrl + "/api/service_bill_request/getActiveCeilingAgreementsForBilling";
+export const getServiceBillRequestsForApproval = baseUrl + "/api/service_bill_request/getServiceBillRequestsForApproval";
+export const retryServiceBillRequestPOIssue = baseUrl + "/api/service_bill_request/retryPOIssue";
 
 // Service Entry — DB (grn-service)
 export const getPendingServicePOsForServiceEntry = baseUrl + "/api/service_entry/getPendingServicePOs";
@@ -124,11 +133,13 @@ export const getAllServiceEntries = baseUrl + "/api/service_entry/getAllServiceE
 // Invoice — DB (grn-service)
 export const createInvoice = baseUrl + "/api/invoice/createInvoice";
 export const linkInvoiceToPO = baseUrl + "/api/invoice/linkInvoiceToPO";
+export const verifyInvoiceDelivery = baseUrl + "/api/invoice/verifyInvoiceDelivery";
 export const allocateInvoice = baseUrl + "/api/invoice/allocateInvoice";
 export const matchInvoice = baseUrl + "/api/invoice/matchInvoice";
 export const getInvoicesByPO = (po_basic_sno: number | string) => `${baseUrl}/api/invoice/getInvoicesByPO/${po_basic_sno}`;
 export const getAllInvoices = baseUrl + "/api/invoice/getAllInvoices";
 export const getPendingInvoiceMatches = baseUrl + "/api/invoice/getPendingMatches";
+export const getPoItemsForAllocation = (po_basic_sno: number | string) => `${baseUrl}/api/invoice/getPoItemsForAllocation/${po_basic_sno}`;
 
 // Payment — DB (grn-service)
 export const getPayableBills = baseUrl + "/api/payment/getPayableBills";

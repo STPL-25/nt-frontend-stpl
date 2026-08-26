@@ -14,6 +14,7 @@ import {
   getEligiblePrLinesForServicePO,
   createServicePO,
   getAllServicePOs,
+  reviseServicePOCeiling,
 } from '@/Services/Api';
 import { toast } from 'sonner';
 
@@ -70,6 +71,10 @@ const ServicePOPage: React.FC = () => {
   );
 
   const { postData, loading: submitting } = usePost();
+  const { postData: postRevise, loading: revising } = usePost();
+  const [revisingPoId, setRevisingPoId] = useState<number | null>(null);
+  const [reviseCeiling, setReviseCeiling] = useState('');
+  const [reviseTolerance, setReviseTolerance] = useState('');
 
   const handleLookupPr = async () => {
     if (!prNoInput.trim()) return;
@@ -158,6 +163,31 @@ const ServicePOPage: React.FC = () => {
       setRefreshKey(k => k + 1);
     } catch (err: any) {
       toast.error(err?.response?.data?.error || err?.message || 'Failed to create Service PO');
+    }
+  };
+
+  const startRevise = (po: any) => {
+    setRevisingPoId(po.po_basic_sno);
+    setReviseCeiling(po.ceiling_amount != null ? String(po.ceiling_amount) : '');
+    setReviseTolerance(po.variance_tolerance_pct != null ? String(po.variance_tolerance_pct) : '');
+  };
+
+  const handleRevise = async (po_basic_sno: number) => {
+    if (!reviseCeiling && !reviseTolerance) {
+      toast.error('Enter a new ceiling amount or tolerance %');
+      return;
+    }
+    try {
+      await postRevise(reviseServicePOCeiling, {
+        po_basic_sno,
+        ceiling_amount: reviseCeiling ? Number(reviseCeiling) : null,
+        variance_tolerance_pct: reviseTolerance ? Number(reviseTolerance) : null,
+      });
+      toast.success('Ceiling/tolerance revised');
+      setRevisingPoId(null);
+      setRefreshKey(k => k + 1);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to revise ceiling/tolerance');
     }
   };
 
@@ -297,21 +327,47 @@ const ServicePOPage: React.FC = () => {
             ) : (
               <div className="space-y-2">
                 {servicePOs.map((po: any) => (
-                  <div key={po.po_basic_sno} className="flex items-center justify-between rounded-lg border p-3">
-                    <div>
-                      <p className="text-sm font-semibold">{po.po_no}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {po.vendor_name} · {po.service_type_name} · {po.po_type}
-                      </p>
+                  <div key={po.po_basic_sno} className="rounded-lg border p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold">{po.po_no}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {po.vendor_name} · {po.service_type_name} · {po.po_type}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {po.ceiling_amount != null && (
+                          <Badge variant="outline" className="text-xs">
+                            ₹{Number(po.consumed_amount ?? 0).toLocaleString('en-IN')} / ₹{Number(po.ceiling_amount).toLocaleString('en-IN')}
+                          </Badge>
+                        )}
+                        <Badge className="text-xs">{po.status === 'A' ? 'Approved' : po.status === 'R' ? 'Rejected' : 'Pending'}</Badge>
+                        {po.status === 'A' && po.service_type_code === 'VARIABLE_RECURRING' && revisingPoId !== po.po_basic_sno && (
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => startRevise(po)}>
+                            Revise
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {po.ceiling_amount != null && (
-                        <Badge variant="outline" className="text-xs">
-                          ₹{Number(po.consumed_amount ?? 0).toLocaleString('en-IN')} / ₹{Number(po.ceiling_amount).toLocaleString('en-IN')}
-                        </Badge>
-                      )}
-                      <Badge className="text-xs">{po.status === 'A' ? 'Approved' : po.status === 'R' ? 'Rejected' : 'Pending'}</Badge>
-                    </div>
+
+                    {revisingPoId === po.po_basic_sno && (
+                      <div className="flex flex-wrap items-end gap-2 pt-1 border-t">
+                        <div>
+                          <Label className="text-xs">New Ceiling</Label>
+                          <Input type="number" className="h-8 w-32" value={reviseCeiling} onChange={e => setReviseCeiling(e.target.value)} />
+                        </div>
+                        <div>
+                          <Label className="text-xs">New Tolerance %</Label>
+                          <Input type="number" className="h-8 w-28" value={reviseTolerance} onChange={e => setReviseTolerance(e.target.value)} />
+                        </div>
+                        <Button size="sm" className="h-8 text-xs" disabled={revising} onClick={() => handleRevise(po.po_basic_sno)}>
+                          {revising ? 'Saving…' : 'Save'}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setRevisingPoId(null)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

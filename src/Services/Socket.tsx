@@ -72,6 +72,11 @@ export const SOCKET_JOIN_SERVICE_AGREEMENT_APPROVAL = "join-service_agreement-ap
 export const SOCKET_LEAVE_SERVICE_AGREEMENT_APPROVAL = "leave-service_agreement-approval";
 export const SOCKET_SERVICE_AGREEMENT_APPROVAL_UPDATED = "service_agreement:approval:updated";
 
+// ── Service Bill Request approval room + real-time events ────────────────────
+export const SOCKET_JOIN_SERVICE_BILL_REQUEST_APPROVAL = "join-service_bill_request-approval";
+export const SOCKET_LEAVE_SERVICE_BILL_REQUEST_APPROVAL = "leave-service_bill_request-approval";
+export const SOCKET_SERVICE_BILL_REQUEST_APPROVAL_UPDATED = "service_bill_request:approval:updated";
+
 // ── Service Entry room + real-time events ────────────────────────────────────
 export const SOCKET_JOIN_SERVICE_ENTRY = "join-service_entry";
 export const SOCKET_LEAVE_SERVICE_ENTRY = "leave-service_entry";
