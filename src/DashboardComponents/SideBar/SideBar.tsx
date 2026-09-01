@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAppState } from "@/globalState/hooks/useAppState";
-import type { IconComponent, MenuItem, Screen, HandleClickParams } from "./SideBar.types";
+import type { IconComponent, MenuItem, MenuGroup, Screen, HandleClickParams } from "./SideBar.types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -21,15 +21,33 @@ const getIcon = (name: string | null): IconComponent => {
   return Icon ? (Icon as IconComponent) : (LucideIcons.File as unknown as IconComponent);
 };
 
-const buildMenuItems = (screens: Screen[]): MenuItem[] =>
-  screens.map((s) => ({
-    id: s.screen_comp,
-    key: `${s.screen_comp}`,
-    label: s.screen_name,
-    icon: getIcon(s.screen_img),
-    screenId: s.screen_id,
-    groupId: s.group_id,
-  }));
+const buildGroupedMenu = (screens: Screen[]): MenuGroup[] => {
+  const groups: MenuGroup[] = [];
+  const groupIndex = new Map<string | number, number>();
+
+  screens.forEach((s) => {
+    const groupId = s.group_id ?? "ungrouped";
+    const groupName = s.group_name?.trim() || "Other";
+    const item: MenuItem = {
+      id: s.screen_comp,
+      key: `${s.screen_comp}`,
+      label: s.screen_name,
+      icon: getIcon(s.screen_img),
+      screenId: s.screen_id,
+      groupId: s.group_id,
+    };
+
+    let idx = groupIndex.get(groupId);
+    if (idx === undefined) {
+      idx = groups.length;
+      groupIndex.set(groupId, idx);
+      groups.push({ groupId, groupName, items: [] });
+    }
+    groups[idx].items.push(item);
+  });
+
+  return groups;
+};
 
 // ---------------------------------------------------------------------------
 // Component
@@ -56,23 +74,29 @@ const Sidebar: React.FC = () => {
     setActiveGroupId,
   } = useAppState() as any;
 
-  const ecno = (Array.isArray(userData) ? userData[0]?.ecno : userData?.ecno) as string ?? "";
-  const [menu, setMenu] = useState<MenuItem[]>([]);
+  const firstUser = Array.isArray(userData) ? userData[0] : userData;
+  const ecno = (firstUser?.ecno as string) ?? "";
+  const loginId = (firstUser?.login_id as string) ?? "";
+  const actorId = ecno || loginId;
+  const isNonStaff = !ecno && !!loginId;
+  const [groupedMenu, setGroupedMenu] = useState<MenuGroup[]>([]);
   const [isResizing, setIsResizing] = useState(false);
 
-  // Fetch sidebar menu when ecno becomes available (skip if already loaded)
+  // Fetch sidebar menu when the actor identity becomes available (skip if already loaded)
   useEffect(() => {
-    if (ecno && !sidebarData && !loading) fetchSidebarData(ecno);
-  }, [ecno]);
+    if (actorId && !sidebarData && !loading) fetchSidebarData(actorId, isNonStaff);
+  }, [actorId]);
 
-  // Build menu items when sidebar data changes
+  // Build grouped menu items when sidebar data changes
   useEffect(() => {
     if (!sidebarData?.screens) {
-      setMenu([]);
+      setGroupedMenu([]);
       return;
     }
-    setMenu(buildMenuItems(sidebarData.screens));
+    setGroupedMenu(buildGroupedMenu(sidebarData.screens));
   }, [sidebarData]);
+
+  const menu = groupedMenu.flatMap((g) => g.items);
 
   // Auto-select first item on initial load
   useEffect(() => {
@@ -201,52 +225,61 @@ const Sidebar: React.FC = () => {
             <p className="px-2 py-1 text-xs text-destructive">Failed to load menu</p>
           )}
 
-          <nav className="space-y-1">
-            {menu.map((item) => {
-              const isActive = activeItem === item.key;
-              return (
-                <Tooltip key={item.key}>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => handleMenuClick(item as HandleClickParams)}
-                      className={`group flex w-full items-center rounded-xl px-2 py-2 text-sm transition-all duration-200
-                        ${
-                          isActive
-                            ? "bg-primary text-primary-foreground shadow-sm"
-                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                        }`}
-                    >
-                      {/* Icon box */}
-                      <div
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-all duration-200
-                          ${
-                            isActive
-                              ? "border-primary-foreground/20 bg-primary-foreground/10"
-                              : "border-border/60 bg-background"
-                          }`}
-                      >
-                        <item.icon
-                          className={`h-4 w-4 ${
-                            isActive
-                              ? "text-primary-foreground"
-                              : "text-muted-foreground group-hover:text-foreground"
-                          }`}
-                        />
-                      </div>
+          <nav className="space-y-4">
+            {groupedMenu.map((group) => (
+              <div key={group.groupId} className="space-y-1">
+                {!isCollapsed && (
+                  <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary/70">
+                    {group.groupName}
+                  </p>
+                )}
+                {group.items.map((item) => {
+                  const isActive = activeItem === item.key;
+                  return (
+                    <Tooltip key={item.key}>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => handleMenuClick(item as HandleClickParams)}
+                          className={`group flex w-full items-center rounded-xl px-2 py-2 text-sm transition-all duration-200
+                            ${
+                              isActive
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                            }`}
+                        >
+                          {/* Icon box */}
+                          <div
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-all duration-200
+                              ${
+                                isActive
+                                  ? "border-primary-foreground/20 bg-primary-foreground/10"
+                                  : "border-border/60 bg-background"
+                              }`}
+                          >
+                            <item.icon
+                              className={`h-4 w-4 ${
+                                isActive
+                                  ? "text-primary-foreground"
+                                  : "text-muted-foreground group-hover:text-foreground"
+                              }`}
+                            />
+                          </div>
 
-                      {!isCollapsed && (
-                        <span className="ml-3 truncate text-sm font-medium">
-                          {item.label}
-                        </span>
+                          {!isCollapsed && (
+                            <span className="ml-3 truncate text-sm font-medium">
+                              {item.label}
+                            </span>
+                          )}
+                        </button>
+                      </TooltipTrigger>
+                      {isCollapsed && (
+                        <TooltipContent side="right">{item.label}</TooltipContent>
                       )}
-                    </button>
-                  </TooltipTrigger>
-                  {isCollapsed && (
-                    <TooltipContent side="right">{item.label}</TooltipContent>
-                  )}
-                </Tooltip>
-              );
-            })}
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
         </div>
 

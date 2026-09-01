@@ -1,7 +1,7 @@
 import React, { ReactElement, useMemo } from "react";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import {  Building, MapPin, FileCheck, IndianRupee, Package, FolderOpen,
-  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck, Landmark, Warehouse, Wrench,} from "lucide-react";
+  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck, Landmark, Warehouse, Wrench, UserCog,} from "lucide-react";
 import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
 import type { FieldType, OptionType } from "./fieldType/fieldType";
 
@@ -40,6 +40,7 @@ const masterItems: MasterItemType[] = [
   { icon: <Truck className="w-5 h-5" />, name: "Transporter Master", category: "logistics", color: "bg-red-600", id: "TransportMaster" },
   { icon: <Landmark className="w-5 h-5" />, name: "Bank Account Type", category: "compliance", color: "bg-cyan-600", id: "BankAccountTypeMaster" },
   { icon: <Warehouse className="w-5 h-5" />, name: "Warehouse Location", category: "inventory", color: "bg-orange-600", id: "WarehouseLocationMaster" },
+  { icon: <UserCog className="w-5 h-5" />, name: "Designation Master", category: "administration", color: "bg-fuchsia-600", id: "DesignationMaster" },
 
   // { icon: <FileText className="w-5 h-5" />, name: "KYC", category: "compliance", color: "bg-teal-500", id: "kyc_master" },
   // { icon: <Tag className="w-5 h-5" />, name: "Product Rate and Discount", category: "inventory", color: "bg-cyan-500", id: "product_rate_discount" },
@@ -264,6 +265,18 @@ const useBankAccountTypeFieldsMaster = (formData?: any): FieldType[] => {
       { field: "bank_account_type_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "account_type_code", label: "Code", require: true, view: true, type: "text", input: true },
       { field: "account_type_name", label: "Account Type Name", require: true, view: true, type: "text", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    []
+  );
+};
+
+const useDesignationMasterFields = (formData?: any): FieldType[] => {
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "designation_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "designation_code", label: "Code", require: true, view: true, type: "text", input: true },
+      { field: "designation_name", label: "Designation Name", require: true, view: true, type: "text", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
     []
@@ -507,6 +520,7 @@ export {
   usePriorityFieldsMaster,
   useBankAccountTypeFieldsMaster,
   useWarehouseLocationFieldsMaster,
+  useDesignationMasterFields,
   useScreensFieldsMaster,
   usePermissionFieldsMaster,
   useProductFieldsMaster,

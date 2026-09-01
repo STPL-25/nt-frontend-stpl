@@ -16,6 +16,7 @@ export interface Screen {
   screen_comp: string | null;
   screen_img: string | null;
   group_id?: number;
+  group_name?: string;
   permissions?: unknown[];
 }
 
@@ -34,6 +35,12 @@ export interface MenuItem {
   icon: IconComponent;
   screenId: number;
   groupId?: string | number;
+}
+
+export interface MenuGroup {
+  groupId: string | number;
+  groupName: string;
+  items: MenuItem[];
 }
 
 export interface HandleClickParams {

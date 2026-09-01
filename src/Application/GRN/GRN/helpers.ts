@@ -1,4 +1,4 @@
-import type { PORecord, POItem, GRNItemEntry } from './types';
+import type { PORecord, POItem, GRNItemEntry, GRNItem, DebitNoteItemEntry } from './types';
 
 export const today = () => new Date().toISOString().slice(0, 10);
 
@@ -90,6 +90,45 @@ export const buildGRNItems = (po: PORecord): GRNItemEntry[] => {
       warehouse_location_sno: undefined,
     };
   });
+};
+
+export const normaliseDebitNoteRows = (rows: any[]): any[] => {
+  if (!Array.isArray(rows)) return [];
+  return rows.map(row => ({
+    ...row,
+    items: (() => {
+      if (Array.isArray(row.items)) return row.items;
+      if (typeof row.items === 'string') {
+        try { return JSON.parse(row.items); } catch { return []; }
+      }
+      return [];
+    })(),
+  }));
+};
+
+/** A submitted GRN line qualifies for a debit note if it was rejected/damaged
+ *  or received short of what was ordered. */
+export const hasGRNDiscrepancy = (items: GRNItem[]): boolean =>
+  items.some(it => (it.rejected_qty ?? 0) > 0 || it.condition === 'Damaged' || (it.received_qty ?? 0) < (it.ordered_qty ?? 0));
+
+export const buildDebitNoteItems = (rows: any[]): DebitNoteItemEntry[] => {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .filter(r => Number(r.remaining_qty) > 0)
+    .map(r => ({
+      grn_item_sno: r.grn_item_sno,
+      po_item_sno: r.po_item_sno,
+      prod_sno: r.prod_sno,
+      prod_name: r.prod_name,
+      specification: r.specification,
+      unit_name: r.unit_name,
+      reason_type: r.suggested_reason_type ?? 'Damage',
+      qty: Number(r.remaining_qty),
+      max_qty: Number(r.remaining_qty),
+      unit_price: Number(r.unit_price ?? 0),
+      remarks: '',
+      selected: true,
+    }));
 };
 
 export const getGRNStatus = (po: PORecord): { label: string; color: string } => {

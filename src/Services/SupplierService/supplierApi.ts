@@ -12,6 +12,8 @@ export const supplierCreateDispatch = (po_basic_sno: number) => `${base}/pos/${p
 export const supplierGetTransporters = `${base}/transporters`;
 export const supplierGetDispatchSlip = (dispatch_slip_sno: number) => `${base}/dispatch/${dispatch_slip_sno}`;
 export const supplierGetDispatchDelivery = (delivery_sno: number) => `${base}/dispatch/delivery/${delivery_sno}`;
+export const supplierGetDebitNotes = `${base}/debit-notes`;
+export const supplierGetDebitNoteDetail = (debit_note_sno: number) => `${base}/debit-notes/${debit_note_sno}`;
 
 export interface SupplierPOListItem {
   po_basic_sno: number;
@@ -158,6 +160,54 @@ export interface SupplierDispatchDelivery extends FromAddressFields {
  */
 export function dispatchQrCode(delivery: { lr_no: string | null; delivery_sno: number }): string {
   return delivery.lr_no || `DSD-${delivery.delivery_sno}`;
+}
+
+export type DebitNoteReasonType = 'Damage' | 'Shortage' | 'Return';
+
+/** sp_nt_GetDebitNotesForSupplier — one row per debit note raised against this vendor. */
+export interface SupplierDebitNoteListItem {
+  debit_note_sno: number;
+  debit_note_no: string;
+  grn_basic_sno: number;
+  grn_no: string;
+  po_basic_sno: number;
+  po_no: string;
+  com_name: string | null;
+  vendor_invoice_no: string | null;
+  vendor_invoice_date: string | null;
+  debit_note_date: string;
+  total_qty: number;
+  total_amount: number;
+  remarks: string | null;
+  status: string;
+}
+
+export interface SupplierDebitNoteItem {
+  debit_note_item_sno: number;
+  prod_name: string;
+  specification: string | null;
+  unit_name: string | null;
+  reason_type: DebitNoteReasonType;
+  qty: number;
+  unit_price: number;
+  amount: number;
+  remarks: string | null;
+}
+
+/** sp_nt_GetDebitNoteDetailForSupplier */
+export interface SupplierDebitNoteDetail extends Omit<SupplierDebitNoteListItem, 'items'> {
+  /** Raw FOR JSON PATH string from MSSQL — parse before use. */
+  items: string | SupplierDebitNoteItem[];
+}
+
+export function parseSupplierDebitNoteItems(items: SupplierDebitNoteDetail['items']): SupplierDebitNoteItem[] {
+  if (Array.isArray(items)) return items;
+  if (!items) return [];
+  try {
+    return JSON.parse(items);
+  } catch {
+    return [];
+  }
 }
 
 export function parseSupplierPOItems(items: SupplierPODetail['items']): SupplierPOItem[] {

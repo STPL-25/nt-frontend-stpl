@@ -347,7 +347,7 @@ function ApprovalStages({ stages, currentApproverId }: { stages: any[]; currentA
 function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction: (a: string) => void; fieldDatas: FieldType[] }) {
   const { canEdit } = usePermissions();
   const { userData } = useAppState();
-  const userEcno = userData[0]?.ecno;
+  const userEcno = userData[0]?.ecno ?? userData[0]?.login_id;
   const isCurrentApprover = pr.current_approver_id && userEcno && String(pr.current_approver_id).trim() === String(userEcno).trim();
   const { parsedItems, totalCost } = useMemo(() => parsePrItems(pr), [pr]);
   const stages = useMemo(() => parseStages(pr), [pr]);

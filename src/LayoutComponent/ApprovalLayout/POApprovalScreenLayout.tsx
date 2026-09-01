@@ -599,14 +599,15 @@ function PRDetailPanel({ pr, handleAction }: {
   pr: any; handleAction: (a: string) => void;
 }) {
   const { userData } = useAppState();
+  const userEcno = userData[0]?.ecno ?? userData[0]?.login_id;
   const quotations = useMemo(() => parseQuotations(pr), [pr]);
   const prItems = useMemo(() => parsePRItems(pr), [pr]);
   const selectedQ = useMemo(() => quotations.find((q: any) => q.is_selected), [quotations]);
   const stages = useMemo(() => selectedQ ? parseStages(selectedQ) : [], [selectedQ]);
   const history = useMemo(() => selectedQ ? parseHistory(selectedQ) : [], [selectedQ]);
   const currentStage = useMemo(
-    () => stages.find((s: any) => s.approver_ecno === userData[0]?.ecno) ?? null,
-    [stages, userData]
+    () => stages.find((s: any) => s.approver_ecno === userEcno) ?? null,
+    [stages, userEcno]
   );
   const canForward = currentStage?.can_forward === 'Y' && !!currentStage?.next_approver_ecno;
   const canBackward = currentStage?.can_backward === 'Y';
@@ -719,7 +720,7 @@ function PRDetailPanel({ pr, handleAction }: {
       </div>
 
       {/* Action footer */}
-      {selectedQ && (selectedQ.approver_ecno === userData[0]?.ecno || currentStage !== null) ? (
+      {selectedQ && (selectedQ.approver_ecno === userEcno || currentStage !== null) ? (
         <div className="flex-shrink-0 border-t bg-background px-4 sm:px-6 py-3 shadow-[0_-1px_4px_rgba(0,0,0,0.06)] dark:shadow-[0_-1px_4px_rgba(0,0,0,0.3)]">
           <div className="flex flex-wrap gap-2">
             <Button

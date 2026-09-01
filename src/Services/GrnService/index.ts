@@ -14,3 +14,4 @@ export * from './gateEntryApi';
 export * from './grnApi';
 export * from './inventoryApi';
 export * from './stockRequestApi';
+export * from './debitNoteApi';

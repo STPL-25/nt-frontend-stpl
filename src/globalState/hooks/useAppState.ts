@@ -210,8 +210,11 @@ export const useAppState = () => {
   useEffect(() => {
     if (!socket) return
     const handlePermissionsUpdated = () => {
-      const ecno = Array.isArray(decode.userData) ? decode.userData[0]?.ecno : decode.userData?.ecno
-      if (ecno) dispatch(fetchSidebarData(ecno))
+      const firstUser = Array.isArray(decode.userData) ? decode.userData[0] : decode.userData
+      const ecno = firstUser?.ecno
+      const loginId = firstUser?.login_id
+      const actorId = ecno || loginId
+      if (actorId) dispatch(fetchSidebarData({ id: actorId, isNonStaff: !ecno && !!loginId }))
     }
     socket.on(SOCKET_PERMISSIONS_UPDATED, handlePermissionsUpdated)
     return () => {
@@ -283,7 +286,7 @@ export const useAppState = () => {
     clearCompanyHierarchy: () => dispatch(clearHierarchy()),
 
     // ===== SIDEBAR ACTIONS =====
-    fetchSidebarData: (ecno:string) => dispatch(fetchSidebarData(ecno)),
+    fetchSidebarData: (id: string, isNonStaff?: boolean) => dispatch(fetchSidebarData({ id, isNonStaff })),
     clearSidebarData: () => dispatch(clearSidebarData()),
   }
 }

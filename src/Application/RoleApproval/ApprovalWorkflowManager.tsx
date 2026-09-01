@@ -48,6 +48,7 @@ import {
   apiSaveWorkflowStage,
   apiDeleteWorkflow,
   apiDeleteWorkflowType,
+  apiNonStaffList,
 } from "@/Services/Api";
 import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
 import {
@@ -457,6 +458,16 @@ export default function ApprovalFlowDynamic() {
 
   // ── Employees ─────────────────────────────────────────────────────────────
   const [employeeOptions, setEmployeeOptions] = useState<{ label: string; value: string }[]>([]);
+  // Non-staff designation users (Executive Director, Managing Director,
+  // IA-CBE3, ...) — approver_ecno is opaque free text stored in
+  // workflow_stage.stage_order_json (no FK to any staff table), so their
+  // login_id works as an approver identity exactly like a staff ecno, with
+  // no backend change. Merged into the same dropdown as employeeOptions.
+  const [nonStaffOptions, setNonStaffOptions] = useState<{ label: string; value: string }[]>([]);
+  const approverOptions = useMemo(
+    () => [...employeeOptions, ...nonStaffOptions],
+    [employeeOptions, nonStaffOptions]
+  );
 
   // ── Create state ──────────────────────────────────────────────────────────
   const [createWorkflow, setCreateWorkflow] = useState<WorkflowFormData>(emptyWorkflow);
@@ -484,6 +495,18 @@ export default function ApprovalFlowDynamic() {
       .then((res: any) => {
         const list: any[] = Array.isArray(res?.data) ? res.data : [];
         setEmployeeOptions(list.map((e) => ({ label: `${e.ename} (${e.ecno})`, value: e.ecno })));
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    axios.get(apiNonStaffList)
+      .then((res: any) => {
+        const list: any[] = Array.isArray(res?.data?.data) ? res.data.data : [];
+        setNonStaffOptions(
+          list.map((u) => ({ label: `${u.full_name} — ${u.designation_name} (${u.login_id})`, value: u.login_id }))
+        );
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1146,7 +1169,7 @@ export default function ApprovalFlowDynamic() {
                     key={index}
                     type={type}
                     typeIndex={index}
-                    employeeOptions={employeeOptions}
+                    employeeOptions={approverOptions}
                     allDepartments={allDepartments}
                     onChange={mode === "create" ? ch.updateType : eh.updateType}
                     onStageChange={mode === "create" ? ch.updateStage : eh.updateStage}

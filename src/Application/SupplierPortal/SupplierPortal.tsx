@@ -15,18 +15,21 @@ import SupplierPOWorkspace from './SupplierPOWorkspace';
 import SupplierDispatchForm from './SupplierDispatchForm';
 import SupplierDispatchSummary from './SupplierDispatchSummary';
 import SupplierDispatchSlip from './SupplierDispatchSlip';
+import SupplierDebitNotesList from './SupplierDebitNotesList';
 
 type View =
   | { name: 'workspace'; selected?: number }
   | { name: 'dispatch-form'; po_basic_sno: number }
   | { name: 'dispatch-summary'; result: DispatchCreateResult }
-  | { name: 'dispatch-slip'; delivery_sno: number };
+  | { name: 'dispatch-slip'; delivery_sno: number }
+  | { name: 'debit-notes' };
 
 const VIEW_TITLES: Record<View['name'], string> = {
   workspace: 'Purchase Orders',
   'dispatch-form': 'Dispatch',
   'dispatch-summary': 'Dispatch Summary',
   'dispatch-slip': 'Delivery Slip',
+  'debit-notes': 'Debit Notes',
 };
 
 const COLLAPSED_WIDTH = 80;
@@ -126,6 +129,8 @@ const SupplierPortal: React.FC = () => {
         setSidebarOpen={setSidebarOpen}
         onGoHome={() => setView({ name: 'workspace' })}
         isHome={view.name === 'workspace'}
+        onGoDebitNotes={() => setView({ name: 'debit-notes' })}
+        isDebitNotes={view.name === 'debit-notes'}
       />
 
       <div className="flex h-screen flex-col overflow-hidden" style={mainContentStyle}>
@@ -145,6 +150,10 @@ const SupplierPortal: React.FC = () => {
                 initialSelected={view.selected}
                 onDispatch={(po_basic_sno) => setView({ name: 'dispatch-form', po_basic_sno })}
               />
+            </div>
+          ) : view.name === 'debit-notes' ? (
+            <div className="h-full w-full">
+              <SupplierDebitNotesList />
             </div>
           ) : (
             <div className="mx-auto h-full w-full max-w-4xl">

@@ -9,8 +9,8 @@ import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
 import { StatusBadge } from '@/utils/statusUtils';
 
-import type { PORecord, GRNRecord, GRNFormState, GRNItemEntry } from './GRN/types';
-import { getPODisplayNo, formatDate, formatINR, getGRNStatus, normalisePORows, normaliseGRNRows } from './GRN/helpers';
+import type { PORecord, GRNRecord, GRNFormState, GRNItemEntry, DebitNoteRecord, DebitNoteItemEntry } from './GRN/types';
+import { getPODisplayNo, formatDate, formatINR, getGRNStatus, normalisePORows, normaliseGRNRows, normaliseDebitNoteRows } from './GRN/helpers';
 import {
   grnSvcGetPendingGateEntries,
   grnSvcGetGRNsByPO,
@@ -21,6 +21,7 @@ import {
   grnSvcDeleteDraft,
   type GRNDraft,
 } from '@/Services/GrnService/grnApi';
+import { debitNoteSvcGetByGRN, debitNoteSvcCreate } from '@/Services/GrnService/debitNoteApi';
 import {
   socket,
   SOCKET_JOIN_GRN,
@@ -32,12 +33,14 @@ import {
   SOCKET_GRN_DRAFT_UPDATED,
   SOCKET_GRN_DRAFT_DELETED,
   SOCKET_GRN_DRAFT_SUBMITTED,
+  SOCKET_DEBIT_NOTE_CREATED,
 } from '@/Services/Socket';
 
 import POListSidebar from './GRN/POListSidebar';
 import GRNEntryForm from './GRN/GRNEntryForm';
 import GRNListView from './GRN/GRNListView';
 import GRNDraftList from './GRN/GRNDraftList';
+import DebitNoteForm from './GRN/DebitNoteForm';
 
 // ── PO Summary Card ───────────────────────────────────────────────────────────
 
@@ -106,6 +109,11 @@ const GRNPage: React.FC = () => {
 
   const [submitting, setSubmitting] = useState(false);
 
+  // Debit notes — raised against a submitted GRN for damage/shortage/return
+  const [debitNotesByGrn, setDebitNotesByGrn] = useState<Record<number, DebitNoteRecord[]>>({});
+  const [debitNoteTargetGRN, setDebitNoteTargetGRN] = useState<GRNRecord | null>(null);
+  const [submittingDebitNote, setSubmittingDebitNote] = useState(false);
+
   // Draft workflow (private, per-user — mirrors PR's save/resume/delete draft pattern)
   const [drafts, setDrafts] = useState<GRNDraft[]>([]);
   const [loadingDrafts, setLoadingDrafts] = useState(false);
@@ -128,17 +136,35 @@ const GRNPage: React.FC = () => {
     }
   }, []);
 
+  const fetchDebitNotesForGRNs = useCallback(async (grns: GRNRecord[]) => {
+    const entries = await Promise.all(
+      grns
+        .filter(g => g.grn_basic_sno)
+        .map(async g => {
+          try {
+            const res = await axios.get(debitNoteSvcGetByGRN(g.grn_basic_sno as number));
+            return [g.grn_basic_sno as number, normaliseDebitNoteRows(res.data?.data ?? [])] as const;
+          } catch {
+            return [g.grn_basic_sno as number, []] as const;
+          }
+        })
+    );
+    setDebitNotesByGrn(Object.fromEntries(entries));
+  }, []);
+
   const fetchGRNs = useCallback(async (po_basic_sno: number) => {
     setLoadingGRNs(true);
     try {
       const res = await axios.get(grnSvcGetGRNsByPO(po_basic_sno));
-      setGRNList(normaliseGRNRows(res.data?.data ?? []));
+      const grns = normaliseGRNRows(res.data?.data ?? []);
+      setGRNList(grns);
+      fetchDebitNotesForGRNs(grns);
     } catch (err: any) {
       toast.error(err?.response?.data?.error ?? 'Failed to load GRNs for this PO');
     } finally {
       setLoadingGRNs(false);
     }
-  }, []);
+  }, [fetchDebitNotesForGRNs]);
 
   const fetchDrafts = useCallback(async () => {
     setLoadingDrafts(true);
@@ -173,6 +199,11 @@ const GRNPage: React.FC = () => {
         fetchGRNs(grn.po_basic_sno);
       }
     };
+    const onDebitNoteCreated = (dn: any) => {
+      if (dn?.grn_basic_sno && grnList.some(g => g.grn_basic_sno === dn.grn_basic_sno)) {
+        fetchDebitNotesForGRNs(grnList);
+      }
+    };
 
     socket.on(SOCKET_GRN_CREATED, onGRNCreated);
     socket.on(SOCKET_GATE_ENTRY_CREATED, refreshPending);
@@ -181,10 +212,12 @@ const GRNPage: React.FC = () => {
     socket.on(SOCKET_GRN_DRAFT_UPDATED, fetchDrafts);
     socket.on(SOCKET_GRN_DRAFT_DELETED, fetchDrafts);
     socket.on(SOCKET_GRN_DRAFT_SUBMITTED, fetchDrafts);
+    socket.on(SOCKET_DEBIT_NOTE_CREATED, onDebitNoteCreated);
 
     return () => {
       socket.emit(SOCKET_LEAVE_GRN);
       socket.off(SOCKET_GRN_CREATED, onGRNCreated);
+      socket.off(SOCKET_DEBIT_NOTE_CREATED, onDebitNoteCreated);
       socket.off(SOCKET_GATE_ENTRY_CREATED, refreshPending);
       socket.off(SOCKET_GATE_ENTRY_STATUS_UPDATED, refreshPending);
       socket.off(SOCKET_GRN_DRAFT_NEW, fetchDrafts);
@@ -343,6 +376,38 @@ console.log(selectedPO);
     }
   };
 
+  const handleSubmitDebitNote = async (grn: GRNRecord, items: DebitNoteItemEntry[], remarks: string) => {
+    if (!grn.grn_basic_sno) return;
+    setSubmittingDebitNote(true);
+    try {
+      const payload = {
+        grn_basic_sno: grn.grn_basic_sno,
+        remarks,
+        items: items.map(it => ({
+          grn_item_sno: it.grn_item_sno,
+          po_item_sno: it.po_item_sno,
+          prod_sno: it.prod_sno,
+          prod_name: it.prod_name,
+          specification: it.specification,
+          unit_name: it.unit_name,
+          reason_type: it.reason_type,
+          qty: it.qty,
+          unit_price: it.unit_price,
+          remarks: it.remarks || undefined,
+        })),
+      };
+      const res = await axios.post(debitNoteSvcCreate, payload);
+      const created = res.data?.data;
+      toast.success(`Debit note ${created?.debit_note_no ?? ''} raised — visible to the supplier`.trim());
+      setDebitNoteTargetGRN(null);
+      fetchDebitNotesForGRNs(grnList);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to raise debit note');
+    } finally {
+      setSubmittingDebitNote(false);
+    }
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -424,9 +489,20 @@ console.log(selectedPO);
             onRefresh={() => {
               if (selectedPO?.po_basic_sno) fetchGRNs(selectedPO.po_basic_sno);
             }}
+            debitNotesByGrn={debitNotesByGrn}
+            canRaiseDebitNote={canCreate("GRNPage") || canEdit("GRNPage")}
+            onRaiseDebitNote={setDebitNoteTargetGRN}
           />
         </div>
       )}
+
+      <DebitNoteForm
+        open={!!debitNoteTargetGRN}
+        grn={debitNoteTargetGRN}
+        submitting={submittingDebitNote}
+        onClose={() => setDebitNoteTargetGRN(null)}
+        onSubmit={handleSubmitDebitNote}
+      />
     </TwoPaneLayout>
   );
 };

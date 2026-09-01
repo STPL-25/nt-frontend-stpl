@@ -56,6 +56,7 @@ import {
   apiUpdateUserPermissionsJson,
   apiDeleteUserPermissionsJson,
   getUserPermissionsJson,
+  apiNonStaffList,
 } from "@/Services/Api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -65,7 +66,23 @@ interface User {
   ecno:  string;
   ename: string;
   dept:  string;
+  login_id?: string;
 }
+
+interface NonStaffUserRow {
+  login_id: string;
+  full_name: string;
+  designation_name: string;
+  is_active: string;
+}
+
+// Non-staff (temporary login ID) users share this screen's user picker with
+// staff — tagged so a non-staff login_id (admin-chosen text) can never
+// collide with a staff nt_sign_up_sno (a plain sequential int-as-string).
+const NONSTAFF_PREFIX = "ns:";
+const isNonStaffUserId = (id: string) => id.startsWith(NONSTAFF_PREFIX);
+const rawUserId = (id: string) => isNonStaffUserId(id) ? id.slice(NONSTAFF_PREFIX.length) : id;
+const identityQuery = (id: string) => isNonStaffUserId(id) ? "?identity=nonstaff" : "";
 
 type Branch   = { brn_sno: string; brn_name: string };
 type Division = { div_sno: string; div_name: string; branches: Branch[] };
@@ -235,6 +252,12 @@ export default function PermissionManager() {
     "", null, userListRefreshKey
   );
 
+  // API: { success, data: NonStaffUserRow[] } — merged into the same picker as staff
+  const { data: nonStaffRes, loading: nonStaffLoading } = useFetch<{ data?: NonStaffUserRow[] }>(
+    apiNonStaffList,
+    "", null, userListRefreshKey
+  );
+
   // API: { success, data: { companies: [...] } }
   const { data: hierarchyRes } = useFetch<{ data?: { companies: Company[] } }>(
     apiGetHierarchyDetails
@@ -256,7 +279,9 @@ export default function PermissionManager() {
     data:    existingPermRes,
     loading: existingLoading,
   } = useFetch<ExistingPermResponse>(
-    selectedUser ? getUserPermissionsJson(selectedUser) : null,
+    selectedUser
+      ? `${getUserPermissionsJson(rawUserId(selectedUser))}${identityQuery(selectedUser)}`
+      : null,
     "", null, permRefreshKey
   );
 
@@ -266,7 +291,19 @@ export default function PermissionManager() {
   const [deleting, setDeleting]  = useState(false);
 
   // ── Convenient accessors ───────────────────────────────────────────────────
-  const allUsers       = usersRes?.data              ?? [];
+  const nonStaffUsers: User[] = useMemo(
+    () => (nonStaffRes?.data ?? [])
+      .filter((u) => u.is_active === "Y")
+      .map((u) => ({
+        nt_sign_up_sno: `${NONSTAFF_PREFIX}${u.login_id}`,
+        ecno: "",
+        ename: u.full_name,
+        dept: u.designation_name,
+        login_id: u.login_id,
+      })),
+    [nonStaffRes]
+  );
+  const allUsers       = [...(usersRes?.data ?? []), ...nonStaffUsers];
   const allCompanies   = hierarchyRes?.data?.companies ?? [];
   const allScreens     = screensRes?.data            ?? [];
   const permDetails    = permDetailsRes?.data        ?? [];
@@ -476,16 +513,26 @@ export default function PermissionManager() {
     if (!selectedUser) { toast.error("Select a user first."); return; }
     setSaving(true);
     try {
-      const payload = {
-        user_id:   selectedUser,
-        user_ecno: selectedUserEcno,
-        ...buildHierarchyPayload(),
-        screens: buildPermissionsPayload(),
-      };
+      const payload = isNonStaffUserId(selectedUser)
+        ? {
+            login_id: rawUserId(selectedUser),
+            ...buildHierarchyPayload(),
+            screens: buildPermissionsPayload(),
+          }
+        : {
+            user_id:   selectedUser,
+            user_ecno: selectedUserEcno,
+            ...buildHierarchyPayload(),
+            screens: buildPermissionsPayload(),
+          };
 
       const recordExists = !!existingPermData?.exists;
       const res: any = recordExists
-        ? await updateData(apiUpdateUserPermissionsJson, selectedUser, payload)
+        ? await updateData(
+            apiUpdateUserPermissionsJson,
+            `${rawUserId(selectedUser)}${identityQuery(selectedUser)}`,
+            payload
+          )
         : await postData(apiSaveUserPermissionsJson, payload);
 
       if (res?.success) {
@@ -512,7 +559,9 @@ export default function PermissionManager() {
     if (!selectedUser) return;
     setDeleting(true);
     try {
-      const res: any = await deleteData(`${apiDeleteUserPermissionsJson}/${selectedUser}`);
+      const res: any = await deleteData(
+        `${apiDeleteUserPermissionsJson}/${rawUserId(selectedUser)}${identityQuery(selectedUser)}`
+      );
       if (res?.success) {
         const base = buildFromScreens(allScreens).permissions;
         setPermissions(base);
@@ -594,7 +643,7 @@ export default function PermissionManager() {
                 options={userOptions}
                 value={selectedUser}
                 onChange={setSelectedUser}
-                placeholder={usersLoading ? "Loading users…" : "Choose a user…"}
+                placeholder={usersLoading || nonStaffLoading ? "Loading users…" : "Choose a user…"}
               />
             </div>
 

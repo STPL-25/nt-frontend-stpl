@@ -1,5 +1,5 @@
 import React from 'react';
-import { Package, ChevronsLeft, X } from 'lucide-react';
+import { Package, ChevronsLeft, X, ReceiptText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -18,6 +18,8 @@ interface Props {
   setSidebarOpen: (open: boolean) => void;
   onGoHome: () => void;
   isHome: boolean;
+  onGoDebitNotes: () => void;
+  isDebitNotes: boolean;
 }
 
 const SIDEBAR_WIDTH = 260;
@@ -30,6 +32,8 @@ const SupplierSidebar: React.FC<Props> = ({
   setSidebarOpen,
   onGoHome,
   isHome,
+  onGoDebitNotes,
+  isDebitNotes,
 }) => {
   return (
     <TooltipProvider>
@@ -106,6 +110,25 @@ const SupplierSidebar: React.FC<Props> = ({
                 </button>
               </TooltipTrigger>
               {isCollapsed && <TooltipContent side="right">Purchase Orders</TooltipContent>}
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onGoDebitNotes}
+                  className={`group flex w-full items-center rounded-xl px-2 py-2 text-sm transition-all duration-200
+                    ${isDebitNotes ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}
+                >
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-all duration-200
+                      ${isDebitNotes ? 'border-primary-foreground/20 bg-primary-foreground/10' : 'border-border/60 bg-background'}`}
+                  >
+                    <ReceiptText className={`h-4 w-4 ${isDebitNotes ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-foreground'}`} />
+                  </div>
+                  {!isCollapsed && <span className="ml-3 truncate text-sm font-medium">Debit Notes</span>}
+                </button>
+              </TooltipTrigger>
+              {isCollapsed && <TooltipContent side="right">Debit Notes</TooltipContent>}
             </Tooltip>
           </nav>
         </div>

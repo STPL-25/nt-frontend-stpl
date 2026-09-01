@@ -70,8 +70,11 @@ function RootRoute() {
     );
   }
 
+  // Non-staff sessions have a login_id but no ecno — either identity is
+  // enough to land on the same Dashboard shell.
   const firstUser = Array.isArray(userData) ? userData[0] : userData;
-  if (userData && Object.keys(userData).length > 0 && firstUser?.ecno ) {
+  const actorId = firstUser?.ecno || firstUser?.login_id;
+  if (userData && Object.keys(userData).length > 0 && actorId) {
     return <Dashboard />;
   }
   return <SignIn />;
@@ -82,7 +85,7 @@ const router = createBrowserRouter([
   { path: "/", element: <RootRoute /> },
   { path: "/signup", element: <Signup /> },
    { path: "/Supplier", element: <SupplierPortal /> },
-   { path: "/store-incharge-approval", element: <StoreInchargeApprovalPage /> },
+  //  { path: "/store-incharge-approval", element: <StoreInchargeApprovalPage /> },
 ]);
 
 function App() {

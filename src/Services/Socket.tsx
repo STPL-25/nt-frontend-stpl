@@ -62,6 +62,11 @@ export const SOCKET_PR_APPROVAL_UPDATED = "pr:approval:updated";
 // ── PO approval real-time events ─────────────────────────────────────────────
 export const SOCKET_PO_APPROVAL_UPDATED = "po:approval:updated";
 
+// ── PR Tracking room + real-time events (one requester's full PR journey) ────
+export const SOCKET_JOIN_PR_TRACK  = "join-pr-track";
+export const SOCKET_LEAVE_PR_TRACK = "leave-pr-track";
+export const SOCKET_PR_TRACK_UPDATED = "pr:track:updated";
+
 // ── Service PO approval room + real-time events ──────────────────────────────
 export const SOCKET_JOIN_SERVICE_PO_APPROVAL = "join-service_po-approval";
 export const SOCKET_LEAVE_SERVICE_PO_APPROVAL = "leave-service_po-approval";
@@ -118,6 +123,7 @@ export const SOCKET_GRN_DRAFT_SUBMITTED     = "grn:draft:submitted";
 export const SOCKET_GATE_ENTRY_CREATED        = "gate_entry:created";
 export const SOCKET_GATE_ENTRY_UPDATED        = "gate_entry:updated";
 export const SOCKET_GATE_ENTRY_STATUS_UPDATED = "gate_entry:status_updated";
+export const SOCKET_DEBIT_NOTE_CREATED         = "debit_note:created";
 
 // ── Inventory room + real-time events ─────────────────────────────────────────
 export const SOCKET_JOIN_INVENTORY  = "join-inventory";

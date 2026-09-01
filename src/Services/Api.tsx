@@ -53,6 +53,13 @@ export const apiCommonBasicDetails = baseUrl + "/api/common_basic_details";
 export const apiGetEmployee = baseUrl + "/api/common_basic_details/getEmployee";
 export const apiGetSignEmployee = baseUrl + "/api/common_basic_details/getSignUpEmployee";
 
+// Non-Staff User Management (admin-side — staff JWT). Login/reset-password/
+// my-approvals for the portal itself go through Services/NonStaffService,
+// a dedicated axios instance mirroring SupplierService (crypto-exempt at
+// the gateway, not the internal app's session-cookie auth).
+export const apiNonStaffCreate = baseUrl + "/api/nonstaff/create";
+export const apiNonStaffList   = baseUrl + "/api/nonstaff/list";
+
 // Notifications
 export const apiGetNotifications = baseUrl + "/api/notifications";
 export const apiMarkNotificationRead = (id: string) => `${baseUrl}/api/notifications/${id}/read`;
@@ -98,6 +105,13 @@ export const prApproveAction = baseUrl + "/api/pr/approvePr";
 // Purchase Order — Approval
 export const getPoRecords = baseUrl + "/api/po/getPoRecords";
 export const poApproveAction = baseUrl + "/api/po/approvePo";
+
+// PR Tracking — requester-facing real-time status of the full PR journey
+export const prTrackingGetMine = baseUrl + "/api/pr_tracking/getMyTracking";
+export const prTrackingCanViewOrg = baseUrl + "/api/pr_tracking/canViewOrgTracking";
+export const prTrackingGetOrg = baseUrl + "/api/pr_tracking/getOrgTracking";
+export const prTrackingGetTimeline = (pr_no: string) =>
+  `${baseUrl}/api/pr_tracking/getTimeline/${encodeURIComponent(pr_no)}`;
 
 // Service Purchase Order — DB
 export const createServicePO = baseUrl + "/api/service_po/createServicePO";

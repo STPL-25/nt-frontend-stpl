@@ -5,6 +5,9 @@ import { sectionComponents } from "@/ComponentsDatas/ComponentDatas";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import ErrorMessage from "@/CustomComponent/ErrorMessage/ErrorMessage";
 import Loading from "@/CustomComponent/LoadingComponents/Loading";
+import NonStaffResetPassword from "@/Application/NonStaffPortal/NonStaffResetPassword";
+import useFetch from "@/hooks/useFetchHook";
+import { nonStaffMe } from "@/Services/NonStaffService";
 import type { MainContentCSSProperties } from "./Dashboard.types";
 
 // ---------------------------------------------------------------------------
@@ -30,7 +33,7 @@ const getMainContentStyle = (
 // ---------------------------------------------------------------------------
 
 const Dashboard: React.FC = () => {
-  const { sidebarWidth, isFullscreen } = useAppState() as any;
+  const { sidebarWidth, isFullscreen, userData } = useAppState() as any;
   const { activeItem } = useAppState();
 
   const [isMobile, setIsMobile] = useState<boolean>(false);
@@ -42,10 +45,28 @@ const Dashboard: React.FC = () => {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Non-staff sessions (login_id, no ecno) may still owe a forced password
+  // reset — re-derived fresh from the DB on every mount (not trusted from
+  // the login response) so a stale flag can't let a refresh skip it.
+  const firstUser = Array.isArray(userData) ? userData[0] : userData;
+  const isNonStaff = !firstUser?.ecno && !!firstUser?.login_id;
+  const { data: meData } = useFetch<{ success: boolean; data: { must_reset_password: boolean } }>(
+    isNonStaff ? nonStaffMe : null
+  );
+  const [resetDismissed, setResetDismissed] = useState(false);
+  const mustResetPassword = isNonStaff && !resetDismissed && Boolean(meData?.data?.must_reset_password);
+
   const ActiveComponent: ComponentType | undefined = sectionComponents?.[activeItem];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {mustResetPassword && (
+        <NonStaffResetPassword
+          loginId={firstUser?.login_id}
+          onDone={() => setResetDismissed(true)}
+        />
+      )}
+
       {/* Fixed left sidebar */}
       <Sidebar />
 

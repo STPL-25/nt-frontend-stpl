@@ -45,15 +45,21 @@ const initialState: SidebarState = {
 /* =========================
    ASYNC THUNK
 ========================= */
+export interface FetchSidebarDataArg {
+  id: string; // ecno for staff, login_id for non-staff
+  isNonStaff?: boolean;
+}
+
 export const fetchSidebarData = createAsyncThunk<
   SidebarResponse,
-  string, // ecno parameter
+  FetchSidebarDataArg,
   { rejectValue: string }
 >(
   "sidebar/fetchSidebarData",
-  async (ecno, { rejectWithValue }) => {
+  async ({ id, isNonStaff }, { rejectWithValue }) => {
     try {
-      const response = await axios.get<ApiResponse<SidebarResponse>>(apiFetchSidebarData + ecno);
+      const url = apiFetchSidebarData + id + (isNonStaff ? "?identity=nonstaff" : "");
+      const response = await axios.get<ApiResponse<SidebarResponse>>(url);
       return response?.data?.data;
     } catch (err) {
       const error = err as AxiosError;

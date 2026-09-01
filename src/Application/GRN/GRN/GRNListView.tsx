@@ -3,15 +3,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
-import type { GRNRecord } from './types';
-import { formatDate, formatINR } from './helpers';
+import { ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronUp, ReceiptText } from 'lucide-react';
+import type { GRNRecord, DebitNoteRecord } from './types';
+import { formatDate, formatINR, hasGRNDiscrepancy } from './helpers';
 
 interface GRNListViewProps {
   grns: GRNRecord[];
   loading: boolean;
   onRefresh: () => void;
+  debitNotesByGrn?: Record<number, DebitNoteRecord[]>;
+  canRaiseDebitNote?: boolean;
+  onRaiseDebitNote?: (grn: GRNRecord) => void;
 }
+
+const debitNoteStatusColor: Record<string, string> = {
+  Raised: 'bg-red-100 text-red-700 border-red-200',
+};
 
 const conditionColor: Record<string, string> = {
   Good:    'bg-green-100 text-green-700 border-green-200',
@@ -19,11 +26,17 @@ const conditionColor: Record<string, string> = {
   Partial: 'bg-amber-100 text-amber-700 border-amber-200',
 };
 
-const GRNCard: React.FC<{ grn: GRNRecord }> = ({ grn }) => {
+const GRNCard: React.FC<{
+  grn: GRNRecord;
+  debitNotes?: DebitNoteRecord[];
+  canRaiseDebitNote?: boolean;
+  onRaiseDebitNote?: (grn: GRNRecord) => void;
+}> = ({ grn, debitNotes = [], canRaiseDebitNote, onRaiseDebitNote }) => {
   const [expanded, setExpanded] = useState(false);
   const items = Array.isArray(grn?.items) ? grn.items : [];
   const totalReceived = items.reduce((s, it) => s + it.received_qty, 0);
   const totalRejected = items.reduce((s, it) => s + it.rejected_qty, 0);
+  const discrepant = hasGRNDiscrepancy(items);
 
   return (
     <Card className="border-border">
@@ -81,18 +94,47 @@ const GRNCard: React.FC<{ grn: GRNRecord }> = ({ grn }) => {
               <p className="text-xs text-muted-foreground mt-1">Note: {grn.remarks}</p>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs h-7 shrink-0"
-            onClick={() => setExpanded(v => !v)}
-          >
-            {expanded
-              ? <><ChevronUp size={13} className="mr-1" /> Hide Items</>
-              : <><ChevronDown size={13} className="mr-1" /> View Items</>
-            }
-          </Button>
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            {canRaiseDebitNote && discrepant && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs h-7 border-red-200 text-red-700 hover:bg-red-50"
+                onClick={() => onRaiseDebitNote?.(grn)}
+              >
+                <ReceiptText size={13} className="mr-1" /> Raise Debit Note
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs h-7"
+              onClick={() => setExpanded(v => !v)}
+            >
+              {expanded
+                ? <><ChevronUp size={13} className="mr-1" /> Hide Items</>
+                : <><ChevronDown size={13} className="mr-1" /> View Items</>
+              }
+            </Button>
+          </div>
         </div>
+
+        {/* Debit notes already raised against this GRN */}
+        {debitNotes.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {debitNotes.map(dn => (
+              <Badge
+                key={dn.debit_note_sno}
+                variant="outline"
+                className={`text-xs ${debitNoteStatusColor[dn.status] ?? 'bg-muted text-muted-foreground'}`}
+              >
+                <ReceiptText size={11} className="mr-1" />
+                {dn.debit_note_no} · {formatINR(dn.total_amount)}
+                {dn.vendor_invoice_no && <span className="ml-1 opacity-70">· Inv# {dn.vendor_invoice_no}</span>}
+              </Badge>
+            ))}
+          </div>
+        )}
 
         {/* Item details (expandable) */}
         {expanded && items.length > 0 && (
@@ -145,7 +187,9 @@ const GRNCard: React.FC<{ grn: GRNRecord }> = ({ grn }) => {
   );
 };
 
-const GRNListView: React.FC<GRNListViewProps> = ({ grns, loading, onRefresh }) => {
+const GRNListView: React.FC<GRNListViewProps> = ({
+  grns, loading, onRefresh, debitNotesByGrn = {}, canRaiseDebitNote, onRaiseDebitNote,
+}) => {
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -181,7 +225,13 @@ const GRNListView: React.FC<GRNListViewProps> = ({ grns, loading, onRefresh }) =
         ) : (
           <div className="space-y-3">
             {grns.map(grn => (
-              <GRNCard key={grn.grn_basic_sno ?? grn.grn_no} grn={grn} />
+              <GRNCard
+                key={grn.grn_basic_sno ?? grn.grn_no}
+                grn={grn}
+                debitNotes={grn.grn_basic_sno ? debitNotesByGrn[grn.grn_basic_sno] : undefined}
+                canRaiseDebitNote={canRaiseDebitNote}
+                onRaiseDebitNote={onRaiseDebitNote}
+              />
             ))}
           </div>
         )}
