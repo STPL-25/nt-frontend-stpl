@@ -28,6 +28,28 @@ export const grnSvcGetWarehouseLocations = (com_sno?: number, div_sno?: number, 
   return `${base}/getWarehouseLocations?${params.toString()}`;
 };
 
+// Inventory-sync tracking — a GRN line's stock-in posting can fail after the
+// GRN itself already succeeded (transient DB error); these surface + retry it.
+export const grnSvcGetUnsyncedInventoryItems = `${base}/getUnsyncedInventoryItems`;
+export const grnSvcResyncInventoryItem = `${base}/resyncInventoryItem`;
+
+export interface UnsyncedInventoryItem {
+  grn_item_sno: number;
+  prod_sno: number;
+  prod_name: string;
+  received_qty: number;
+  rejected_qty: number;
+  net_qty: number;
+  inventory_sync_status: 'Failed';
+  inventory_sync_error: string | null;
+  created_date: string;
+  grn_basic_sno: number;
+  grn_no: string;
+  com_sno: number | null;
+  div_sno: number | null;
+  brn_sno: number | null;
+}
+
 // Drafts (Redis-backed, per-user)
 export const grnSvcSaveDraft = `${base}/saveGRNDraft`;
 export const grnSvcGetDrafts = `${base}/getGRNDrafts`;

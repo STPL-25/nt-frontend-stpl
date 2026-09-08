@@ -199,7 +199,7 @@ const InventoryTable: React.FC<InventoryTableProps> = ({
               </TableHead>
               <SortHead label="Product" k="item_name" />
               <TableHead className="whitespace-nowrap">Bin</TableHead>
-              <TableHead className="whitespace-nowrap">Stock location_name</TableHead>
+              <TableHead className="whitespace-nowrap">Location Name</TableHead>
               <SortHead label="On Hand" k="current_stock" right />
               <TableHead className="text-right whitespace-nowrap">Min Stock</TableHead>
               <SortHead label="Reorder Qty" k="reorder_qty" right />

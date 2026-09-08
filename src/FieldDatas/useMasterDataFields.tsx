@@ -17,8 +17,12 @@ import {
   useProductCatagoryMaster,
   useProductFieldsMaster,
   useProductSubCatagoryMaster,
+  useSupplierCatagoryFieldsMaster,
+  usePaymentModeFieldsMaster,
   useServiceMasterFields,
   useWorkflowMasterFields,
+  useRecurrenceCadenceMasterFieldsMaster,
+  useServiceMasterSupplierMappingFieldsMaster,
 } from "./Data";
 import type { FieldType } from "./Data";
 
@@ -43,8 +47,12 @@ export const useMasterDataFields = () => {
     ProductMaster: useProductFieldsMaster(),
     ProductCategoryMaster: useProductCatagoryMaster(),
     ProductSubCategoryMaster: useProductSubCatagoryMaster(),
+    SupplierCatagoryMaster: useSupplierCatagoryFieldsMaster(),
+    PaymentModeMaster: usePaymentModeFieldsMaster(),
     ServiceMaster: useServiceMasterFields(),
     WorkflowMaster: useWorkflowMasterFields(),
+    RecurrenceCadenceMaster: useRecurrenceCadenceMasterFieldsMaster(),
+    ServiceMasterSupplierMapping: useServiceMasterSupplierMappingFieldsMaster(),
 
   };
 

@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { AlertCircle, Clock } from 'lucide-react';
-import ServiceAgreementApprovalScreenLayout from '@/LayoutComponent/ApprovalLayout/ServiceAgreementApprovalScreenLayout';
+import ServiceVendorKycApprovalScreenLayout from '@/LayoutComponent/ApprovalLayout/ServiceVendorKycApprovalScreenLayout';
 import useFetch from '@/hooks/useFetchHook';
 import usePost from '@/hooks/usePostHook';
-import { getServiceAgreementsForApproval, approveServiceAgreement } from '@/Services/Api';
+import { getServiceVendorKycsForApproval, approveServiceVendorKyc } from '@/Services/Api';
 import { useAppState } from '@/imports';
-import { useServiceAgreementApprovalSideCardDatas } from '@/FieldDatas/ServiceAgreementApprovalData';
+import { useServiceVendorKycApprovalSideCardDatas } from '@/FieldDatas/ServiceVendorKycApprovalData';
 import {
-  socket, SOCKET_JOIN_SERVICE_AGREEMENT_APPROVAL, SOCKET_LEAVE_SERVICE_AGREEMENT_APPROVAL,
-  SOCKET_SERVICE_AGREEMENT_APPROVAL_UPDATED,
+  socket, SOCKET_JOIN_SERVICE_VENDOR_KYC_APPROVAL, SOCKET_LEAVE_SERVICE_VENDOR_KYC_APPROVAL,
+  SOCKET_SERVICE_VENDOR_KYC_APPROVAL_UPDATED,
 } from '@/Services/Socket';
 
 interface APIResponse {
@@ -16,28 +16,28 @@ interface APIResponse {
   data: any[];
 }
 
-const ServiceAgreementApprovalScreen: React.FC = () => {
-  const [selectedAgreement, setSelectedAgreement] = useState<any | null>(null);
+const ServiceVendorKycApprovalScreen: React.FC = () => {
+  const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [actionType, setActionType] = useState<'approve' | 'reject'>('approve');
   const [comments, setComments] = useState('');
-  const [agreementList, setAgreementList] = useState<any[]>([]);
+  const [recordList, setRecordList] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const { userData } = useAppState();
-  const fieldDatas = useServiceAgreementApprovalSideCardDatas();
+  const fieldDatas = useServiceVendorKycApprovalSideCardDatas();
   const { postData, loading } = usePost();
 
   const { data, loading: fetchLoading, error } = useFetch<APIResponse>(
-    getServiceAgreementsForApproval,
+    getServiceVendorKycsForApproval,
     "",
     null,
     refreshKey
   );
 
   useEffect(() => {
-    if (data && !fetchLoading) setAgreementList(data.data ?? []);
+    if (data && !fetchLoading) setRecordList(data.data ?? []);
   }, [data, fetchLoading]);
 
   useEffect(() => {
@@ -47,23 +47,23 @@ const ServiceAgreementApprovalScreen: React.FC = () => {
   }, [toast]);
 
   useEffect(() => {
-    socket.emit(SOCKET_JOIN_SERVICE_AGREEMENT_APPROVAL);
+    socket.emit(SOCKET_JOIN_SERVICE_VENDOR_KYC_APPROVAL);
 
-    const onApprovalUpdated = (payload: { agreement_sno: number; approved_by: string }) => {
+    const onApprovalUpdated = (payload: { service_vendor_kyc_sno: number; approved_by: string }) => {
       if (payload.approved_by === userData[0]?.ecno) return;
       setRefreshKey((k) => k + 1);
-      setToast({ message: `Agreement was actioned — refreshing list…`, type: 'success' });
+      setToast({ message: `A record was actioned — refreshing list…`, type: 'success' });
     };
 
-    socket.on(SOCKET_SERVICE_AGREEMENT_APPROVAL_UPDATED, onApprovalUpdated);
+    socket.on(SOCKET_SERVICE_VENDOR_KYC_APPROVAL_UPDATED, onApprovalUpdated);
 
     return () => {
-      socket.emit(SOCKET_LEAVE_SERVICE_AGREEMENT_APPROVAL);
-      socket.off(SOCKET_SERVICE_AGREEMENT_APPROVAL_UPDATED, onApprovalUpdated);
+      socket.emit(SOCKET_LEAVE_SERVICE_VENDOR_KYC_APPROVAL);
+      socket.off(SOCKET_SERVICE_VENDOR_KYC_APPROVAL_UPDATED, onApprovalUpdated);
     };
   }, [userData]);
 
-  const handleAgreementSelect = (agreement: any) => setSelectedAgreement(agreement);
+  const handleRecordSelect = (record: any) => setSelectedRecord(record);
 
   const handleAction = (action: string) => {
     setActionType(action as 'approve' | 'reject');
@@ -72,9 +72,9 @@ const ServiceAgreementApprovalScreen: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!selectedAgreement) return;
+    if (!selectedRecord) return;
 
-    const rawStages = selectedAgreement.stage_order_json;
+    const rawStages = selectedRecord.stage_order_json;
     let approval_stages: any[] = [];
     if (rawStages) {
       try {
@@ -85,7 +85,7 @@ const ServiceAgreementApprovalScreen: React.FC = () => {
     }
 
     const payload = {
-      agreement_sno: selectedAgreement.agreement_sno,
+      service_vendor_kyc_sno: selectedRecord.service_vendor_kyc_sno,
       ecno: userData[0]?.ecno,
       action: actionType,
       comments: comments.trim(),
@@ -93,13 +93,13 @@ const ServiceAgreementApprovalScreen: React.FC = () => {
     };
 
     try {
-      await postData(approveServiceAgreement, payload);
+      await postData(approveServiceVendorKyc, payload);
 
-      setAgreementList((prev) => prev.filter((a) => a.agreement_sno !== selectedAgreement.agreement_sno));
-      setSelectedAgreement(null);
+      setRecordList((prev) => prev.filter((r) => r.service_vendor_kyc_sno !== selectedRecord.service_vendor_kyc_sno));
+      setSelectedRecord(null);
       setShowApprovalDialog(false);
       setComments('');
-      setToast({ message: `Agreement ${actionType === 'approve' ? 'approved' : 'rejected'} successfully`, type: 'success' });
+      setToast({ message: `Record ${actionType === 'approve' ? 'approved' : 'rejected'} successfully`, type: 'success' });
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Action failed';
       setToast({ message, type: 'error' });
@@ -118,23 +118,23 @@ const ServiceAgreementApprovalScreen: React.FC = () => {
     );
   }
 
-  if (fetchLoading && agreementList.length === 0) {
+  if (fetchLoading && recordList.length === 0) {
     return (
       <div className="min-h-full bg-background flex items-center justify-center">
         <div className="text-center space-y-3">
           <Clock className="h-16 w-16 text-slate-300 dark:text-foreground mx-auto animate-spin" />
-          <h3 className="text-xl font-semibold text-muted-foreground dark:text-muted-foreground/70">Loading Service Agreements...</h3>
+          <h3 className="text-xl font-semibold text-muted-foreground dark:text-muted-foreground/70">Loading Service Vendor KYC Records...</h3>
         </div>
       </div>
     );
   }
 
   return (
-    <ServiceAgreementApprovalScreenLayout
-      approvalName="Service Agreements"
-      agreementList={agreementList}
-      selectedAgreement={selectedAgreement}
-      handleAgreementSelect={handleAgreementSelect}
+    <ServiceVendorKycApprovalScreenLayout
+      approvalName="Service Vendor KYC"
+      recordList={recordList}
+      selectedRecord={selectedRecord}
+      handleRecordSelect={handleRecordSelect}
       handleAction={handleAction}
       showApprovalDialog={showApprovalDialog}
       setShowApprovalDialog={setShowApprovalDialog}
@@ -149,4 +149,4 @@ const ServiceAgreementApprovalScreen: React.FC = () => {
   );
 };
 
-export default ServiceAgreementApprovalScreen;
+export default ServiceVendorKycApprovalScreen;

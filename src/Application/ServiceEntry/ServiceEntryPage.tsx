@@ -1,213 +1,292 @@
 import React, { useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { ClipboardCheck, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { PageHeader, FormSection } from '@/CustomComponent/PageComponents';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ClipboardCheck, RefreshCw, Loader2, Send, History, FilePlus2 } from 'lucide-react';
+import { PageHeader } from '@/CustomComponent/PageComponents';
+import {
+  getPendingServicePOsForServiceEntry, createServiceEntry, getAllServiceEntries,
+} from '@/Services/Api';
+import { useAppState } from '@/imports';
 import useFetch from '@/hooks/useFetchHook';
 import usePost from '@/hooks/usePostHook';
-import { useAppState } from '@/globalState/hooks/useAppState';
-import {
-  getPendingServicePOsForServiceEntry,
-  createServiceEntry,
-  getAllServiceEntries,
-} from '@/Services/Api';
-import { toast } from 'sonner';
 
-interface PendingPO {
-  po_basic_sno: number;
-  po_no: string;
-  vendor_name: string;
-  service_type_code: string;
-  ceiling_amount?: number;
-  consumed_amount?: number;
-  variance_tolerance_pct?: number;
-  items: string; // JSON string
+interface PoItemForEntry {
+  po_item_sno: number; service_sno?: number; service_name?: string;
+  unit_name?: string; net_cost: number;
 }
 
-const ServiceEntryPage: React.FC = () => {
-  const { userData } = useAppState();
-  const currentUser = Array.isArray(userData) ? userData[0] : userData;
+interface PendingPo {
+  po_basic_sno: number; po_no: string; vendor_sno?: number; vendor_name?: string;
+  po_type: string; service_type_code: string; service_type_name: string;
+  validity_from?: string; validity_to?: string; ceiling_amount?: number;
+  consumed_amount?: number; variance_tolerance_pct?: number;
+  com_sno: number; div_sno: number; brn_sno: number; dept_sno: number;
+  items?: string | PoItemForEntry[];
+}
 
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [selectedPo, setSelectedPo] = useState<PendingPO | null>(null);
+interface EntryItem {
+  service_entry_item_sno: number; po_item_sno: number; service_sno?: number; service_name?: string;
+  billed_qty?: number; unit_price?: number; po_amount: number; confirmed_amount: number; diff_amount: number;
+}
+
+interface EntryRow {
+  service_entry_sno: number; service_entry_no: number; po_basic_sno: number; po_no: string;
+  vendor_name?: string; period_from?: string; period_to?: string; usage_reference?: string;
+  confirmed_amount: number; variance_pct?: number; variance_status?: string;
+  status: string; approved_by?: string; approved_at?: string;
+  created_by?: string; created_date?: string; items?: string | EntryItem[];
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  Pending: 'bg-amber-100 text-amber-700', Approved: 'bg-emerald-100 text-emerald-700',
+  Rejected: 'bg-red-100 text-red-700',
+};
+
+function parseJson<T>(raw: string | T[] | undefined): T[] {
+  if (!raw) return [];
+  try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return []; }
+}
+
+const dateOnly = (v?: string) => (v ? v.slice(0, 10) : '');
+const inr = (n?: number) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
+
+// ── Line-item confirmation form for the selected PO ─────────────────────
+const RaiseEntryForm: React.FC<{ po: PendingPo; onDone: () => void }> = ({ po, onDone }) => {
+  const { userData } = useAppState();
+  const items = useMemo(() => parseJson<PoItemForEntry>(po.items), [po]);
   const [periodFrom, setPeriodFrom] = useState('');
   const [periodTo, setPeriodTo] = useState('');
   const [usageReference, setUsageReference] = useState('');
-  const [confirmedAmounts, setConfirmedAmounts] = useState<Record<number, string>>({});
-
-  const { data: poData } = useFetch<{ success: boolean; data: PendingPO[] }>(getPendingServicePOsForServiceEntry, '', null, refreshKey);
-  const pendingPOs = poData?.data ?? [];
-
-  const { data: entriesData, loading: entriesLoading } = useFetch<{ success: boolean; data: any[] }>(getAllServiceEntries, '', null, refreshKey);
-  const entries = entriesData?.data ?? [];
-
-  const poItems = useMemo(() => {
-    if (!selectedPo) return [];
-    try { return JSON.parse(selectedPo.items || '[]'); } catch { return []; }
-  }, [selectedPo]);
-
-  const totalConfirmed = useMemo(
-    () => Object.values(confirmedAmounts).reduce((sum, v) => sum + (Number(v) || 0), 0),
-    [confirmedAmounts]
+  const [confirmedByItem, setConfirmedByItem] = useState<Record<number, string>>(
+    () => Object.fromEntries(items.map((it) => [it.po_item_sno, String(it.net_cost ?? '')]))
   );
-  const totalBudgeted = useMemo(
-    () => poItems.reduce((sum: number, i: any) => sum + (Number(i.net_cost) || 0), 0),
-    [poItems]
-  );
-  const previewVariancePct = totalBudgeted > 0 ? ((totalConfirmed - totalBudgeted) / totalBudgeted) * 100 : null;
-  const willEscalate = selectedPo?.variance_tolerance_pct != null && previewVariancePct != null
-    && Math.abs(previewVariancePct) > selectedPo.variance_tolerance_pct;
+  const { postData, loading } = usePost();
 
-  const { postData, loading: submitting } = usePost();
-
-  const handleSelectPo = (po: PendingPO) => {
-    setSelectedPo(po);
-    setConfirmedAmounts({});
-  };
+  const total = items.reduce((sum, it) => sum + Number(confirmedByItem[it.po_item_sno] || 0), 0);
 
   const handleSubmit = async () => {
-    if (!selectedPo) return;
-    const items = poItems
-      .filter((i: any) => confirmedAmounts[i.po_item_sno])
-      .map((i: any) => ({
-        po_item_sno: i.po_item_sno,
-        service_sno: i.service_sno,
-        confirmed_amount: Number(confirmedAmounts[i.po_item_sno] || 0),
-      }));
-    if (items.length === 0) {
-      toast.error('Enter a confirmed amount for at least one line');
-      return;
-    }
+    const entryItems = items.map((it) => ({
+      po_item_sno: it.po_item_sno,
+      service_sno: it.service_sno,
+      confirmed_amount: Number(confirmedByItem[it.po_item_sno] || 0),
+    }));
+
     try {
       const result: any = await postData(createServiceEntry, {
-        po_basic_sno: selectedPo.po_basic_sno,
-        period_from: periodFrom,
-        period_to: periodTo,
+        po_basic_sno: po.po_basic_sno,
+        vendor_sno: po.vendor_sno,
+        period_from: periodFrom || null,
+        period_to: periodTo || null,
         usage_reference: usageReference,
-        com_sno: currentUser?.com_sno,
-        div_sno: currentUser?.div_sno,
-        brn_sno: currentUser?.brn_sno,
-        dept_sno: currentUser?.dept_sno,
-        items,
+        com_sno: po.com_sno, div_sno: po.div_sno, brn_sno: po.brn_sno, dept_sno: po.dept_sno,
+        items: entryItems,
       });
-      const created = result?.data;
+      const status = result?.data?.[0]?.status;
       toast.success(
-        created?.status === 'Approved'
-          ? `Service Entry #${created.service_entry_no} auto-approved`
-          : `Service Entry #${created.service_entry_no} routed for variance approval`
+        status === 'Pending'
+          ? `Entry raised — variance exceeded tolerance, routed for approval`
+          : `Service Entry recorded and auto-approved`
       );
-      setSelectedPo(null);
-      setConfirmedAmounts({});
-      setPeriodFrom(''); setPeriodTo(''); setUsageReference('');
-      setRefreshKey(k => k + 1);
+      onDone();
     } catch (err: any) {
-      toast.error(err?.response?.data?.error || err?.message || 'Failed to create Service Entry');
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to raise Service Entry');
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-muted/30 min-h-full">
-      <PageHeader icon={ClipboardCheck} title="Service Entry" description="Confirm usage/consumption for a Service PO period — the GRN-equivalent for services" />
+    <Card>
+      <CardHeader>
+        <CardTitle>{po.po_no}</CardTitle>
+        <CardDescription>
+          {po.vendor_name ?? 'No vendor'} · {po.service_type_name}
+          {po.variance_tolerance_pct != null && ` · Tolerance ${po.variance_tolerance_pct}%`}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <Label className="text-xs">Period From</Label>
+            <Input type="date" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs">Period To</Label>
+            <Input type="date" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs">Usage Reference</Label>
+            <Input placeholder="e.g. meter reading, ticket no." value={usageReference} onChange={(e) => setUsageReference(e.target.value)} />
+          </div>
+        </div>
 
-      <div className="container mx-auto py-6 px-4 space-y-6">
-        <Card className="shadow-md">
-          <CardContent className="pt-6 space-y-6">
-            <FormSection icon={ClipboardCheck} title="1. Select a Service PO">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {pendingPOs.map(po => (
-                  <div
-                    key={po.po_basic_sno}
-                    onClick={() => handleSelectPo(po)}
-                    className={`cursor-pointer rounded-lg border p-3 ${selectedPo?.po_basic_sno === po.po_basic_sno ? 'border-primary bg-primary/5' : 'border-border'}`}
-                  >
-                    <p className="text-sm font-semibold">{po.po_no}</p>
-                    <p className="text-xs text-muted-foreground">{po.vendor_name} · {po.service_type_code}</p>
-                    {po.ceiling_amount != null && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        ₹{Number(po.consumed_amount ?? 0).toLocaleString('en-IN')} / ₹{Number(po.ceiling_amount).toLocaleString('en-IN')} consumed
-                      </p>
-                    )}
-                  </div>
-                ))}
-                {pendingPOs.length === 0 && <p className="text-sm text-muted-foreground">No approved Service POs found.</p>}
-              </div>
-            </FormSection>
+        <div className="border rounded-lg overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Service</TableHead>
+                <TableHead>Unit</TableHead>
+                <TableHead className="text-right">PO Amount</TableHead>
+                <TableHead className="text-right w-40">Confirmed Amount</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.length === 0 ? (
+                <TableRow><TableCell colSpan={4} className="text-center py-6 text-muted-foreground">No items on this PO</TableCell></TableRow>
+              ) : items.map((it) => (
+                <TableRow key={it.po_item_sno}>
+                  <TableCell>{it.service_name ?? '-'}</TableCell>
+                  <TableCell>{it.unit_name ?? '-'}</TableCell>
+                  <TableCell className="text-right">{inr(it.net_cost)}</TableCell>
+                  <TableCell className="text-right">
+                    <Input
+                      type="number" className="text-right h-8"
+                      value={confirmedByItem[it.po_item_sno] ?? ''}
+                      onChange={(e) => setConfirmedByItem((prev) => ({ ...prev, [it.po_item_sno]: e.target.value }))}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
 
-            {selectedPo && (
-              <>
-                <FormSection icon={ClipboardCheck} title="2. Period & confirmed usage">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-                    <div><Label>Period From</Label><Input type="date" value={periodFrom} onChange={e => setPeriodFrom(e.target.value)} /></div>
-                    <div><Label>Period To</Label><Input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} /></div>
-                    <div><Label>Usage Reference</Label><Input value={usageReference} onChange={e => setUsageReference(e.target.value)} placeholder="e.g. AWS billing cycle Aug" /></div>
-                  </div>
-                  <div className="space-y-2">
-                    {poItems.map((item: any) => (
-                      <div key={item.po_item_sno} className="flex items-center justify-between gap-3 rounded-lg border p-3">
-                        <div>
-                          <p className="text-sm font-medium">{item.service_name}</p>
-                          <p className="text-xs text-muted-foreground">Budgeted: ₹{Number(item.net_cost || 0).toLocaleString('en-IN')}</p>
-                        </div>
-                        <Input
-                          type="number" className="w-40"
-                          value={confirmedAmounts[item.po_item_sno] || ''}
-                          onChange={e => setConfirmedAmounts(prev => ({ ...prev, [item.po_item_sno]: e.target.value }))}
-                          placeholder="Confirmed amount"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </FormSection>
+        <div className="flex justify-end text-sm font-semibold">
+          <span className="text-muted-foreground font-normal mr-2">Total Confirmed</span>{inr(total)}
+        </div>
 
-                {totalBudgeted > 0 && totalConfirmed > 0 && (
-                  <div className={`rounded-lg border p-3 flex items-center gap-2 text-sm ${willEscalate ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-green-300 bg-green-50 text-green-800'}`}>
-                    {willEscalate ? <AlertTriangle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                    Variance: {previewVariancePct?.toFixed(2)}%
-                    {willEscalate
-                      ? ` — exceeds ${selectedPo?.variance_tolerance_pct}% tolerance, will route for approval`
-                      : ' — within tolerance, will auto-approve'}
-                  </div>
-                )}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onDone} disabled={loading}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={loading || items.length === 0}>
+            {loading ? <><Loader2 size={15} className="animate-spin mr-1" />Submitting…</> : <><Send size={15} className="mr-1" />Raise Service Entry</>}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
 
-                <Button onClick={handleSubmit} disabled={submitting}>
-                  {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                  Submit Service Entry
-                </Button>
-              </>
-            )}
-          </CardContent>
-        </Card>
+const ServiceEntryPage: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'raise' | 'history'>('raise');
+  const [selectedPo, setSelectedPo] = useState<PendingPo | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-        <Card className="shadow-md">
-          <CardHeader><CardTitle className="text-base">Service Entries</CardTitle></CardHeader>
-          <CardContent>
-            {entriesLoading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : entries.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No Service Entries yet.</p>
+  const { data: posRes, loading: loadingPos } = useFetch<{ success: boolean; data: PendingPo[] }>(
+    getPendingServicePOsForServiceEntry, '', null, refreshKey
+  );
+  const { data: entriesRes, loading: loadingEntries } = useFetch<{ success: boolean; data: EntryRow[] }>(
+    getAllServiceEntries, '', null, refreshKey
+  );
+
+  const pendingPos = posRes?.data ?? [];
+  const entries = entriesRes?.data ?? [];
+  const refresh = () => setRefreshKey((k) => k + 1);
+
+  return (
+    <div className="flex flex-col min-h-full bg-muted/20">
+      <PageHeader icon={ClipboardCheck} title="Service Entry" description="Confirm usage/consumption against an Approved Service PO — the GRN-equivalent for services">
+        <Button variant="outline" size="sm" className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20" onClick={refresh}>
+          <RefreshCw size={15} className="mr-1" /> Refresh
+        </Button>
+      </PageHeader>
+
+      <div className="p-4 sm:p-6 space-y-4">
+        <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v as any); setSelectedPo(null); }}>
+          <TabsList>
+            <TabsTrigger value="raise"><FilePlus2 size={14} className="mr-1" /> Raise Entry ({pendingPos.length} eligible POs)</TabsTrigger>
+            <TabsTrigger value="history"><History size={14} className="mr-1" /> History ({entries.length})</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="raise" className="mt-4 space-y-4">
+            {selectedPo ? (
+              <RaiseEntryForm po={selectedPo} onDone={() => { setSelectedPo(null); refresh(); }} />
             ) : (
-              <div className="space-y-2">
-                {entries.map((se: any) => (
-                  <div key={se.service_entry_sno} className="flex items-center justify-between rounded-lg border p-3">
-                    <div>
-                      <p className="text-sm font-semibold">#{se.service_entry_no} · {se.po_no}</p>
-                      <p className="text-xs text-muted-foreground">{se.vendor_name} · ₹{Number(se.confirmed_amount).toLocaleString('en-IN')}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {se.variance_status && se.variance_status !== 'N/A' && (
-                        <Badge variant="outline" className="text-xs">{se.variance_status} ({Number(se.variance_pct ?? 0).toFixed(1)}%)</Badge>
-                      )}
-                      <Badge className="text-xs">{se.status}</Badge>
-                    </div>
-                  </div>
-                ))}
+              <div className="border rounded-lg overflow-x-auto bg-background">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>PO No</TableHead>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead>Billing Pattern</TableHead>
+                      <TableHead className="text-right">Ceiling</TableHead>
+                      <TableHead className="text-right">Consumed</TableHead>
+                      <TableHead className="w-32" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loadingPos ? (
+                      <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        <Loader2 size={16} className="inline animate-spin mr-2" />Loading…
+                      </TableCell></TableRow>
+                    ) : pendingPos.length === 0 ? (
+                      <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No Approved Service POs available</TableCell></TableRow>
+                    ) : pendingPos.map((po) => (
+                      <TableRow key={po.po_basic_sno}>
+                        <TableCell className="font-medium">{po.po_no}</TableCell>
+                        <TableCell>{po.vendor_name ?? '—'}</TableCell>
+                        <TableCell className="text-xs">{po.service_type_name}</TableCell>
+                        <TableCell className="text-right">{po.ceiling_amount != null ? inr(po.ceiling_amount) : '—'}</TableCell>
+                        <TableCell className="text-right">{po.consumed_amount != null ? inr(po.consumed_amount) : '—'}</TableCell>
+                        <TableCell>
+                          <Button size="sm" onClick={() => setSelectedPo(po)}>Raise Entry</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-4">
+            <Card><CardContent className="p-0">
+              <div className="border rounded-lg overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Entry No</TableHead>
+                      <TableHead>PO No</TableHead>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead>Period</TableHead>
+                      <TableHead className="text-right">Confirmed</TableHead>
+                      <TableHead>Variance</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loadingEntries ? (
+                      <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                        <Loader2 size={16} className="inline animate-spin mr-2" />Loading…
+                      </TableCell></TableRow>
+                    ) : entries.length === 0 ? (
+                      <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No Service Entries yet</TableCell></TableRow>
+                    ) : entries.map((e) => (
+                      <TableRow key={e.service_entry_sno}>
+                        <TableCell className="font-medium">SE-{e.service_entry_no}</TableCell>
+                        <TableCell>{e.po_no}</TableCell>
+                        <TableCell>{e.vendor_name ?? '—'}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{dateOnly(e.period_from)} – {dateOnly(e.period_to)}</TableCell>
+                        <TableCell className="text-right font-medium">{inr(e.confirmed_amount)}</TableCell>
+                        <TableCell className="text-xs">
+                          {e.variance_status && e.variance_status !== 'N/A'
+                            ? `${e.variance_status === 'EXCEEDED' ? '⚠ ' : ''}${Number(e.variance_pct ?? 0).toFixed(1)}%`
+                            : '—'}
+                        </TableCell>
+                        <TableCell><Badge className={STATUS_COLORS[e.status] ?? ''} variant="secondary">{e.status}</Badge></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent></Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

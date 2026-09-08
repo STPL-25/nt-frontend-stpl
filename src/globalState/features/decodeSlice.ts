@@ -78,7 +78,12 @@ const decodeSlice = createSlice({
       })
       .addCase(initUser.fulfilled, (state, action) => {
         state.isLoading = false
-        state.userData = action.payload
+        // Staff sessions restore as an array already (raw SQL login row);
+        // non-staff sessions restore as a bare object (see
+        // NonStaffUserController.login's createJWTToken(nonstaff) call) —
+        // normalize so every `userData[0]` read site works the same after
+        // a refresh as it does right after login.
+        state.userData = Array.isArray(action.payload) ? action.payload : [action.payload]
       })
       .addCase(initUser.rejected, (state) => {
         state.isLoading = false

@@ -961,6 +961,22 @@ function drawWatermark(doc: jsPDF, text: string): void {
   }
 }
 
+const DEFAULT_PO_TERMS: string[] = [
+  'Payment Terms: As per agreed vendor contract.',
+  'Delivery must be completed within the agreed lead time.',
+  'This PO is valid for 30 days from the date of issue.',
+];
+
+// The PO's actual terms_conditions (buyer free text, or auto-filled from the
+// Terms & Conditions Master — see TermsConditionsMaster.tsx) is one clause
+// per line; split it the same way drawTermsBlock already expects (one
+// bullet per array entry) rather than treating it as a single paragraph.
+function splitTermsText(text: unknown): string[] | null {
+  if (typeof text !== 'string') return null;
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  return lines.length > 0 ? lines : null;
+}
+
 function drawTermsBlock(doc: jsPDF, y: number, terms: string[]): number {
   const height = 8 + terms.length * 4;
   doc.setFillColor(...LIGHT_BG);
@@ -1142,13 +1158,10 @@ export async function createPOApprovalPdfDocument(
   quotation: AnyRecord,
   approvalData?: AnyRecord,
   logoDataUrl?: string,
-  terms: string[] = [
-    'Payment Terms: As per agreed vendor contract.',
-    'Delivery must be completed within the agreed lead time.',
-    'This PO is valid for 30 days from the date of issue.',
-  ],
+  terms?: string[],
 ): Promise<{ doc: jsPDF; fileName: string }> {
   const poHeader = parseJSON<AnyRecord>(approvalData?.po_header, {});
+  const resolvedTerms = terms ?? splitTermsText(poHeader.terms_conditions) ?? DEFAULT_PO_TERMS;
   const vendor = parseJSON<AnyRecord>(approvalData?.vendor, {});
   const approvedItems = parseJSON<AnyRecord[]>(approvalData?.po_items, []);
   const quotationItems = parseJSON<AnyRecord[]>(
@@ -1349,7 +1362,7 @@ export async function createPOApprovalPdfDocument(
 
   cursorY = grandY + 14;
   cursorY = ensurePageSpace(doc, cursorY, 40);
-  cursorY = drawTermsBlock(doc, cursorY, terms);
+  cursorY = drawTermsBlock(doc, cursorY, resolvedTerms);
   cursorY = ensurePageSpace(doc, cursorY, 25);
     // drawSignatureBlock(doc, cursorY);
 

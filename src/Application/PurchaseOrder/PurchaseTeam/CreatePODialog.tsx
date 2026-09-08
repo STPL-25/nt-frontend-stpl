@@ -8,7 +8,8 @@ import { Package, Send, Loader2, CheckCircle2, Mail } from 'lucide-react';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { usePOFormFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
 import usePost from '@/hooks/usePostHook';
-import { purchaseTeamSendPOEmail } from '@/Services/Api';
+import useFetch from '@/hooks/useFetchHook';
+import { purchaseTeamSendPOEmail, apiGetDefaultTermsConditions } from '@/Services/Api';
 import type { PRRecord, Quotation, POFormState } from './types';
 import { formatINR, getQuotationTotal, getPRDisplayNo, today } from './helpers';
 import { buildPOPdfBlob } from './generatePOPdfBlob';
@@ -48,18 +49,62 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
   const [poCreated, setPOCreated] = useState(false);
   const { postData: postSendPOEmail } = usePost();
 
+  // Terms & Conditions Master default lookup — prefills terms_conditions from
+  // the PR's own Company/Division/Branch/Department scope when one is
+  // configured (nt-frontend-stpl/src/Application/TermsConditions). The
+  // textarea stays freely editable afterward — this only sets the starting
+  // value, it doesn't lock the field.
+  const scopeReady = open && selectedPR?.com_sno && selectedPR?.div_sno && selectedPR?.brn_sno && selectedPR?.dept_sno;
+  const { data: defaultTcResponse } = useFetch<{ success: boolean; data: { tc_text?: string } | null }>(
+    scopeReady
+      ? apiGetDefaultTermsConditions(selectedPR!.com_sno!, selectedPR!.div_sno!, selectedPR!.brn_sno!, selectedPR!.dept_sno!)
+      : null
+  );
+
+  // True while a Master lookup for the current scope is genuinely still in
+  // flight. useFetch resets defaultTcResponse to null both before the very
+  // first fetch and on every dialog close (scopeReady goes false → url goes
+  // null), so — unlike useFetch's own `loading` flag, which lags a render
+  // behind on the exact commit `open` flips true — this is accurate in the
+  // very same commit the dialog opens. That accuracy matters here: a buyer
+  // who clicked "Create PO" quickly used to beat the async lookup and save
+  // the quotation's raw payment_terms (e.g. the literal "Net 30" default in
+  // QuotationDialog.tsx) instead of the Master's text — see project memory.
+  const awaitingDefaultTc = Boolean(scopeReady) && defaultTcResponse === null;
+
+  // Deliberately keyed on IDs, not the selectedPR/selectedQuotation object
+  // references — PurchaseTeamPage replaces selectedPR with a fresh object on
+  // every background PR-list refresh (approvedPRs refetch, the
+  // pt:split:updated socket event from any teammate's action), even while
+  // this dialog stays open for the same PR. Keying on the full objects would
+  // let that unrelated background refresh silently reset terms_conditions.
+  // terms_conditions itself is intentionally NOT set here — it's resolved by
+  // the dedicated effect below once the Master lookup has actually settled.
   React.useEffect(() => {
     if (open) {
       setForm({
         po_date: today(),
         required_date: selectedPR?.required_date ?? selectedPR?.req_by_date ?? '',
         purpose: selectedPR?.purpose ?? '',
-        terms_conditions: selectedQuotation?.payment_terms ?? '',
+        terms_conditions: '',
         delivery_address: '',
       });
       setPOCreated(false);
     }
-  }, [open, selectedPR, selectedQuotation]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedPR?.pr_basic_sno, selectedQuotation?.sq_basic_sno]);
+
+  // Resolves terms_conditions once we actually know whether a Master default
+  // exists for this scope — never before. Prefers the Master's text; falls
+  // back to the quotation's payment_terms only once the lookup has settled
+  // (or immediately if the PR has no usable scope, since no lookup will ever
+  // run for it).
+  React.useEffect(() => {
+    if (!open || awaitingDefaultTc) return;
+    const defaultText = defaultTcResponse?.data?.tc_text;
+    setForm((f) => ({ ...f, terms_conditions: defaultText || selectedQuotation?.payment_terms || '' }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, awaitingDefaultTc, defaultTcResponse, selectedQuotation?.sq_basic_sno]);
 
   const handleCreate = async () => {
     if (!selectedPR || !selectedQuotation) return;
@@ -217,9 +262,9 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
           ) : (
             <>
               <Button variant="outline" onClick={handleClose}>Cancel</Button>
-              <Button onClick={handleCreate} disabled={creating} className="bg-primary hover:bg-primary/90">
-                {creating ? <Loader2 size={16} className="animate-spin mr-1" /> : <Send size={16} className="mr-1" />}
-                Create PO
+              <Button onClick={handleCreate} disabled={creating || awaitingDefaultTc} className="bg-primary hover:bg-primary/90">
+                {creating || awaitingDefaultTc ? <Loader2 size={16} className="animate-spin mr-1" /> : <Send size={16} className="mr-1" />}
+                {awaitingDefaultTc ? 'Checking terms…' : 'Create PO'}
               </Button>
             </>
           )}

@@ -1,205 +1,215 @@
-import React, { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
-import { CheckCircle2, XCircle, Clock, Wrench, AlertCircle } from 'lucide-react';
-import { PageHeader } from '@/CustomComponent/PageComponents';
+import React, { useState, useEffect } from 'react';
+import { AlertCircle, Clock } from 'lucide-react';
+import ServicePOApprovalScreenLayout from '@/LayoutComponent/ApprovalLayout/ServicePOApprovalScreenLayout';
 import useFetch from '@/hooks/useFetchHook';
 import usePost from '@/hooks/usePostHook';
-import { useAppState } from '@/globalState/hooks/useAppState';
-import { getServicePORecords, servicePoApproveAction } from '@/Services/Api';
+import { getServicePORecords, servicePoApproveAction, sendServicePOEmail } from '@/Services/Api';
+import { useAppState } from '@/imports';
+import { useServicePoApprovalSideCardDatas } from '@/FieldDatas/ServicePOApprovalData';
+import { buildServicePOPdfBlob } from './generateServicePOPdfBlob';
 import {
-  socket, SOCKET_JOIN_SERVICE_PO_APPROVAL, SOCKET_LEAVE_SERVICE_PO_APPROVAL, SOCKET_SERVICE_PO_APPROVAL_UPDATED,
+  socket, SOCKET_JOIN_SERVICE_PO_APPROVAL, SOCKET_LEAVE_SERVICE_PO_APPROVAL,
+  SOCKET_SERVICE_PO_APPROVAL_UPDATED,
 } from '@/Services/Socket';
-import { toast } from 'sonner';
 
-function parseJson(raw: any): any[] {
-  if (!raw) return [];
-  try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return []; }
+interface APIResponse {
+  success: boolean;
+  data: any[];
+}
+
+function parseItems(po: any): any[] {
+  try {
+    const raw = po?.items;
+    if (!raw) return [];
+    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch { return []; }
 }
 
 const ServicePOApprovalScreen: React.FC = () => {
-  const { userData } = useAppState();
-  const currentUser = Array.isArray(userData) ? userData[0] : userData;
-
-  const [poList, setPoList] = useState<any[]>([]);
-  const [selected, setSelected] = useState<any | null>(null);
-  const [showDialog, setShowDialog] = useState(false);
+  const [selectedPO, setSelectedPO] = useState<any | null>(null);
+  const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [actionType, setActionType] = useState<'approve' | 'reject'>('approve');
   const [comments, setComments] = useState('');
+  const [poList, setPoList] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  const { data, loading: fetchLoading } = useFetch<{ success: boolean; data: any[] }>(
-    getServicePORecords, '', null, refreshKey
+  const { userData } = useAppState();
+  const fieldDatas = useServicePoApprovalSideCardDatas();
+  const { postData, loading } = usePost();
+  const { postData: postSendEmail } = usePost();
+
+  const { data, loading: fetchLoading, error } = useFetch<APIResponse>(
+    getServicePORecords,
+    "",
+    null,
+    refreshKey
   );
-  const { postData, loading: submitting } = usePost();
 
   useEffect(() => {
-    if (data) setPoList(data.data ?? []);
-  }, [data]);
+    if (data && !fetchLoading) setPoList(data.data ?? []);
+  }, [data, fetchLoading]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   useEffect(() => {
     socket.emit(SOCKET_JOIN_SERVICE_PO_APPROVAL);
-    const onUpdated = (payload: { po_basic_sno: number; approved_by: string }) => {
-      if (payload.approved_by === currentUser?.ecno) return;
-      setRefreshKey(k => k + 1);
+
+    const onApprovalUpdated = (payload: { po_basic_sno?: number; approved_by: string }) => {
+      if (payload.approved_by === userData[0]?.ecno) return;
+      setRefreshKey((k) => k + 1);
+      setToast({ message: `A Service PO was actioned — refreshing list…`, type: 'success' });
     };
-    socket.on(SOCKET_SERVICE_PO_APPROVAL_UPDATED, onUpdated);
+
+    socket.on(SOCKET_SERVICE_PO_APPROVAL_UPDATED, onApprovalUpdated);
+
     return () => {
       socket.emit(SOCKET_LEAVE_SERVICE_PO_APPROVAL);
-      socket.off(SOCKET_SERVICE_PO_APPROVAL_UPDATED, onUpdated);
+      socket.off(SOCKET_SERVICE_PO_APPROVAL_UPDATED, onApprovalUpdated);
     };
-  }, [currentUser]);
+  }, [userData]);
 
-  const handleAction = (action: 'approve' | 'reject') => {
-    setActionType(action);
+  const handlePOSelect = (po: any) => setSelectedPO(po);
+
+  const handleAction = (action: string) => {
+    setActionType(action as 'approve' | 'reject');
     setComments('');
-    setShowDialog(true);
+    setShowApprovalDialog(true);
   };
 
-  const handleSubmit = async () => {
-    if (!selected) return;
-    const stages = parseJson(selected.stage_order_json);
-
+  // Final-stage approval only: render the PO PDF from the record already on
+  // screen (no round trip needed — getServicePORecords already returned
+  // everything the PDF needs, including items), then upload+email it. Mirrors
+  // POApprovalScreen.tsx's sendFinalPOToSupplier — approval itself never
+  // emails (see ServicePOService.approveServicePO), this is the deliberate,
+  // separate "send to supplier" step.
+  const sendFinalPOToSupplier = async (po: any) => {
     try {
-      await postData(servicePoApproveAction, {
-        po_basic_sno: selected.po_basic_sno,
-        action: actionType,
-        comments: comments.trim(),
-        approval_stages: stages,
+      const items = parseItems(po);
+      const { doc, fileName } = buildServicePOPdfBlob({
+        po_no: po.po_no,
+        vendor_name: po.vendor_name,
+        po_type: po.po_type,
+        pr_no: po.pr_no,
+        purpose: po.purpose,
+        validity_from: po.validity_from,
+        validity_to: po.validity_to,
+        terms_conditions: po.terms_conditions,
+        delivery_address: po.delivery_address,
+        items,
       });
-      setPoList(prev => prev.filter(p => p.po_basic_sno !== selected.po_basic_sno));
-      setSelected(null);
-      setShowDialog(false);
-      toast.success(`Service PO ${actionType === 'approve' ? 'approved' : 'rejected'}`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || err?.message || 'Action failed');
+      doc.save(fileName);
+
+      const emailItems = items.map((item: any) => ({
+        prod_name: item.service_name,
+        qty: item.qty,
+        unit_name: item.unit_name,
+        unit_price: item.agreed_unit_price,
+        total_amount: item.net_cost,
+      }));
+
+      const fd = new FormData();
+      fd.append('vendor_sno', String(po.vendor_sno));
+      fd.append('po_no', String(po.po_no));
+      fd.append('terms_conditions', po.terms_conditions ?? '');
+      fd.append('delivery_address', po.delivery_address ?? '');
+      fd.append('items', JSON.stringify(emailItems));
+      fd.append('po_basic_sno', String(po.po_basic_sno));
+      fd.append('po_pdf', doc.output('blob'), fileName);
+
+      await postSendEmail(sendServicePOEmail, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        withCredentials: true,
+      });
+    } catch (error) {
+      console.error('Unable to send the final Service PO to the supplier:', error);
     }
   };
 
-  return (
-    <div className="flex flex-col h-full bg-muted/30 min-h-full">
-      <PageHeader icon={Wrench} title="Service PO Approvals" description="Standing / one-time service purchase orders awaiting your approval" />
+  const handleSubmit = async () => {
+    if (!selectedPO) return;
 
-      <div className="container mx-auto py-6 px-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-3">
-          {fetchLoading && poList.length === 0 ? (
-            <div className="flex items-center justify-center py-12 text-muted-foreground">
-              <Clock className="h-5 w-5 animate-spin mr-2" /> Loading…
-            </div>
-          ) : poList.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No pending Service POs</p>
-          ) : (
-            poList.map(po => (
-              <Card
-                key={po.po_basic_sno}
-                className={`cursor-pointer transition-all hover:shadow-md ${selected?.po_basic_sno === po.po_basic_sno ? 'ring-2 ring-primary' : ''}`}
-                onClick={() => setSelected(po)}
-              >
-                <CardContent className="p-4 space-y-1.5">
-                  <p className="font-semibold text-sm">{po.po_no}</p>
-                  <p className="text-xs text-muted-foreground">{po.vendor_name}</p>
-                  <div className="flex gap-1.5 flex-wrap pt-1">
-                    <Badge variant="outline" className="text-xs">{po.service_type_name}</Badge>
-                    <Badge variant="outline" className="text-xs">{po.po_type}</Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+    const rawStages = selectedPO.stage_order_json;
+    let approval_stages: any[] = [];
+    if (rawStages) {
+      try {
+        approval_stages = typeof rawStages === 'string' ? JSON.parse(rawStages) : rawStages;
+      } catch {
+        approval_stages = [];
+      }
+    }
 
-        <div className="lg:col-span-2">
-          {!selected ? (
-            <div className="flex items-center justify-center h-full min-h-[300px] text-center">
-              <div>
-                <Wrench className="h-12 w-12 text-muted-foreground/40 mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">Select a Service PO to review</p>
-              </div>
-            </div>
-          ) : (
-            <Card className="shadow-sm">
-              <CardHeader>
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <CardTitle>{selected.po_no}</CardTitle>
-                  <Badge variant="outline" className="flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" />{selected.service_type_name}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-                  <div><p className="text-xs text-muted-foreground">Vendor</p><p className="font-medium">{selected.vendor_name}</p></div>
-                  <div><p className="text-xs text-muted-foreground">PO Type</p><p className="font-medium">{selected.po_type}</p></div>
-                  <div><p className="text-xs text-muted-foreground">Source PR</p><p className="font-medium">{selected.pr_no || '—'}</p></div>
-                  <div><p className="text-xs text-muted-foreground">Validity</p><p className="font-medium">{selected.validity_from} → {selected.validity_to}</p></div>
-                  {selected.ceiling_amount != null && (
-                    <div><p className="text-xs text-muted-foreground">Ceiling</p><p className="font-medium">₹{Number(selected.ceiling_amount).toLocaleString('en-IN')}</p></div>
-                  )}
-                  {selected.variance_tolerance_pct != null && (
-                    <div><p className="text-xs text-muted-foreground">Variance Tolerance</p><p className="font-medium">{selected.variance_tolerance_pct}%</p></div>
-                  )}
-                </div>
+    const payload = {
+      po_basic_sno: selectedPO.po_basic_sno,
+      comments: comments.trim(),
+      approval_stages,
+      action: actionType,
+    };
 
-                <div>
-                  <p className="text-sm font-semibold mb-2">Items</p>
-                  <div className="space-y-2">
-                    {parseJson(selected.items).map((item: any, idx: number) => (
-                      <div key={item.po_item_sno ?? idx} className="flex justify-between items-center text-sm rounded-lg border p-2.5">
-                        <div>
-                          <p className="font-medium">{item.service_name}</p>
-                          <p className="text-xs text-muted-foreground">{item.po_section} · qty {item.qty}</p>
-                        </div>
-                        <p className="font-semibold">₹{Number(item.net_cost || 0).toLocaleString('en-IN')}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+    try {
+      const result: any = await postData(servicePoApproveAction, payload);
+      const isFinal = actionType === 'approve' && result?.data?.[0]?.next_approver === 'FINAL_STAGE';
 
-                <div className="flex gap-2 pt-2">
-                  <Button onClick={() => handleAction('approve')} className="flex-1 bg-green-600 hover:bg-green-700">
-                    <CheckCircle2 className="h-4 w-4 mr-2" />Approve
-                  </Button>
-                  <Button onClick={() => handleAction('reject')} variant="destructive" className="flex-1">
-                    <XCircle className="h-4 w-4 mr-2" />Reject
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+      setPoList((prev) => prev.filter((p) => p.po_basic_sno !== selectedPO.po_basic_sno));
+      const finishedPO = selectedPO;
+      setSelectedPO(null);
+      setShowApprovalDialog(false);
+      setComments('');
+      setToast({ message: `Service PO ${actionType === 'approve' ? 'approved' : 'rejected'} successfully`, type: 'success' });
+
+      if (isFinal) {
+        sendFinalPOToSupplier(finishedPO);
+      }
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.message || 'Action failed';
+      setToast({ message, type: 'error' });
+    }
+  };
+
+  if (error) {
+    return (
+      <div className="min-h-full bg-background flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <AlertCircle className="h-16 w-16 text-red-500 mx-auto" />
+          <h3 className="text-xl font-semibold text-muted-foreground dark:text-muted-foreground/70">Error Loading Data</h3>
+          <p className="text-sm text-muted-foreground">{error}</p>
         </div>
       </div>
+    );
+  }
 
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{actionType === 'approve' ? 'Approve Service PO' : 'Reject Service PO'}</DialogTitle>
-            <DialogDescription>
-              {actionType === 'approve' ? 'Optionally add a comment.' : 'A reason is required.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label>Comments {actionType === 'reject' && <span className="text-red-500">*</span>}</Label>
-            <Textarea value={comments} onChange={e => setComments(e.target.value)} rows={3} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)} disabled={submitting}>Cancel</Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={submitting || (actionType === 'reject' && !comments.trim())}
-              className={actionType === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
-            >
-              {submitting ? 'Processing…' : actionType === 'approve' ? 'Confirm Approve' : 'Confirm Reject'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+  if (fetchLoading && poList.length === 0) {
+    return (
+      <div className="min-h-full bg-background flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <Clock className="h-16 w-16 text-slate-300 dark:text-foreground mx-auto animate-spin" />
+          <h3 className="text-xl font-semibold text-muted-foreground dark:text-muted-foreground/70">Loading Service Purchase Orders...</h3>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <ServicePOApprovalScreenLayout
+      approvalName="Service Purchase Orders"
+      poList={poList}
+      selectedPO={selectedPO}
+      handlePOSelect={handlePOSelect}
+      handleAction={handleAction}
+      showApprovalDialog={showApprovalDialog}
+      setShowApprovalDialog={setShowApprovalDialog}
+      comments={comments}
+      setComments={setComments}
+      handleSubmit={handleSubmit}
+      loading={loading}
+      actionType={actionType}
+      fieldDatas={fieldDatas}
+      toast={toast}
+    />
   );
 };
 

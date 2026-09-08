@@ -19,7 +19,10 @@ import {
   grnSvcGetDrafts,
   grnSvcUpdateDraft,
   grnSvcDeleteDraft,
+  grnSvcGetUnsyncedInventoryItems,
+  grnSvcResyncInventoryItem,
   type GRNDraft,
+  type UnsyncedInventoryItem,
 } from '@/Services/GrnService/grnApi';
 import { debitNoteSvcGetByGRN, debitNoteSvcCreate } from '@/Services/GrnService/debitNoteApi';
 import {
@@ -41,6 +44,7 @@ import GRNEntryForm from './GRN/GRNEntryForm';
 import GRNListView from './GRN/GRNListView';
 import GRNDraftList from './GRN/GRNDraftList';
 import DebitNoteForm from './GRN/DebitNoteForm';
+import InventorySyncIssues from './GRN/InventorySyncIssues';
 
 // ── PO Summary Card ───────────────────────────────────────────────────────────
 
@@ -117,6 +121,11 @@ const GRNPage: React.FC = () => {
   // Draft workflow (private, per-user — mirrors PR's save/resume/delete draft pattern)
   const [drafts, setDrafts] = useState<GRNDraft[]>([]);
   const [loadingDrafts, setLoadingDrafts] = useState(false);
+
+  // GRN lines whose automatic inventory posting failed (see
+  // grn-service/sql/24_grn_inventory_sync_tracking.sql) — not PO-specific,
+  // so this loads independently of the selected PO.
+  const [unsyncedItems, setUnsyncedItems] = useState<UnsyncedInventoryItem[]>([]);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [resumedForm, setResumedForm] = useState<GRNFormState | undefined>(undefined);
   const [resumedItems, setResumedItems] = useState<GRNItemEntry[] | undefined>(undefined);
@@ -178,7 +187,16 @@ const GRNPage: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => { fetchPOs(); fetchDrafts(); }, [fetchPOs, fetchDrafts]);
+  const fetchUnsyncedItems = useCallback(async () => {
+    try {
+      const res = await axios.get(grnSvcGetUnsyncedInventoryItems);
+      setUnsyncedItems(res.data?.data ?? []);
+    } catch {
+      // silent — this is a supplementary admin view, not the core GRN flow
+    }
+  }, []);
+
+  useEffect(() => { fetchPOs(); fetchDrafts(); fetchUnsyncedItems(); }, [fetchPOs, fetchDrafts, fetchUnsyncedItems]);
 
   useEffect(() => {
     if (selectedPO?.po_basic_sno) fetchGRNs(selectedPO.po_basic_sno);
@@ -195,6 +213,7 @@ const GRNPage: React.FC = () => {
     const refreshPending = () => fetchPOs();
     const onGRNCreated = (grn: any) => {
       fetchPOs();
+      fetchUnsyncedItems();
       if (grn?.po_basic_sno && selectedPO?.po_basic_sno === grn.po_basic_sno) {
         fetchGRNs(grn.po_basic_sno);
       }
@@ -376,6 +395,17 @@ console.log(selectedPO);
     }
   };
 
+  const handleResyncInventoryItem = async (grn_item_sno: number) => {
+    const target = unsyncedItems.find(it => it.grn_item_sno === grn_item_sno);
+    try {
+      await axios.post(grnSvcResyncInventoryItem, { grn_item_sno });
+      toast.success(`${target?.grn_no ?? 'Item'} resynced to inventory`);
+      setUnsyncedItems(prev => prev.filter(it => it.grn_item_sno !== grn_item_sno));
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? `Resync failed for ${target?.grn_no ?? 'item'}`);
+    }
+  };
+
   const handleSubmitDebitNote = async (grn: GRNRecord, items: DebitNoteItemEntry[], remarks: string) => {
     if (!grn.grn_basic_sno) return;
     setSubmittingDebitNote(true);
@@ -459,6 +489,16 @@ console.log(selectedPO);
         </div>
       }
     >
+      {unsyncedItems.length > 0 && (
+        <div className="px-4 sm:px-6 pt-4">
+          <InventorySyncIssues
+            items={unsyncedItems}
+            onResync={handleResyncInventoryItem}
+            canResync={canCreate("GRNPage") || canEdit("GRNPage")}
+          />
+        </div>
+      )}
+
       {!selectedPO ? (
         <EmptyState
           message="Select a Gate Entry"

@@ -10,6 +10,10 @@ export interface UserInfo {
   branch?: string;
   dept?: string;
   sign_up_cug?: string;
+  // Non-staff (temporary login) session shape — see NonStaffUser.service.js
+  login_id?: string;
+  full_name?: string;
+  designation_name?: string;
   [key: string]: unknown;
 }
 

@@ -27,13 +27,17 @@ export const StoreInchargeApprovalPage = lazy(() => import("../Application/Store
  export const InventoryPage = lazy(() => import("../Application/Inventory/InventoryPage"));
  export const StockRequestPage = lazy(() => import("../Application/StockRequest/StockRequestPage"));
  export const StockIssuePage = lazy(() => import("../Application/StockRequest/StockIssuePage"));
- export const AccountEntryPage = lazy(() => import("../Application/AccountEntry/AccountEntryPage"));
- export const AccountsBillPage = lazy(() => import("../Application/Accounts/AccountsBillPage"));
- export const PaymentPage = lazy(() => import("../Application/Payment/PaymentPage"));
- export const ServicePOPage = lazy(() => import("../Application/ServicePO/ServicePOPage"));
+//  export const AccountEntryPage = lazy(() => import("../Application/AccountEntry/AccountEntryPage"));
+//  export const AccountsBillPage = lazy(() => import("../Application/Accounts/AccountsBillPage"));
+//  export const PaymentPage = lazy(() => import("../Application/Payment/PaymentPage"));
+//  export const ServicePOPage = lazy(() => import("../Application/ServicePO/ServicePOPage"));
  export const ServicePOApprovalScreen = lazy(() => import("../Application/ServicePO/ServicePOApprovalScreen"));
  export const ServiceAgreementPage = lazy(() => import("../Application/ServiceAgreement/ServiceAgreementPage"));
  export const ServiceAgreementApprovalScreen = lazy(() => import("../Application/ServiceAgreement/ServiceAgreementApprovalScreen"));
+ export const ServiceAgreementListPage = lazy(() => import("../Application/ServiceAgreement/ServiceAgreementListPage"));
+ export const ServiceVendorConsolidationPage = lazy(() => import("../Application/ServiceVendorEntry/ServiceVendorConsolidationPage"));
+ export const ServiceVendorKycPage = lazy(() => import("../Application/ServiceVendorKyc/ServiceVendorKycPage"));
+ export const ServiceVendorKycApprovalScreen = lazy(() => import("../Application/ServiceVendorKyc/ServiceVendorKycApprovalScreen"));
  export const ServiceBillRequestPage = lazy(() => import("../Application/ServiceBillRequest/ServiceBillRequestPage"));
  export const ServiceBillRequestApprovalScreen = lazy(() => import("../Application/ServiceBillRequest/ServiceBillRequestApprovalScreen"));
  export const ServiceEntryPage = lazy(() => import("../Application/ServiceEntry/ServiceEntryPage"));
@@ -74,13 +78,17 @@ export const sectionComponents: SectionComponentsMap = {
   InventoryPage,
   StockRequestPage,
   StockIssuePage,
-  AccountEntryPage,
-  AccountsBillPage,
-  PaymentPage,
-  ServicePOPage,
+  // AccountEntryPage,
+  // AccountsBillPage,
+  // PaymentPage,
+  // ServicePOPage,
   ServicePOApprovalScreen,
   ServiceAgreementPage,
   ServiceAgreementApprovalScreen,
+  ServiceAgreementListPage,
+  ServiceVendorConsolidationPage,
+  ServiceVendorKycPage,
+  ServiceVendorKycApprovalScreen,
   ServiceBillRequestPage,
   ServiceBillRequestApprovalScreen,
   ServiceEntryPage,

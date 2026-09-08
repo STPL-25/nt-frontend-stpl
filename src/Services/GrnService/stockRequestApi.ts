@@ -41,5 +41,6 @@ export interface IssueStockRequestLine {
 
 export interface IssueStockRequestPayload {
   request_sno: number;
+  received_by_ecno: string;
   items: IssueStockRequestLine[];
 }

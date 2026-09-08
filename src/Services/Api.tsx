@@ -97,6 +97,16 @@ export const createWorkFlowApproval = apiSaveFullWorkflow;
 export const getWorkflows           = apiGetWorkflows;
 export const getWorkflowByEntity    = apiGetWorkflowByEntity;
 
+// Terms & Conditions Master — scoped by Company/Division/Branch/Department,
+// consumed by PO creation to prefill the terms_conditions textarea.
+export const apiGetTermsConditions    = baseUrl + "/api/terms_conditions/getTermsConditions";
+export const apiCreateTermsConditions = baseUrl + "/api/terms_conditions/createTermsConditions";
+export const apiUpdateTermsConditions = baseUrl + "/api/terms_conditions/updateTermsConditions";
+export const apiDeleteTermsConditions = baseUrl + "/api/terms_conditions/deleteTermsConditions";
+export const apiGetDefaultTermsConditions = (
+  com_sno: number | string, div_sno: number | string, brn_sno: number | string, dept_sno: number | string
+) => `${baseUrl}/api/terms_conditions/getDefaultTermsConditions?com_sno=${com_sno}&div_sno=${div_sno}&brn_sno=${brn_sno}&dept_sno=${dept_sno}`;
+
 // Purchase Requisition — DB
 export const createPrRecord = baseUrl + "/api/pr/createPrRecords";
 export const getPrRecords = baseUrl + "/api/pr/getPrRecords";
@@ -121,13 +131,22 @@ export const servicePoApproveAction = baseUrl + "/api/service_po/approveServiceP
 export const getAllServicePOs = baseUrl + "/api/service_po/getAllServicePOs";
 export const getEligiblePrLinesForServicePO = baseUrl + "/api/service_po/getEligiblePrLinesForServicePO";
 export const reviseServicePOCeiling = baseUrl + "/api/service_po/reviseServicePOCeiling";
+export const sendServicePOEmail = baseUrl + "/api/service_po/sendServicePOEmail";
 
 // Service Agreement — DB
 export const createServiceAgreement = baseUrl + "/api/service_agreement/createServiceAgreement";
+export const updateServiceAgreement = baseUrl + "/api/service_agreement/updateServiceAgreement";
 export const approveServiceAgreement = baseUrl + "/api/service_agreement/approveServiceAgreement";
 export const getServiceAgreements = baseUrl + "/api/service_agreement/getServiceAgreements";
 export const getActiveServiceAgreement = baseUrl + "/api/service_agreement/getActiveServiceAgreement";
 export const getServiceAgreementsForApproval = baseUrl + "/api/service_agreement/getServiceAgreementsForApproval";
+export const getApprovedSuppliersForService = baseUrl + "/api/service_agreement/getApprovedSuppliersForService";
+
+// Service Vendor Daily Entry — Vendor Driven daily logging + consolidation
+export const createServiceVendorEntry = baseUrl + "/api/service_vendor_entry/createEntry";
+export const getServiceVendorEntries = baseUrl + "/api/service_vendor_entry/getEntries";
+export const cancelServiceVendorEntry = baseUrl + "/api/service_vendor_entry/cancelEntry";
+export const consolidateServiceVendorEntries = baseUrl + "/api/service_vendor_entry/consolidate";
 
 // Service Bill Request — DB (Variable Recurring per-cycle invoice-first approval)
 export const createServiceBillRequest = baseUrl + "/api/service_bill_request/createServiceBillRequest";
@@ -136,6 +155,13 @@ export const getServiceBillRequests = baseUrl + "/api/service_bill_request/getSe
 export const getActiveCeilingAgreementsForBilling = baseUrl + "/api/service_bill_request/getActiveCeilingAgreementsForBilling";
 export const getServiceBillRequestsForApproval = baseUrl + "/api/service_bill_request/getServiceBillRequestsForApproval";
 export const retryServiceBillRequestPOIssue = baseUrl + "/api/service_bill_request/retryPOIssue";
+
+// Service Vendor KYC — DB (separate KYC intake + approval for service vendors)
+export const createServiceVendorKyc = baseUrl + "/api/service_vendor_kyc/createServiceVendorKyc";
+export const approveServiceVendorKyc = baseUrl + "/api/service_vendor_kyc/approveServiceVendorKyc";
+export const getServiceVendorKycs = baseUrl + "/api/service_vendor_kyc/getServiceVendorKycs";
+export const getApprovedServiceVendorKycs = baseUrl + "/api/service_vendor_kyc/getApprovedServiceVendorKycs";
+export const getServiceVendorKycsForApproval = baseUrl + "/api/service_vendor_kyc/getServiceVendorKycsForApproval";
 
 // Service Entry — DB (grn-service)
 export const getPendingServicePOsForServiceEntry = baseUrl + "/api/service_entry/getPendingServicePOs";

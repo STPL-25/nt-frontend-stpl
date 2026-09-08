@@ -18,6 +18,13 @@ export interface StockRequest {
   reject_reason?: string;
   issued_by?: string;
   issued_at?: string;
+  /** 'Auto-GRN' = created automatically off a non-regular item's GRN receipt, no manual requisition was raised. */
+  source_type?: 'Manual' | 'Auto-GRN';
+  pr_basic_sno?: number;
+  pr_no?: string;
+  grn_basic_sno?: number;
+  received_by_ecno?: string;
+  received_by_name?: string;
   item_count: number;
   total_requested_qty: number;
   total_issued_qty: number;
@@ -45,6 +52,8 @@ export interface StockRequestLine {
   pending_qty: number;
   line_status: string;
   remarks?: string;
+  pr_item_sno?: number;
+  po_item_sno?: number;
   /** Live stock at fetch time — cap for the issuable quantity. */
   current_stock: number;
   warehouse?: string;

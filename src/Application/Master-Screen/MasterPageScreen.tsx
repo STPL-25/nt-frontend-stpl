@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, lazy } from "react";
 import DynamicTable from "@/LayoutComponent/DynamicTable";
 import ViewMode from "@/CustomComponent/ViewModes/ViewMode";
 import CategoryCard from "@/CustomComponent/MasterComponents/CatagoryCard";
@@ -11,6 +11,15 @@ import { masterItems, type MasterItemType } from "@/FieldDatas/Data";
 import { socket, SOCKET_MASTER_UPDATED } from "@/Services/Socket";
 import { LoadingState, ErrorState } from "@/CustomComponent/PageComponents";
 import { usePermissions } from "@/globalState/hooks/usePermissions";
+
+// Bespoke masters (Company/Division/Branch/Department picker, point-by-point
+// list, working default-flag logic) that don't fit the generic
+// DynamicTable/common_master pipeline render their own component instead of
+// going through MasterScreen's generic table below.
+const TermsConditionsMaster = lazy(() => import("../TermsConditions/TermsConditionsMaster"));
+const BESPOKE_MASTER_COMPONENTS: Record<string, React.LazyExoticComponent<React.ComponentType<any>>> = {
+  TermsConditionsMaster,
+};
 
 interface Category {
   id: string;
@@ -44,8 +53,12 @@ const MasterScreen: React.FC = () => {
     return () => { socket.off(SOCKET_MASTER_UPDATED, handleMasterUpdated); };
   }, [selectedMaster]);
 
+  const isBespoke = !!(selectedMaster && BESPOKE_MASTER_COMPONENTS[selectedMaster]);
+
+  // Skip the generic common_master fetch entirely for a bespoke master —
+  // it manages its own data fetching (see TermsConditionsMaster.tsx).
   const { data: datas, loading, error } = useFetch(
-    selectedMaster ? `${apiFetchCommonMaster}${selectedMaster}` : '',
+    selectedMaster && !isBespoke ? `${apiFetchCommonMaster}${selectedMaster}` : '',
     "",
     null,
     refreshKey
@@ -53,6 +66,11 @@ const MasterScreen: React.FC = () => {
 
   if (!selectedMaster) {
     return <ErrorState message="Please select a master to view" fullPage />;
+  }
+
+  if (isBespoke) {
+    const BespokeComponent = BESPOKE_MASTER_COMPONENTS[selectedMaster];
+    return <BespokeComponent />;
   }
 
   if (loading) {
@@ -100,11 +118,25 @@ const MasterItemsGrid: React.FC = () => {
     setCurrentScreen,
     selectedMaster,
     setSelectedMaster,
+    userData,
   } = useAppState() as any;
+
+  // Non-staff (temporary login_id/password) sessions have no real ecno —
+  // same check used across the app (App.tsx's RootRoute, Header.tsx).
+  // staffOnly tiles (e.g. Terms & Conditions) never show in their grid.
+  const isNonStaff = useMemo(() => {
+    const firstUser = Array.isArray(userData) ? userData[0] : userData;
+    return !firstUser?.ecno && !!firstUser?.login_id;
+  }, [userData]);
+
+  const visibleMasterItems = useMemo(
+    () => (isNonStaff ? masterItems.filter((item) => !item.staffOnly) : masterItems),
+    [isNonStaff]
+  );
 
   const categories = useMemo<Category[]>(() => {
     const counts = new Map<string, number>();
-    masterItems.forEach((item: MasterItemType) => {
+    visibleMasterItems.forEach((item: MasterItemType) => {
       counts.set(item.category, (counts.get(item.category) ?? 0) + 1);
     });
     const categoryOrder = ["organization", "finance", "inventory", "administration", "approvals", "compliance", "customer", "logistics"];
@@ -118,17 +150,17 @@ const MasterItemsGrid: React.FC = () => {
     const extra = Array.from(counts.keys())
       .filter((id) => !categoryOrder.includes(id))
       .map((id) => ({ id, name: id.charAt(0).toUpperCase() + id.slice(1), count: counts.get(id)! }));
-    return [{ id: "all", name: "All Items", count: masterItems.length }, ...sorted, ...extra];
-  }, []);
+    return [{ id: "all", name: "All Items", count: visibleMasterItems.length }, ...sorted, ...extra];
+  }, [visibleMasterItems]);
 
   const filteredItems = useMemo(
     () =>
-      masterItems.filter((item: MasterItemType) => {
+      visibleMasterItems.filter((item: MasterItemType) => {
         const matchesSearch = item.name.toLowerCase().includes((searchTerm ?? "").toLowerCase());
         const matchesCategory = selectedCategory === "all" || item.category === selectedCategory;
         return matchesSearch && matchesCategory;
       }),
-    [searchTerm, selectedCategory]
+    [visibleMasterItems, searchTerm, selectedCategory]
   );
 
   const handleItemClick = (item: MasterItemType) => {

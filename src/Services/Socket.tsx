@@ -82,6 +82,11 @@ export const SOCKET_JOIN_SERVICE_BILL_REQUEST_APPROVAL = "join-service_bill_requ
 export const SOCKET_LEAVE_SERVICE_BILL_REQUEST_APPROVAL = "leave-service_bill_request-approval";
 export const SOCKET_SERVICE_BILL_REQUEST_APPROVAL_UPDATED = "service_bill_request:approval:updated";
 
+// ── Service Vendor KYC approval room + real-time events ───────────────────────
+export const SOCKET_JOIN_SERVICE_VENDOR_KYC_APPROVAL = "join-service_vendor_kyc-approval";
+export const SOCKET_LEAVE_SERVICE_VENDOR_KYC_APPROVAL = "leave-service_vendor_kyc-approval";
+export const SOCKET_SERVICE_VENDOR_KYC_APPROVAL_UPDATED = "service_vendor_kyc:approval:updated";
+
 // ── Service Entry room + real-time events ────────────────────────────────────
 export const SOCKET_JOIN_SERVICE_ENTRY = "join-service_entry";
 export const SOCKET_LEAVE_SERVICE_ENTRY = "leave-service_entry";

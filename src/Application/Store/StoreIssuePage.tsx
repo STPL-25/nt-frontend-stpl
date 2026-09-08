@@ -41,6 +41,7 @@ const StoreIssuePage: React.FC = () => {
   // sr_item_sno -> quantity to issue now
   const [issueQty, setIssueQty] = useState<Record<number, number>>({});
   const [issuing, setIssuing] = useState(false);
+  const [receivedByEcno, setReceivedByEcno] = useState('');
 
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
@@ -63,6 +64,7 @@ const StoreIssuePage: React.FC = () => {
 
   const openDetail = useCallback(async (request: StockRequest) => {
     setSelected(request);
+    setReceivedByEcno('');
     setLoadingLines(true);
     try {
       const res = await axios.get(srGetRequestItems(request.request_sno));
@@ -120,6 +122,7 @@ const StoreIssuePage: React.FC = () => {
       .filter(l => l.issue_qty > 0);
 
     if (toIssue.length === 0) { toast.error('Enter at least one issue quantity'); return; }
+    if (!receivedByEcno.trim()) { toast.error('Enter the ECNO of the receiving employee'); return; }
 
     for (const entry of toIssue) {
       const line = lines.find(l => l.sr_item_sno === entry.sr_item_sno)!;
@@ -137,11 +140,13 @@ const StoreIssuePage: React.FC = () => {
     try {
       const res = await axios.post(srIssueRequest, {
         request_sno: selected.request_sno,
+        received_by_ecno: receivedByEcno.trim(),
         items: toIssue,
       });
       const header: StockRequest | undefined = res.data?.data?.header;
       toast.success(`Stock issued for ${selected.request_no}${header?.status === 'Partially Issued' ? ' (partially)' : ''}`);
       setSelected(null);
+      setReceivedByEcno('');
       fetchRequests();
     } catch (err: any) {
       toast.error(err?.response?.data?.error ?? 'Failed to issue stock');
@@ -279,6 +284,11 @@ const StoreIssuePage: React.FC = () => {
             <DialogTitle className="flex items-center gap-2">
               {selected?.request_no}
               {selected && <StatusBadge status={selected.status} withDot />}
+              {selected?.source_type === 'Auto-GRN' && (
+                <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                  Direct from GRN{selected?.pr_no ? ` · ${selected.pr_no}` : ''}
+                </span>
+              )}
             </DialogTitle>
             <DialogDescription>
               {selected?.requested_name || selected?.requested_by} · {selected?.created_at?.slice(0, 16)}
@@ -345,6 +355,20 @@ const StoreIssuePage: React.FC = () => {
               </TableBody>
             </Table>
           </div>
+
+          {actionable && (
+            <div className="space-y-1">
+              <Label htmlFor="received-by-ecno" className="text-xs">Received By (ECNO)</Label>
+              <Input
+                id="received-by-ecno"
+                placeholder="ECNO of the employee receiving the item"
+                value={receivedByEcno}
+                onChange={e => setReceivedByEcno(e.target.value)}
+                disabled={!canIssue}
+                className="max-w-xs"
+              />
+            </div>
+          )}
 
           {actionable && (
             <DialogFooter className="gap-2">

@@ -63,7 +63,10 @@ const StoreRequisitionDashboard: React.FC = () => {
   const fetchItems = useCallback(async () => {
     setLoadingItems(true);
     try {
-      const res = await axios.get(invSvcGetItems, { params: { status: 'Active' } });
+      // Non-Regular items are earmarked for the requesting PR's own direct
+      // Store Issue (auto-created off GRN receipt) — excluded here so no one
+      // else can manually requisition that same reserved stock.
+      const res = await axios.get(invSvcGetItems, { params: { status: 'Active', exclude_non_regular: true } });
       setItems(res.data?.data ?? []);
     } catch (err: any) {
       toast.error(err?.response?.data?.error ?? 'Failed to load stock items');

@@ -1,344 +1,541 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { FileText, Plus, Loader2, CheckCircle2 } from 'lucide-react';
-import { PageHeader, FormSection } from '@/CustomComponent/PageComponents';
-import useFetch from '@/hooks/useFetchHook';
-import usePost from '@/hooks/usePostHook';
-import { useMasterOptions } from '@/hooks/ReUsableHook/useMasterOptions';
-import { createServiceAgreement, getServiceAgreements, apiGetAllKycDatas } from '@/Services/Api';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table';
+import {
+  FileText, Building2, RefreshCw, Send, Package,
+  Repeat, Wallet, Truck, CalendarClock, Bell, ClipboardCheck,
+} from 'lucide-react';
+import { FormSection, PageHeader } from '@/CustomComponent/PageComponents';
+import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
+import {
+  useServiceAgreementFields,
+  type AgreementType,
+} from '@/FieldDatas/ServiceAgreementData';
+import { useServiceVendorDailyEntryFields } from '@/FieldDatas/ServiceVendorEntryData';
+import axios from 'axios';
+import { createServiceAgreement, createServiceVendorEntry, getServiceVendorEntries, getApprovedSuppliersForService } from '@/Services/Api';
 import { toast } from 'sonner';
+import { usePermissions } from '@/globalState/hooks/usePermissions';
+import type { FieldType } from '@/FieldDatas/fieldType/fieldType';
+import { cn } from '@/lib/utils';
+import useFetch from '@/hooks/useFetchHook';
 
-// Same shape as PRData.tsx's CascadeOption — DivisionMaster/BranchMaster/
-// DeptMaster rows carry com_sno/div_sno/brn_sno beyond just {value,label},
-// which is what makes client-side cascade filtering possible.
-interface CascadeOption {
-  value: string | number;
-  label: string;
-  com_sno?: string | number | null;
-  div_sno?: string | number | null;
-  brn_sno?: string | number | null;
+interface FormErrors {
+  [key: string]: string;
 }
 
-interface Vendor {
-  kyc_basic_info_sno: number;
-  company_name: string;
+const NAME_FIELD_MAP: Record<string, string> = {
+  com_sno: 'com_name',
+  div_sno: 'div_name',
+  brn_sno: 'brn_name',
+  dept_sno: 'dept_name',
+  service_sno: 'service_name',
+  vendor_sno: 'vendor_name',
+  rate_uom_sno: 'rate_uom_name',
+  recurrence_cadence_sno: 'cadence_name',
+  unit: 'unit_name',
+};
+
+function resolveNameField(fieldName: string): string {
+  return NAME_FIELD_MAP[fieldName] ?? fieldName.replace('_sno', '_name');
 }
+
+const AGREEMENT_TYPES: { value: AgreementType; label: string; description: string; Icon: React.ElementType }[] = [
+  { value: 'FIXED_RECURRING', label: 'Fixed Recurring', description: 'Same amount, auto-generated on a schedule', Icon: Repeat },
+  { value: 'VARIABLE_RECURRING', label: 'Unfixed Recurring', description: 'Ceiling-capped, invoice submitted each cycle', Icon: Wallet },
+  { value: 'VENDOR_BILL', label: 'Vendor Driven', description: 'Daily entries (e.g. milk) — consolidate later to raise one PO', Icon: Truck },
+];
 
 const ServiceAgreementPage: React.FC = () => {
-  const { options } = useMasterOptions([
-    'CompanyMaster', 'DivisionMaster', 'BranchMaster', 'DeptMaster', 'ServiceMaster', 'UomMaster', 'RecurrenceCadenceMaster',
-  ]);
-  const { CompanyMaster, DivisionMaster, BranchMaster, DeptMaster, ServiceMaster, UomMaster, RecurrenceCadenceMaster } = options || {};
+  const { canCreate, canEdit } = usePermissions();
+  const permissionComponent = 'ServiceAgreementPage';
+  const canSubmit = canCreate(permissionComponent) || canEdit(permissionComponent);
 
-  const [comSno, setComSno] = useState('');
-  const [divSno, setDivSno] = useState('');
-  const [brnSno, setBrnSno] = useState('');
-  const [deptSno, setDeptSno] = useState('');
-  const [serviceSno, setServiceSno] = useState('');
-  const [vendorSno, setVendorSno] = useState('');
-  const [rateAmount, setRateAmount] = useState('');
-  const [rateUomSno, setRateUomSno] = useState('');
-  const [cadenceSno, setCadenceSno] = useState('');
-  const [periodStart, setPeriodStart] = useState('');
-  const [periodEnd, setPeriodEnd] = useState('');
-  const [remarks, setRemarks] = useState('');
-  const [document, setDocument] = useState<File | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [agreementType, setAgreementType] = useState<AgreementType>('FIXED_RECURRING');
+  const isVendorDriven = agreementType === 'VENDOR_BILL';
 
-  // Cascade filtering — identical recipe to PRData.tsx's usePRBasicInfoFields
-  const divisionOptions = useMemo(() => {
-    if (!DivisionMaster) return [];
-    if (!comSno) return DivisionMaster;
-    return DivisionMaster.filter((d: CascadeOption) => String(d.com_sno) === String(comSno));
-  }, [DivisionMaster, comSno]);
+  // Cascade tracking — shared across all three types
+  const [selectedCompany, setSelectedCompany] = useState('');
+  const [selectedDivision, setSelectedDivision] = useState('');
+  const [selectedBranch, setSelectedBranch] = useState('');
 
-  const branchOptions = useMemo(() => {
-    if (!BranchMaster) return [];
-    return BranchMaster.filter((b: CascadeOption) => {
-      const matchCompany = !comSno || String(b.com_sno) === String(comSno);
-      const matchDivision = !divSno || String(b.div_sno) === String(divSno);
-      return matchCompany && matchDivision;
-    });
-  }, [BranchMaster, comSno, divSno]);
+  const agreementFields = useServiceAgreementFields({
+    agreementType,
+    selectedCompany, selectedDivision, selectedBranch,
+  });
+  const vendorEntryFields = useServiceVendorDailyEntryFields({ selectedCompany, selectedDivision, selectedBranch });
 
-  const deptOptions = useMemo(() => {
-    if (!DeptMaster) return [];
-    return DeptMaster.filter((d: CascadeOption) => {
-      const matchCompany = !comSno || String(d.com_sno) === String(comSno);
-      const matchDivision = !divSno || String(d.div_sno) === String(divSno);
-      const matchBranch = !brnSno || String(d.brn_sno) === String(brnSno);
-      return matchCompany && matchDivision && matchBranch;
-    });
-  }, [DeptMaster, comSno, divSno, brnSno]);
+  const activeFields = isVendorDriven ? vendorEntryFields : agreementFields;
 
-  const { data: vendorData } = useFetch<{ success: boolean; data: Vendor[] } | Vendor[]>(apiGetAllKycDatas);
-  const vendors: Vendor[] = Array.isArray(vendorData) ? vendorData : (vendorData as any)?.data ?? [];
+  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [submitting, setSubmitting] = useState(false);
 
-  const { data: agreementsData, loading: listLoading } = useFetch<{ success: boolean; data: any[] }>(
-    getServiceAgreements, '', null, refreshKey
+  // Vendor Driven: entries logged for the currently selected vendor+service,
+  // still PENDING (not yet consolidated into a PO) — pure visibility, this
+  // page only ever creates PENDING rows via createServiceVendorEntry now.
+  const [recentEntries, setRecentEntries] = useState<Record<string, any>[]>([]);
+  const [loadingEntries, setLoadingEntries] = useState(false);
+
+  // Predefined-supplier picker (sql/45_service_master_supplier_and_product.sql)
+  // — reactive fetch scoped to whichever suppliers are mapped to the
+  // currently-selected service, replacing the old globally-scoped VendorMaster
+  // list for the vendor_sno field on both the agreement form and the Vendor
+  // Driven daily-entry form (same field name in both).
+  const { data: supplierData } = useFetch<{ success: boolean; data: any[] }>(
+    formData.service_sno ? getApprovedSuppliersForService : null,
+    '',
+    formData.service_sno ? { service_sno: formData.service_sno } : null
   );
-  const agreements = agreementsData?.data ?? [];
+  const approvedSuppliers = useMemo(
+    () => (supplierData?.data ?? []).map((v: any) => ({
+      value: v.kyc_basic_info_sno, label: v.company_name,
+      supp_code: v.supp_code, email: v.email, mobile_number: v.mobile_number,
+    })),
+    [supplierData]
+  );
 
-  const { postData, loading: submitting } = usePost();
+  // Auto-select the sole predefined supplier — no dropdown interaction
+  // needed when there's only one to choose from.
+  useEffect(() => {
+    if (!formData.service_sno || approvedSuppliers.length !== 1) return;
+    const only = approvedSuppliers[0];
+    if (formData.vendor_sno === only.value) return;
+    setFormData((prev) => ({ ...prev, vendor_sno: only.value, vendor_name: only.label }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [approvedSuppliers, formData.service_sno]);
 
-  const resetForm = () => {
-    setComSno(''); setDivSno(''); setBrnSno(''); setDeptSno('');
-    setServiceSno(''); setVendorSno('');
-    setRateAmount(''); setRateUomSno(''); setCadenceSno('');
-    setPeriodStart(''); setPeriodEnd(''); setRemarks(''); setDocument(null);
-  };
+  // The FieldType arrays above are built from the globally-scoped VendorMaster
+  // master; override just the vendor_sno field's options here with the
+  // service-scoped list so the dropdown only ever shows valid suppliers.
+  const displayFields = useMemo(
+    () => activeFields.map((f) => (f.field === 'vendor_sno' ? { ...f, options: approvedSuppliers } : f)),
+    [activeFields, approvedSuppliers]
+  );
 
-  const handleSubmit = async () => {
-    if (!comSno || !divSno || !brnSno || !deptSno || !serviceSno) {
-      toast.error('Company, Division, Branch, Department and Service are required');
-      return;
-    }
-    if (!rateAmount || Number(rateAmount) <= 0) {
-      toast.error('Enter a valid rate amount');
-      return;
-    }
-    if (!cadenceSno) {
-      toast.error('Select a recurrence cadence');
-      return;
-    }
-    if (!periodStart || !periodEnd) {
-      toast.error('Period start and end dates are required');
-      return;
-    }
-    if (new Date(periodEnd) <= new Date(periodStart)) {
-      toast.error('Period end date must be after the start date');
-      return;
-    }
-    if (!document) {
-      toast.error('Upload the agreement/contract document');
-      return;
-    }
+  // Vendor Driven: product details for the selected service (joined server-side
+  // in sp_nt_GetServiceRecords v2, riding along on the same ServiceMaster
+  // options fetch the service_sno field already uses — no second lookup).
+  const selectedVendorDrivenProduct = useMemo(() => {
+    if (!isVendorDriven) return null;
+    const serviceField = vendorEntryFields.find((f) => f.field === 'service_sno');
+    const opt = (serviceField?.options as any[] | undefined)?.find(
+      (o) => String(o.value) === String(formData.service_sno)
+    );
+    return opt?.product_name ? opt : null;
+  }, [isVendorDriven, vendorEntryFields, formData.service_sno]);
 
-    // Flat multipart fields — matches the backend contract exactly
-    // (ServiceAgreement.controller.js#createServiceAgreement reads req.body.*
-    // plus a file field named "agreement_document").
-    const formData = new FormData();
-    formData.append('com_sno', comSno);
-    formData.append('div_sno', divSno);
-    formData.append('brn_sno', brnSno);
-    formData.append('dept_sno', deptSno);
-    formData.append('service_sno', serviceSno);
-    if (vendorSno) formData.append('vendor_sno', vendorSno);
-    formData.append('rate_amount', rateAmount);
-    if (rateUomSno) formData.append('rate_uom_sno', rateUomSno);
-    formData.append('recurrence_cadence_sno', cadenceSno);
-    formData.append('period_start_date', periodStart);
-    formData.append('period_end_date', periodEnd);
-    if (remarks) formData.append('remarks', remarks);
-    formData.append('agreement_document', document);
+  const buildInitialFormData = useCallback((fields: FieldType[]) => {
+    const d: Record<string, any> = {};
+    fields.forEach((field) => {
+      if (!field.input) return;
+      if (field.defaultValue !== undefined) d[field.field] = field.defaultValue;
+      else if (field.type === 'date') d[field.field] = '';
+      else if (field.type === 'number') d[field.field] = '';
+      else if (field.type === 'file') d[field.field] = null;
+      else d[field.field] = '';
+    });
+    return d;
+  }, []);
 
+  // Reset the form whenever the type changes — the three types share no
+  // required fields whose values would still be valid across the switch.
+  useEffect(() => {
+    setFormData(buildInitialFormData(activeFields));
+    setErrors({});
+    setRecentEntries([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agreementType]);
+
+  const fetchRecentEntries = useCallback(async (vendor_sno: any, service_sno: any) => {
+    if (!vendor_sno || !service_sno) {
+      setRecentEntries([]);
+      return;
+    }
+    setLoadingEntries(true);
     try {
-      const result = await postData(createServiceAgreement, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const res = await axios.get(getServiceVendorEntries, { params: { vendor_sno, service_sno, status: 'PENDING' } });
+      setRecentEntries(res?.data?.data ?? []);
+    } catch {
+      // non-fatal — the entry list is a convenience view, not required for logging
+    } finally {
+      setLoadingEntries(false);
+    }
+  }, []);
+
+  // Refresh the pending-entries list whenever vendor or service changes
+  // while on the Vendor Driven tab.
+  useEffect(() => {
+    if (!isVendorDriven) return;
+    fetchRecentEntries(formData.vendor_sno, formData.service_sno);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVendorDriven, formData.vendor_sno, formData.service_sno]);
+
+  const handleFieldChange = (fieldName: string, value: any) => {
+    setFormData((prev) => {
+      const updated = { ...prev, [fieldName]: value };
+
+      if (fieldName === 'com_sno') {
+        updated.div_sno = ''; updated.div_name = '';
+        updated.brn_sno = ''; updated.brn_name = '';
+        updated.dept_sno = ''; updated.dept_name = '';
+        setSelectedCompany(String(value));
+        setSelectedDivision('');
+        setSelectedBranch('');
+      } else if (fieldName === 'div_sno') {
+        updated.brn_sno = ''; updated.brn_name = '';
+        updated.dept_sno = ''; updated.dept_name = '';
+        setSelectedDivision(String(value));
+        setSelectedBranch('');
+      } else if (fieldName === 'brn_sno') {
+        updated.dept_sno = ''; updated.dept_name = '';
+        setSelectedBranch(String(value));
+      } else if (fieldName === 'service_sno') {
+        // The predefined-supplier list is scoped to the service — a vendor
+        // valid for the old service selection may not be valid for the new
+        // one, so clear it (the auto-select effect re-fills it if the new
+        // service has exactly one supplier).
+        updated.vendor_sno = ''; updated.vendor_name = '';
+      }
+
+      const field = activeFields.find((f) => f.field === fieldName);
+      if (field?.options && Array.isArray(field.options)) {
+        const selectedOption = (field.options as any[]).find((opt) => String(opt.value) === String(value));
+        if (selectedOption) updated[resolveNameField(fieldName)] = selectedOption.label;
+      }
+
+      return updated;
+    });
+
+    if (errors[fieldName]) {
+      setErrors((prev) => {
+        const e = { ...prev };
+        delete e[fieldName];
+        return e;
       });
-      const created = (result as any)?.data;
-      toast.success(`Service agreement ${created?.agreement_no ?? ''} submitted for approval`);
-      resetForm();
-      setRefreshKey((k) => k + 1);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || err?.message || 'Failed to submit service agreement');
     }
   };
+
+  // ── Validation ──────────────────────────────────────────────────────────
+
+  const inputFields = useMemo(() => displayFields.filter((f) => f.input), [displayFields]);
+
+  const validateForm = (): boolean => {
+    const errs: FormErrors = {};
+    inputFields.forEach((field) => {
+      if (field.require && !formData[field.field]) errs[field.field] = `${field.label} is required`;
+    });
+    if (isVendorDriven && formData.qty && Number(formData.qty) <= 0) errs.qty = 'Quantity must be greater than 0';
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  // ── Submit ──────────────────────────────────────────────────────────────
+
+  const buildAgreementFormData = (): FormData => {
+    const fd = new FormData();
+    Object.entries(formData).forEach(([key, value]) => {
+      if (key === 'agreement_document') return;
+      if (value === null || value === undefined || value === '') return;
+      fd.append(key, String(value));
+    });
+    if (formData.agreement_document instanceof File) {
+      fd.append('agreement_document', formData.agreement_document);
+    }
+    return fd;
+  };
+
+  const buildVendorEntryFormData = (): FormData => {
+    const fd = new FormData();
+    fd.append('com_sno', String(formData.com_sno));
+    fd.append('div_sno', String(formData.div_sno));
+    fd.append('brn_sno', String(formData.brn_sno));
+    fd.append('dept_sno', String(formData.dept_sno));
+    fd.append('vendor_sno', String(formData.vendor_sno));
+    fd.append('service_sno', String(formData.service_sno));
+    fd.append('entry_date', String(formData.entry_date));
+    fd.append('qty', String(formData.qty));
+    if (formData.unit) fd.append('unit', String(formData.unit));
+    fd.append('unit_price', String(formData.unit_price));
+    if (formData.specification) fd.append('specification', String(formData.specification));
+    if (formData.remarks) fd.append('remarks', String(formData.remarks));
+    if (formData.receipt_document instanceof File) {
+      fd.append('receipt_document', formData.receipt_document);
+    }
+    return fd;
+  };
+
+  const handleReset = () => {
+    setFormData(buildInitialFormData(activeFields));
+    setErrors({});
+    setSelectedCompany(''); setSelectedDivision(''); setSelectedBranch('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+
+    if (!isVendorDriven && !(formData.agreement_document instanceof File)) {
+      setErrors((prev) => ({ ...prev, agreement_document: 'Agreement document is required' }));
+      return;
+    }
+    if (isVendorDriven && !(formData.receipt_document instanceof File)) {
+      setErrors((prev) => ({ ...prev, receipt_document: "Today's receipt/bill is required" }));
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      if (isVendorDriven) {
+        const res = await axios.post(createServiceVendorEntry, buildVendorEntryFormData(), {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        const entry = res?.data?.data;
+        toast.success(`Entry logged for ${formData.entry_date}${entry?.total_amount != null ? ` — total ₹${entry.total_amount}` : ''}. Consolidate accumulated entries on "Vendor Entry Consolidation" when ready to raise the PO.`);
+
+        // Soft reset: keep org/vendor/service selected (the common case is
+        // logging several days in a row for the same vendor+service),
+        // clear only what's specific to today's entry.
+        setFormData((prev) => ({ ...prev, qty: '', unit_price: '', specification: '', remarks: '', receipt_document: null }));
+        await fetchRecentEntries(formData.vendor_sno, formData.service_sno);
+      } else {
+        const res = await axios.post(createServiceAgreement, buildAgreementFormData(), {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        const data = res?.data?.data;
+        toast.success(`Service Agreement ${data?.agreement_no ?? ''} submitted for approval`);
+        handleReset();
+      }
+    } catch (error: any) {
+      const errMsg = error?.response?.data?.error || 'Submission failed. Please try again.';
+      toast.error(errMsg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Render field grouping ──────────────────────────────────────────────
+
+  const gridFields = useMemo(
+    () => inputFields.filter((f) => f.type !== 'textarea' && f.type !== 'file'),
+    [inputFields]
+  );
+  const textareaFields = useMemo(() => inputFields.filter((f) => f.type === 'textarea'), [inputFields]);
+  const fileField = useMemo(() => inputFields.find((f) => f.type === 'file') ?? null, [inputFields]);
 
   return (
     <div className="flex flex-col h-full bg-muted/30 min-h-full">
-      <PageHeader
-        icon={FileText}
-        title="Service Agreements"
-        description="Fixed-recurring service contracts (e.g. rent) — approval-gated, auto-fills PR lines once approved"
-      />
+      <PageHeader icon={FileText} title="Service PO / Agreement" description="Fixed Recurring, Unfixed Recurring, or Vendor Driven" />
 
-      <div className="container mx-auto py-6 px-4 space-y-6">
+      <div className="container mx-auto py-6 px-4">
         <Card className="shadow-md">
-          <CardContent className="pt-6 space-y-6">
-            <FormSection icon={Plus} title="New agreement">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                  <Label>Company</Label>
-                  <select
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={comSno}
-                    onChange={(e) => { setComSno(e.target.value); setDivSno(''); setBrnSno(''); setDeptSno(''); }}
-                  >
-                    <option value="">Select company…</option>
-                    {(CompanyMaster ?? []).map((c: CascadeOption) => (
-                      <option key={c.value} value={c.value}>{c.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <Label>Division</Label>
-                  <select
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={divSno}
-                    onChange={(e) => { setDivSno(e.target.value); setBrnSno(''); setDeptSno(''); }}
-                  >
-                    <option value="">Select division…</option>
-                    {divisionOptions.map((d: CascadeOption) => (
-                      <option key={d.value} value={d.value}>{d.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <Label>Branch</Label>
-                  <select
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={brnSno}
-                    onChange={(e) => { setBrnSno(e.target.value); setDeptSno(''); }}
-                  >
-                    <option value="">Select branch…</option>
-                    {branchOptions.map((b: CascadeOption) => (
-                      <option key={b.value} value={b.value}>{b.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <Label>Department</Label>
-                  <select
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={deptSno}
-                    onChange={(e) => setDeptSno(e.target.value)}
-                  >
-                    <option value="">Select department…</option>
-                    {deptOptions.map((d: CascadeOption) => (
-                      <option key={d.value} value={d.value}>{d.label}</option>
-                    ))}
-                  </select>
-                </div>
+          <CardContent className="pt-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
 
-                <div>
-                  <Label>Service</Label>
-                  <select
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={serviceSno}
-                    onChange={(e) => setServiceSno(e.target.value)}
-                  >
-                    <option value="">Select service…</option>
-                    {(ServiceMaster ?? []).map((s: CascadeOption) => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Must be a Fixed Recurring service — the server rejects anything else.
-                  </p>
+              {/* ── Type selector ──────────────────────────────────── */}
+              <FormSection icon={Building2} title="Service PO Type">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {AGREEMENT_TYPES.map(({ value, label, description, Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setAgreementType(value)}
+                      className={cn(
+                        'flex flex-col items-start gap-1.5 p-4 rounded-xl border text-left transition-colors',
+                        agreementType === value
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background border-border hover:border-primary/50'
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-4 w-4" />
+                        <span className="font-semibold text-sm">{label}</span>
+                      </div>
+                      <span className={cn('text-xs', agreementType === value ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
+                        {description}
+                      </span>
+                    </button>
+                  ))}
                 </div>
-                <div>
-                  <Label>Vendor (optional)</Label>
-                  <select
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={vendorSno}
-                    onChange={(e) => setVendorSno(e.target.value)}
-                  >
-                    <option value="">Select vendor…</option>
-                    {vendors.map((v) => (
-                      <option key={v.kyc_basic_info_sno} value={v.kyc_basic_info_sno}>{v.company_name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <Label>Rate amount</Label>
-                  <Input type="number" value={rateAmount} onChange={(e) => setRateAmount(e.target.value)} placeholder="e.g. 100000" />
-                </div>
-                <div>
-                  <Label>Rate UOM (optional)</Label>
-                  <select
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={rateUomSno}
-                    onChange={(e) => setRateUomSno(e.target.value)}
-                  >
-                    <option value="">Select unit…</option>
-                    {(UomMaster ?? []).map((u: CascadeOption) => (
-                      <option key={u.value} value={u.value}>{u.label}</option>
-                    ))}
-                  </select>
-                </div>
+              </FormSection>
 
-                <div>
-                  <Label>Recurrence cadence</Label>
-                  <select
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={cadenceSno}
-                    onChange={(e) => setCadenceSno(e.target.value)}
-                  >
-                    <option value="">Select cadence…</option>
-                    {(RecurrenceCadenceMaster ?? []).map((c: CascadeOption) => (
-                      <option key={c.value} value={c.value}>{c.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <Label>Period start</Label>
-                  <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
-                </div>
-                <div>
-                  <Label>Period end</Label>
-                  <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
-                </div>
-                <div>
-                  <Label>Agreement document</Label>
-                  <input
-                    type="file"
-                    accept="application/pdf,image/*"
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm file:mr-3 file:h-full file:border-0 file:bg-transparent file:text-sm"
-                    onChange={(e) => setDocument(e.target.files?.[0] ?? null)}
-                  />
-                  {document && <p className="text-xs text-muted-foreground mt-1 truncate">{document.name}</p>}
-                </div>
-
-                <div className="sm:col-span-2 lg:col-span-4">
-                  <Label>Remarks (optional)</Label>
-                  <Textarea rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-                </div>
-              </div>
-
-              <div className="pt-4">
-                <Button onClick={handleSubmit} disabled={submitting} className="w-full sm:w-auto">
-                  {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                  Submit for approval
-                </Button>
-              </div>
-            </FormSection>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-md">
-          <CardHeader>
-            <CardTitle className="text-base">Service Agreements</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {listLoading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : agreements.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No service agreements yet.</p>
-            ) : (
-              <div className="space-y-2">
-                {agreements.map((a: any) => (
-                  <div key={a.agreement_sno} className="flex items-center justify-between rounded-lg border p-3">
-                    <div>
-                      <p className="text-sm font-semibold">{a.agreement_no} · {a.service_name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {a.vendor_name || 'No vendor'} · ₹{Number(a.rate_amount).toLocaleString('en-IN')}
-                        {a.rate_uom_name ? `/${a.rate_uom_name}` : ''} ·{' '}
-                        {String(a.period_start_date).slice(0, 10)} → {String(a.period_end_date).slice(0, 10)}
-                      </p>
+              {/* ── Dynamic fields ──────────────────────────────────── */}
+              <FormSection icon={isVendorDriven ? Truck : CalendarClock} title={isVendorDriven ? "Log Today's Entry" : 'Details'}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-5">
+                  {gridFields.map((field) => (
+                    <div key={field.field} data-error={!!errors[field.field]} className="flex flex-col">
+                      <CustomInputField
+                        field={field.field}
+                        label={field.label}
+                        require={field.require}
+                        type={field.type}
+                        options={field.options}
+                        value={formData[field.field] ?? ''}
+                        onChange={(value) => handleFieldChange(field.field, value)}
+                        error={errors[field.field]}
+                        placeholder={field.placeholder ?? (field.type === 'select' || field.type === 'search-select' ? `Select ${field.label.toLowerCase()}` : undefined)}
+                        className="h-10"
+                      />
+                      {field.field === 'vendor_sno' && !!formData.service_sno && approvedSuppliers.length === 0 && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          No suppliers are mapped to this service yet — add one via Masters → Service Supplier Mapping.
+                        </p>
+                      )}
                     </div>
-                    <Badge className="text-xs">
-                      {a.status === 'A' ? 'Approved' : a.status === 'R' ? 'Rejected' : a.status === 'X' ? 'Expired' : 'Pending'}
-                    </Badge>
+                  ))}
+                </div>
+
+                {textareaFields.map((field) => (
+                  <div key={field.field} data-error={!!errors[field.field]}>
+                    <CustomInputField
+                      field={field.field}
+                      label={field.label}
+                      require={field.require}
+                      type={field.type}
+                      value={formData[field.field] ?? ''}
+                      onChange={(value) => handleFieldChange(field.field, value)}
+                      error={errors[field.field]}
+                      placeholder={`Enter ${field.label.toLowerCase()}...`}
+                      rows={2}
+                      className="resize-none"
+                    />
                   </div>
                 ))}
+
+                {fileField && (
+                  <div data-error={!!errors[fileField.field]} className="max-w-xs">
+                    <CustomInputField
+                      field={fileField.field}
+                      label={fileField.label}
+                      require={fileField.require}
+                      type={fileField.type}
+                      value={formData[fileField.field] ?? null}
+                      onChange={(file) => handleFieldChange(fileField.field, file)}
+                      error={errors[fileField.field]}
+                    />
+                  </div>
+                )}
+
+                {isVendorDriven && selectedVendorDrivenProduct && (
+                  <div className="rounded-md border p-3 bg-muted/30 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Product</p>
+                      <p className="text-sm font-medium">{selectedVendorDrivenProduct.product_name}</p>
+                    </div>
+                    {selectedVendorDrivenProduct.product_description && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">Description</p>
+                        <p className="text-sm font-medium">{selectedVendorDrivenProduct.product_description}</p>
+                      </div>
+                    )}
+                    {selectedVendorDrivenProduct.product_hsn_code && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">HSN Code</p>
+                        <p className="text-sm font-medium">{selectedVendorDrivenProduct.product_hsn_code}</p>
+                      </div>
+                    )}
+                    {selectedVendorDrivenProduct.product_uom_name && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">Product UOM</p>
+                        <p className="text-sm font-medium">{selectedVendorDrivenProduct.product_uom_name}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!isVendorDriven && (agreementType === 'FIXED_RECURRING' || agreementType === 'VARIABLE_RECURRING') && (
+                  <div className="rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800 px-3 py-2 text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                    <Bell className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                    <span>
+                      {agreementType === 'FIXED_RECURRING'
+                        ? '"PO Generation Day" is required for monthly/quarterly/annual cadences (e.g. 5 = generate on the 5th of every eligible month). '
+                        : ''}
+                      "Notify Before" sends an in-app reminder that many days before {agreementType === 'FIXED_RECURRING' ? 'each auto-generation' : 'each expected billing cycle, as a reminder to submit a Service Bill Request'}.
+                    </span>
+                  </div>
+                )}
+
+                {isVendorDriven && (
+                  <div className="rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800 px-3 py-2 text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                    <ClipboardCheck className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                    <span>
+                      Log one entry per delivery day (e.g. milk quantity/price). Entries accumulate below, unbilled.
+                      When ready, go to <strong>Vendor Entry Consolidation</strong> in the sidebar, select the entries to bill, and raise the PO.
+                    </span>
+                  </div>
+                )}
+
+                {Object.keys(errors).length > 0 && (
+                  <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3">
+                    <ul className="list-disc list-inside text-destructive text-xs space-y-0.5">
+                      {Object.values(errors).map((err, i) => <li key={i}>{err}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </FormSection>
+
+              {/* ── Vendor Driven: pending entries for this vendor+service ── */}
+              {isVendorDriven && (
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    Pending Entries (not yet consolidated){recentEntries.length > 0 && <Badge variant="secondary">{recentEntries.length}</Badge>}
+                  </h3>
+                  {recentEntries.length > 0 ? (
+                    <div className="border rounded-xl overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50 hover:bg-muted/50">
+                            <TableHead className="text-xs">Date</TableHead>
+                            <TableHead className="text-xs">Qty</TableHead>
+                            <TableHead className="text-xs">Unit</TableHead>
+                            <TableHead className="text-xs">Unit Price</TableHead>
+                            <TableHead className="text-xs">Total</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {recentEntries.map((entry) => (
+                            <TableRow key={entry.entry_sno}>
+                              <TableCell className="text-xs">{String(entry.entry_date).slice(0, 10)}</TableCell>
+                              <TableCell className="text-xs">{entry.qty}</TableCell>
+                              <TableCell className="text-xs">{entry.unit_name ?? '—'}</TableCell>
+                              <TableCell className="text-xs">{entry.unit_price}</TableCell>
+                              <TableCell className="text-xs font-medium">{entry.total_amount}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground border rounded-xl bg-muted/10">
+                      <Package className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                      <p className="text-sm">{loadingEntries ? 'Loading…' : 'No pending entries yet for this vendor + service.'}</p>
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {/* ── Actions ───────────────────────────────────────────── */}
+              <div className="flex items-center justify-between gap-3 pt-4 border-t flex-wrap">
+                <Button type="button" variant="outline" onClick={handleReset} disabled={submitting} className="h-9">
+                  <RefreshCw className="h-4 w-4 mr-2" />Reset
+                </Button>
+
+                {canSubmit && (
+                  <Button
+                    type="submit"
+                    className="bg-blue-600 hover:bg-blue-700 h-9"
+                    disabled={submitting}
+                  >
+                    {submitting ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                    {isVendorDriven ? 'Log Entry' : 'Submit for Approval'}
+                  </Button>
+                )}
               </div>
-            )}
+            </form>
           </CardContent>
         </Card>
       </div>

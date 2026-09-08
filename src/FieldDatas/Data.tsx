@@ -1,7 +1,7 @@
 import React, { ReactElement, useMemo } from "react";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import {  Building, MapPin, FileCheck, IndianRupee, Package, FolderOpen,
-  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck, Landmark, Warehouse, Wrench, UserCog,} from "lucide-react";
+  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck, Landmark, Warehouse, Wrench, UserCog, FileText, Repeat, Link2,} from "lucide-react";
 import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
 import type { FieldType, OptionType } from "./fieldType/fieldType";
 
@@ -15,6 +15,9 @@ export interface MasterItemType {
   category: string;
   color: string;
   id: string;
+  // Hidden from a non-staff (temporary login_id/password) session's Masters
+  // grid — see MasterItemsGrid's staff check in MasterPageScreen.tsx.
+  staffOnly?: boolean;
 }
 
 const masterItems: MasterItemType[] = [
@@ -41,6 +44,11 @@ const masterItems: MasterItemType[] = [
   { icon: <Landmark className="w-5 h-5" />, name: "Bank Account Type", category: "compliance", color: "bg-cyan-600", id: "BankAccountTypeMaster" },
   { icon: <Warehouse className="w-5 h-5" />, name: "Warehouse Location", category: "inventory", color: "bg-orange-600", id: "WarehouseLocationMaster" },
   { icon: <UserCog className="w-5 h-5" />, name: "Designation Master", category: "administration", color: "bg-fuchsia-600", id: "DesignationMaster" },
+  { icon: <FileText className="w-5 h-5" />, name: "Terms & Conditions", category: "compliance", color: "bg-sky-600", id: "TermsConditionsMaster", staffOnly: true },
+  { icon: <Repeat className="w-5 h-5" />, name: "Recurrence Cadence", category: "approvals", color: "bg-violet-500", id: "RecurrenceCadenceMaster" },
+  { icon: <Link2 className="w-5 h-5" />, name: "Service Supplier Mapping", category: "inventory", color: "bg-teal-500", id: "ServiceMasterSupplierMapping" },
+  { icon: <FolderOpen className="w-5 h-5" />, name: "Supplier Category", category: "compliance", color: "bg-lime-600", id: "SupplierCatagoryMaster" },
+  { icon: <Landmark className="w-5 h-5" />, name: "Payment Mode", category: "compliance", color: "bg-emerald-500", id: "PaymentModeMaster" },
 
   // { icon: <FileText className="w-5 h-5" />, name: "KYC", category: "compliance", color: "bg-teal-500", id: "kyc_master" },
   // { icon: <Tag className="w-5 h-5" />, name: "Product Rate and Discount", category: "inventory", color: "bg-cyan-500", id: "product_rate_discount" },
@@ -271,6 +279,18 @@ const useBankAccountTypeFieldsMaster = (formData?: any): FieldType[] => {
   );
 };
 
+const usePaymentModeFieldsMaster = (formData?: any): FieldType[] => {
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "payment_mode_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "payment_mode_code", label: "Code", require: true, view: true, type: "text", input: true },
+      { field: "payment_mode_name", label: "Payment Mode Name", require: true, view: true, type: "text", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    []
+  );
+};
+
 const useDesignationMasterFields = (formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
@@ -348,6 +368,17 @@ const useProductCatagoryMaster = (formData?: any): FieldType[] => {
     []
   );
 };
+const useSupplierCatagoryFieldsMaster = (): FieldType[] => {
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "supp_cat_sno", label: "Supplier Category ID", require: false, view: false, type: "text", input: false },
+      { field: "supp_cat_name", label: "Supplier Category Name", require: true, view: true, type: "text", input: true },
+      { field: "supp_cat_code", label: "Supplier Category Code", require: false, view: true, type: "text", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    []
+  );
+};
 const useProductSubCatagoryMaster = (): FieldType[] => {
   const { options, loading } = useMasterOptions(['ProductCategoryMaster']);
   return useMemo<FieldType[]>(
@@ -360,6 +391,17 @@ const useProductSubCatagoryMaster = (): FieldType[] => {
       { field: "subcat_name", label: "Sub Category Name", require: true, view: true, type: "text", input: true },
       { field: "subcat_description", label: "Sub Category Description", require: false, view: true, type: "text", input: true },
       { field: "subcat_notes", label: "Sub Category Notes", require: false, view: true, type: "text", input: true },
+      // Regular = day-to-day stock drawn via Store Requisition; Non-Regular =
+      // one-off/specific-need items that skip requisition and go straight to
+      // Store Issue once GRN receives them. Defaults to Regular server-side.
+      {
+        field: "subcat_stock_type", label: "Stock Type", require: false, view: true, type: "select",
+        options: [
+          { label: "Regular", value: "Regular" },
+          { label: "Non-Regular", value: "Non-Regular" },
+        ],
+        input: true,
+      },
       { field: "subcat_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
     [options, loading]
@@ -453,7 +495,19 @@ const useProductFieldsMaster = (): FieldType[] => {
 
 const useServiceMasterFields = (): FieldType[] => {
   const { formData } = useAppState();
-  const { options, loading } = useMasterOptions(['ServiceTypeMaster', 'UomMaster']);
+  const { options, loading } = useMasterOptions(['ServiceTypeMaster', 'UomMaster', 'ProductMaster']);
+
+  // default_product_sno only makes sense for Vendor Driven services (e.g.
+  // "Milk Vendor" -> "Milk 1L") — resolved via ServiceTypeMaster's
+  // service_type_code extra field, same pattern useServiceAgreementFields
+  // uses to narrow services by type.
+  const isVendorBill = useMemo(() => {
+    const match = ((options?.ServiceTypeMaster ?? []) as any[]).find(
+      (t: any) => String(t.value) === String(formData?.service_type_sno)
+    );
+    return match?.service_type_code === 'VENDOR_BILL';
+  }, [options?.ServiceTypeMaster, formData?.service_type_sno]);
+
   return useMemo<FieldType[]>(
     () => [
       { field: "service_sno", label: "S.No", require: false, view: false, type: "text", input: false },
@@ -497,14 +551,60 @@ const useServiceMasterFields = (): FieldType[] => {
         input: !!formData?.is_recurring && formData?.recurrence_cadence === "EVERY_N_DAYS",
       },
 
+      // Linked catalogue product — Vendor Driven only, so daily entries can
+      // show product details (name/description/HSN/UOM) without a second lookup.
+      {
+        field: "default_product_sno", label: "Linked Product", require: false, view: isVendorBill, type: "select",
+        options: options?.ProductMaster || [], input: isVendorBill,
+      },
+
       { field: "description", label: "Description", require: false, view: true, type: "textarea", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
-    [options, loading, formData?.is_recurring, formData?.recurrence_cadence]
+    [options, loading, formData?.is_recurring, formData?.recurrence_cadence, isVendorBill]
   );
 };
 
+// Admin-editable cadence master (sql/23_service_recurring_flow_redesign.sql) —
+// lets an admin add arbitrary "every N days/months" cadences (e.g.
+// Bi-Monthly for electricity) without a SQL migration. Get+Create only, same
+// pattern as BankAccountTypeMaster.
+const useRecurrenceCadenceMasterFieldsMaster = (formData?: any): FieldType[] => {
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "recurrence_cadence_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "cadence_code", label: "Code", require: true, view: true, type: "text", input: true },
+      { field: "cadence_name", label: "Cadence Name", require: true, view: true, type: "text", input: true },
+      {
+        field: "interval_unit", label: "Interval Unit", require: true, view: true, type: "select",
+        options: [{ label: "Day", value: "DAY" }, { label: "Month", value: "MONTH" }], input: true,
+      },
+      { field: "interval_value", label: "Interval Value", require: true, view: true, type: "number", input: true, placeholder: "e.g. 2 for every 2 months" },
+      { field: "description", label: "Description", require: false, view: true, type: "text", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    []
+  );
+};
 
+// Predefined-supplier mapping (sql/45_service_master_supplier_and_product.sql)
+// — each grid row is one service+supplier pair; admin adds a row per
+// supplier they want to allow for a service. Reuses the standard
+// masters-grid add-row UX, no bespoke multi-select component needed.
+const useServiceMasterSupplierMappingFieldsMaster = (formData?: any): FieldType[] => {
+  const { options } = useMasterOptions(['ServiceMaster', 'VendorMaster']);
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "mapping_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "service_sno", label: "Service", require: true, view: false, type: "select", options: options?.ServiceMaster || [], input: true },
+      { field: "service_name", label: "Service", require: false, view: true, type: "select", options: options?.ServiceMaster || [], input: false },
+      { field: "kyc_basic_info_sno", label: "Supplier", require: true, view: false, type: "select", options: options?.VendorMaster || [], input: true },
+      { field: "company_name", label: "Supplier", require: false, view: true, type: "select", options: options?.VendorMaster || [], input: false },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    [options]
+  );
+};
 
 export {
   masterItems,
@@ -526,7 +626,11 @@ export {
   useProductFieldsMaster,
   useProductCatagoryMaster,
   useProductSubCatagoryMaster,
+  useSupplierCatagoryFieldsMaster,
+  usePaymentModeFieldsMaster,
   useServiceMasterFields,
   useWorkflowMasterFields,
+  useRecurrenceCadenceMasterFieldsMaster,
+  useServiceMasterSupplierMappingFieldsMaster,
 };
 

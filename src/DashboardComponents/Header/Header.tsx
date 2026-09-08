@@ -66,7 +66,8 @@ const Header: React.FC = () => {
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
 
   const userInfo: UserInfo = (userData?.[0] as UserInfo) ?? {};
-  const displayName = (userInfo.ename as string) || "User";
+  const displayName = (userInfo.ename as string) || (userInfo.full_name as string) || "User";
+  const identityCode = (userInfo.ecno as string) || (userInfo.login_id as string);
   const avatarLetter = displayName.charAt(0).toUpperCase();
   const cugNumber = (userInfo.sign_up_cug as string) ?? "";
   const maskedCug = showCugFull
@@ -76,9 +77,9 @@ const Header: React.FC = () => {
     : "N/A";
 
   const profileFields: ProfileField[] = [
-    { label: "Employee Code", value: userInfo.ecno as string,   Icon: Hash,      color: "blue"   },
+    { label: "Employee Code", value: identityCode,              Icon: Hash,      color: "blue"   },
     { label: "Branch",        value: userInfo.branch as string, Icon: Building2, color: "purple" },
-    { label: "Department",    value: userInfo.dept as string,   Icon: Briefcase, color: "green"  },
+    { label: "Department",    value: (userInfo.dept as string) || (userInfo.designation_name as string), Icon: Briefcase, color: "green"  },
   ];
 
   const handleFullscreenToggle = async () => {
@@ -209,7 +210,7 @@ const Header: React.FC = () => {
                   </div>
                   <div className="hidden flex-col items-start lg:flex">
                     <span className="text-xs font-semibold leading-tight">{displayName}</span>
-                    <span className="text-[10px] text-muted-foreground leading-tight">{userInfo.ecno as string}</span>
+                    <span className="text-[10px] text-muted-foreground leading-tight">{identityCode}</span>
                   </div>
                   <ChevronDown className="hidden h-3 w-3 text-muted-foreground lg:inline" />
                 </Button>
@@ -225,7 +226,7 @@ const Header: React.FC = () => {
                   </Avatar>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">{displayName}</p>
-                    <p className="text-xs text-muted-foreground">{userInfo.ecno as string}</p>
+                    <p className="text-xs text-muted-foreground">{identityCode}</p>
                     <Badge variant="secondary" className="mt-0.5 h-4 px-1.5 text-[9px] bg-primary/10 text-primary border-primary/20">
                       Active
                     </Badge>
