@@ -1,38 +1,34 @@
 import { useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  CheckCircle2, XCircle, Clock, ChevronRight, Layers,
-} from 'lucide-react';
-import type { FieldType } from '@/FieldDatas/fieldType/fieldType';
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
+import { CalendarClock, ChevronRight, Landmark, Layers, ReceiptText, Repeat, Users, Wallet, Calculator } from 'lucide-react';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { useAppState } from '@/imports';
 import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
+import {
+  AmountBreakdown, ApprovalDecisionDialog, ApprovalStepper, Callout, DecisionButtons, DetailEmptyState,
+  DetailHero, Fact, FactGrid, Panel, SelectableCard, StatusPill, StickyActionBar, SupplierSplitTable, SupplierSummary, TypeBadge,
+} from '@/CustomComponent/ServiceComponents/ServiceParts';
+import { CYCLE_STATUS, facilityLabel, formatDate, formatINR, parseStages, statusMeta } from '@/CustomComponent/ServiceComponents/serviceUtils';
 
-// ─── SP response mapping (sp_nt_GetServicePOsForApproval) ──────────────────
-// po_basic_sno | po_no | pr_basic_sno | pr_no | vendor_sno | vendor_name |
-// po_type | service_type_sno | service_type_code | service_type_name |
-// validity_from | validity_to | ceiling_amount | variance_tolerance_pct |
-// consumed_amount | is_retrospective | parent_blanket_po_sno | purpose |
-// terms_conditions | delivery_address | com_sno | div_sno | brn_sno |
-// dept_sno | workflow_types_id | current_approver_id | status |
-// stage_order_json (JSON) | items (JSON array of po_item_details rows)
+// ─── SP response mapping (sp_nt_GetServicePoCyclesForApproval) ────────────
+// cycle_sno | agreement_sno | agreement_no | service_name |
+// service_type_code | service_type_name | vendor_name |
+// vendors (the cycle's per-supplier split, parsed by the API) |
+// billing_period_start | qty | rate_amount | discount_pct | gst_pct |
+// net_cost | ceiling_amount | status | current_approver_id | entered_by |
+// entered_at | facility_type / rate_type / interest_rate_pct /
+// sanctioned_amount (Statutory only) | stage_order_json (JSON)
 //
-// Unlike Service Agreements, a Service PO has real line items — the detail
-// panel renders an items table in addition to the fieldDatas key/value grid.
+// Unlike the agreement approval screen, there's nothing left to enter here
+// — Fixed cycles arrive with rate/net_cost pre-filled from the agreement,
+// Unfixed and Statutory cycles arrive already filled in by the entry step.
+// The approver only reviews and approves/rejects. When the agreement has
+// several suppliers, approving raises one PO per supplier.
 
-interface ServicePOApprovalScreenLayoutProps {
+interface ServicePoApprovalScreenLayoutProps {
   approvalName: string;
-  poList: any[];
-  selectedPO: any;
-  handlePOSelect: (po: any) => void;
+  cycleList: any[];
+  selectedCycle: any;
+  handleCycleSelect: (cycle: any) => void;
   handleAction: (action: string) => void;
   showApprovalDialog: boolean;
   setShowApprovalDialog: (show: boolean) => void;
@@ -41,416 +37,267 @@ interface ServicePOApprovalScreenLayoutProps {
   handleSubmit: () => void;
   loading: boolean;
   actionType: 'approve' | 'reject';
-  fieldDatas: FieldType[];
   toast?: { message: string; type: 'success' | 'error' } | null;
 }
 
-const STATUS_MAP: Record<string, string> = { D: 'Draft', P: 'Pending', A: 'Approved', R: 'Rejected' };
-
-function getStatusLabel(s: any): string {
-  return STATUS_MAP[String(s).toUpperCase()] ?? String(s ?? 'Pending');
+function amountLabel(cycle: any): string {
+  return cycle?.net_cost ? formatINR(cycle.net_cost) : '—';
 }
 
-function formatDate(d: string) {
-  if (!d) return '—';
-  try {
-    return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  } catch { return d; }
-}
+// ─── Cycle List Card ────────────────────────────────────────────────────
 
-function formatINR(n: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(n || 0);
-}
-
-function parseStages(po: any): any[] {
-  try {
-    const raw = po.stage_order_json;
-    if (!raw) return [];
-    return typeof raw === 'string' ? JSON.parse(raw) : raw;
-  } catch { return []; }
-}
-
-function parseItems(po: any): any[] {
-  try {
-    const raw = po.items;
-    if (!raw) return [];
-    return typeof raw === 'string' ? JSON.parse(raw) : raw;
-  } catch { return []; }
-}
-
-function poTotal(po: any): number {
-  return parseItems(po).reduce((sum, it) => sum + Number(it.net_cost ?? it.qty * it.agreed_unit_price), 0);
-}
-
-// ─── PO List Card ────────────────────────────────────────────────────────
-
-function POListCard({ po, isSelected, onClick }: { po: any; isSelected: boolean; onClick: () => void }) {
+function CycleListCard({ cycle, isSelected, onClick }: { cycle: any; isSelected: boolean; onClick: () => void }) {
+  const status = statusMeta(CYCLE_STATUS, cycle.status);
   return (
-    <Card
-      className={`cursor-pointer transition-all hover:shadow-md border ${
-        isSelected
-          ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800'
-          : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-      }`}
-      onClick={onClick}
-    >
-      <CardContent className="p-3 sm:p-4 space-y-2.5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm text-slate-900 dark:text-slate-50 truncate">{po.po_no}</p>
-            {po.service_type_name && (
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{po.service_type_name}</p>
-            )}
-          </div>
-          <ChevronRight className={`h-4 w-4 flex-shrink-0 mt-0.5 ${isSelected ? 'text-blue-600' : 'text-slate-400'}`} />
-        </div>
-
-        <div className="flex flex-wrap gap-1.5">
-          {po.status && <Badge variant="outline" className="text-xs">{getStatusLabel(po.status)}</Badge>}
-          {po.po_type && <Badge variant="outline" className="text-xs">{po.po_type}</Badge>}
-        </div>
-
-        <div className="space-y-1 text-xs">
-          {po.vendor_name && (
-            <div className="flex justify-between gap-2">
-              <span className="text-slate-500">Vendor</span>
-              <span className="font-medium truncate text-right">{po.vendor_name}</span>
-            </div>
+    <SelectableCard selected={isSelected} onClick={onClick}>
+      <span className="flex items-start justify-between gap-2">
+        <span className="block min-w-0">
+          <span className="block truncate text-sm font-semibold">{cycle.agreement_no}</span>
+          {cycle.service_name && (
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">{cycle.service_name}</span>
           )}
-        </div>
+        </span>
+        <ChevronRight className={`mt-0.5 h-4 w-4 shrink-0 transition-transform ${isSelected ? 'translate-x-0.5 text-primary' : 'text-muted-foreground/60'}`} />
+      </span>
 
-        <Separator />
+      <span className="mt-2.5 flex flex-wrap items-center gap-1.5">
+        <TypeBadge type={cycle.service_type_code} />
+        <StatusPill tone={status.tone}>{status.label}</StatusPill>
+      </span>
 
-        <div className="flex justify-between gap-2 text-xs">
-          <span className="text-slate-500 font-medium">Amount</span>
-          <span className="font-bold text-green-600 dark:text-green-400">{formatINR(poTotal(po))}</span>
-        </div>
-      </CardContent>
-    </Card>
+      <span className="mt-3 block space-y-1 text-xs">
+        {(cycle.vendors?.length > 0 || cycle.vendor_name) && (
+          <span className="flex justify-between gap-3">
+            <span className="text-muted-foreground">{cycle.vendors?.length > 1 ? 'Suppliers' : 'Supplier'}</span>
+            <SupplierSummary
+              suppliers={(cycle.vendors ?? []).map((v: any) => ({ vendor_name: v.vendor_name, share_amount: v.net_cost }))}
+              fallback={cycle.vendor_name}
+              className="justify-end text-right font-medium"
+            />
+          </span>
+        )}
+        {cycle.billing_period_start && (
+          <span className="flex justify-between gap-3">
+            <span className="text-muted-foreground">PO generation</span>
+            <span className="text-right font-medium">{formatDate(cycle.billing_period_start)}</span>
+          </span>
+        )}
+      </span>
+
+      <span className="mt-3 flex items-baseline justify-between gap-2 border-t pt-2.5">
+        <span className="text-xs font-medium text-muted-foreground">Net amount</span>
+        <span className="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{amountLabel(cycle)}</span>
+      </span>
+    </SelectableCard>
   );
 }
 
-// ─── Approval stages (same shape/rendering as PR's, entity-agnostic) ───────
+// ─── Amount breakdown ───────────────────────────────────────────────────
 
-function ApprovalStages({ stages, currentApproverId }: { stages: any[]; currentApproverId?: string }) {
-  if (!stages.length) return null;
+function CycleAmountBreakdown({ cycle }: { cycle: any }) {
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-3">
-        <CardTitle className="text-base sm:text-lg">Approval Workflow</CardTitle>
-      </CardHeader>
-      <CardContent className="p-4 sm:p-6 pt-0">
-        <div className="space-y-2">
-          {stages.map((stage: any, idx: number) => {
-            const isCurrent = stage.approver_ecno === currentApproverId;
-            return (
-              <div
-                key={idx}
-                className={`flex items-start gap-3 p-3 rounded-lg border ${
-                  isCurrent
-                    ? 'border-blue-300 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-700'
-                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30'
-                }`}
-              >
-                <div className={`flex-shrink-0 w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center mt-0.5 ${
-                  isCurrent ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
-                }`}>
-                  {idx + 1}
-                </div>
-                <div className="flex-1 min-w-0 space-y-1">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{stage.stage ?? `Stage ${idx + 1}`}</p>
-                    {isCurrent && (
-                      <Badge className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border-0">Current</Badge>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Approver: <span className="font-medium text-slate-700 dark:text-slate-300">{stage.approver_ecno}</span>
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ─── Items table ────────────────────────────────────────────────────────
-
-function ItemsTable({ items }: { items: any[] }) {
-  if (!items.length) return null;
-  const total = items.reduce((sum, it) => sum + Number(it.net_cost ?? it.qty * it.agreed_unit_price), 0);
-  return (
-    <Card className="shadow-sm">
-      <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-3">
-        <CardTitle className="text-base sm:text-lg">Items</CardTitle>
-      </CardHeader>
-      <CardContent className="p-4 sm:p-6 pt-0 overflow-x-auto">
-        <table className="w-full text-xs sm:text-sm border-collapse">
-          <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-800 text-left text-slate-500">
-              <th className="py-2 pr-2">Service</th>
-              <th className="py-2 pr-2 text-right">Qty</th>
-              <th className="py-2 pr-2">Unit</th>
-              <th className="py-2 pr-2 text-right">Rate</th>
-              <th className="py-2 text-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it, idx) => (
-              <tr key={idx} className="border-b border-slate-100 dark:border-slate-900">
-                <td className="py-2 pr-2">{it.service_name || '-'}</td>
-                <td className="py-2 pr-2 text-right">{it.qty}</td>
-                <td className="py-2 pr-2">{it.unit_name || '-'}</td>
-                <td className="py-2 pr-2 text-right">{formatINR(it.agreed_unit_price)}</td>
-                <td className="py-2 text-right font-medium">{formatINR(Number(it.net_cost ?? it.qty * it.agreed_unit_price))}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="flex justify-end pt-3 text-sm font-semibold">
-          <span className="text-slate-500 font-normal mr-2">Total</span>
-          <span className="text-green-600 dark:text-green-400">{formatINR(total)}</span>
-        </div>
-      </CardContent>
-    </Card>
+    <Panel icon={Calculator} title="Amount breakdown">
+      <AmountBreakdown
+        rate={Number(cycle.rate_amount) || 0}
+        qty={Number(cycle.qty ?? 1) || 0}
+        discountPct={Number(cycle.discount_pct) || 0}
+        gstPct={Number(cycle.gst_pct) || 0}
+        net={cycle.net_cost != null ? Number(cycle.net_cost) : undefined}
+        ceiling={cycle.service_type_code !== 'FIXED_RECURRING' ? cycle.ceiling_amount : null}
+      />
+    </Panel>
   );
 }
 
 // ─── Detail panel ─────────────────────────────────────────────────────────
 
-function PODetailPanel({ po, handleAction, fieldDatas }: { po: any; handleAction: (a: string) => void; fieldDatas: FieldType[] }) {
+function CycleDetailPanel({ cycle, handleAction }: { cycle: any; handleAction: (a: string) => void }) {
   const { canEdit } = usePermissions();
   const { userData } = useAppState();
   const userEcno = userData[0]?.ecno ?? userData[0]?.login_id;
-  const isCurrentApprover = po.current_approver_id && userEcno && String(po.current_approver_id).trim() === String(userEcno).trim();
-  const stages = useMemo(() => parseStages(po), [po]);
-  const items = useMemo(() => parseItems(po), [po]);
-  const statusLabel = getStatusLabel(po.status);
+  const isCurrentApprover = cycle.current_approver_id && userEcno && String(cycle.current_approver_id).trim() === String(userEcno).trim();
+  const canAct = canEdit('ServicePoApprovalScreen') && !!isCurrentApprover;
+  const stages = useMemo(() => parseStages(cycle), [cycle]);
+  const status = statusMeta(CYCLE_STATUS, cycle.status);
+  const isFixed = cycle.service_type_code === 'FIXED_RECURRING';
+  const isStatutory = cycle.service_type_code === 'STATUTORY';
+  const vendors: any[] = cycle.vendors ?? [];
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 space-y-4 sm:space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-50">Service Purchase Order</h1>
-        <Badge variant="outline" className="text-xs sm:text-sm flex items-center gap-1">
-          <Clock className="h-3 w-3" />{statusLabel}
-        </Badge>
-      </div>
+    <div className="@container">
+      <div className="space-y-4 p-3 sm:space-y-5 sm:p-5 lg:p-6">
+        <div className="grid grid-cols-1 gap-4 sm:gap-5 @4xl:grid-cols-3">
+          <div className="min-w-0 space-y-4 sm:space-y-5 @4xl:col-span-2">
+            <DetailHero
+              icon={ReceiptText}
+              eyebrow="Service PO cycle"
+              title={cycle.agreement_no}
+              subtitle={[cycle.service_name, vendors.length > 1 ? `${vendors.length} suppliers` : cycle.vendor_name].filter(Boolean).join(' · ')}
+              badges={<><TypeBadge type={cycle.service_type_code} /><StatusPill tone={status.tone}>{status.label}</StatusPill></>}
+              metrics={[
+                { label: 'Net amount', value: amountLabel(cycle), accent: true },
+                { label: 'PO generation', value: formatDate(cycle.billing_period_start) },
+                { label: 'Quantity', value: cycle.qty ?? '—' },
+              ]}
+            />
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
-        <div className="xl:col-span-2 space-y-4 sm:space-y-6">
-          <Card className="shadow-sm">
-            <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 p-4 sm:p-6">
-              <div className="flex flex-col gap-2">
-                <CardTitle className="text-lg sm:text-xl">{po.po_no}</CardTitle>
-                {po.purpose && <CardDescription className="text-sm sm:text-base">{po.purpose}</CardDescription>}
-              </div>
-            </CardHeader>
-
-            <CardContent className="p-4 sm:p-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {fieldDatas.filter(f => f.view !== false).map(f => {
-                  const rawVal = po[f.field];
-                  if (rawVal == null || rawVal === '') return null;
-                  const displayVal = f.type === 'date' ? formatDate(String(rawVal)) : String(rawVal);
-                  return (
-                    <div key={f.field} className="flex items-start gap-2 sm:gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-900/50">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{f.label}</p>
-                        <p className="text-sm sm:text-base font-semibold truncate">{displayVal}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          <ItemsTable items={items} />
-
-          <ApprovalStages stages={stages} currentApproverId={po.current_approver_id} />
-        </div>
-
-        <div className="xl:col-span-1">
-          <Card className="shadow-sm xl:sticky xl:top-6">
-            <CardHeader className="p-4 sm:p-6 pb-3">
-              <CardTitle className="text-base sm:text-lg">Approval Actions</CardTitle>
-              <CardDescription className="text-xs sm:text-sm">Review and take action on this Service PO</CardDescription>
-            </CardHeader>
-
-            <CardContent className="p-4 sm:p-6 pt-0 space-y-3 sm:space-y-4">
-              {canEdit("ServicePOApprovalScreen") && isCurrentApprover ? (
-                <>
-                  <Button
-                    onClick={() => handleAction('approve')}
-                    className="w-full h-10 sm:h-11 text-sm bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
-                    size="lg"
-                  >
-                    <CheckCircle2 className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />Approve PO
-                  </Button>
-                  <Button onClick={() => handleAction('reject')} variant="destructive" className="w-full h-10 sm:h-11 text-sm" size="lg">
-                    <XCircle className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />Reject PO
-                  </Button>
-                </>
-              ) : (
-                <p className="text-xs text-muted-foreground text-center py-2">View only — no approval permission</p>
+            <Callout tone={isFixed ? 'primary' : isStatutory ? 'info' : 'violet'} icon={isFixed ? Repeat : isStatutory ? Landmark : Wallet}>
+              {isFixed
+                ? 'Fixed — the amount is pre-filled from the approved agreement; there was nothing to enter for this cycle.'
+                : `${isStatutory ? 'Statutory' : 'Unfixed'} — the amount was entered for this cycle${cycle.entered_by ? ` by ${cycle.entered_by}` : ''}${cycle.entered_at ? ` on ${formatDate(cycle.entered_at)}` : ''}.`}
+              {isStatutory && cycle.facility_type && (
+                <> {facilityLabel(cycle.facility_type)}{cycle.interest_rate_pct != null && <> at <b>{cycle.interest_rate_pct}%</b></>}
+                  {cycle.sanctioned_amount != null && <> on a sanctioned <b>{formatINR(cycle.sanctioned_amount)}</b></>}.</>
               )}
+            </Callout>
 
-              <Separator />
+            <CycleAmountBreakdown cycle={cycle} />
 
-              <div className="space-y-2 text-xs sm:text-sm">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500">Status</span>
-                  <Badge variant="outline" className="text-xs">{statusLabel}</Badge>
-                </div>
-                {po.current_approver_id && (
-                  <div className="flex justify-between items-center gap-2">
-                    <span className="text-slate-500 shrink-0">Approver</span>
-                    <span className="font-semibold truncate text-right">{po.current_approver_id}</span>
-                  </div>
+            {vendors.length > 1 && (
+              <Panel icon={Users} title={`Supplier split (${vendors.length})`} description="Approving raises one PO per supplier for their share">
+                <SupplierSplitTable
+                  amountLabel="Net amount"
+                  suppliers={vendors.map((v) => ({
+                    vendor_name: v.vendor_name, amount: v.net_cost, pct: v.share_pct,
+                    extra: `Rate ${formatINR(v.rate_amount)} × ${cycle.qty ?? 1}`,
+                  }))}
+                />
+              </Panel>
+            )}
+
+            <Panel icon={CalendarClock} title="Cycle details">
+              <FactGrid>
+                <Fact label="Agreement">{cycle.agreement_no}</Fact>
+                <Fact label="Service">{cycle.service_name ?? '—'}</Fact>
+                <Fact label={vendors.length > 1 ? 'Suppliers' : 'Supplier'}>
+                  {vendors.length > 1 ? vendors.map((v) => v.vendor_name).filter(Boolean).join(', ') : (cycle.vendor_name ?? '—')}
+                </Fact>
+                <Fact label="PO generation date">{formatDate(cycle.billing_period_start)}</Fact>
+                {cycle.entered_by && <Fact label="Entered by">{cycle.entered_by}</Fact>}
+                {cycle.entered_at && <Fact label="Entered on">{formatDate(cycle.entered_at)}</Fact>}
+              </FactGrid>
+            </Panel>
+
+            <ApprovalStepper stages={stages} currentApproverId={cycle.current_approver_id} currentUserEcno={userEcno} />
+          </div>
+
+          {/* Actions — a card beside the content when the pane is wide, a sticky bar below it otherwise */}
+          <div className="hidden @4xl:col-span-1 @4xl:block">
+            <Panel title="Approval actions" description="Review and take action on this PO cycle" className="@4xl:sticky @4xl:top-5">
+              <div className="space-y-4">
+                {canAct ? (
+                  <DecisionButtons
+                    className="flex-col"
+                    approveLabel="Approve PO"
+                    rejectLabel="Reject PO"
+                    onApprove={() => handleAction('approve')}
+                    onReject={() => handleAction('reject')}
+                  />
+                ) : (
+                  <p className="rounded-lg bg-muted/60 px-3 py-2.5 text-center text-xs text-muted-foreground">
+                    View only — you are not the current approver
+                  </p>
                 )}
+                <dl className="space-y-2 border-t pt-4 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-muted-foreground">Status</dt>
+                    <dd><StatusPill tone={status.tone}>{status.label}</StatusPill></dd>
+                  </div>
+                  {cycle.current_approver_id && (
+                    <div className="flex items-center justify-between gap-2">
+                      <dt className="shrink-0 text-muted-foreground">Current approver</dt>
+                      <dd className="truncate text-right font-semibold">{cycle.current_approver_id}</dd>
+                    </div>
+                  )}
+                </dl>
               </div>
-            </CardContent>
-          </Card>
+            </Panel>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
 
-// ─── Empty state ──────────────────────────────────────────────────────────
-
-function POEmptyState({ onOpenList }: { onOpenList: () => void }) {
-  return (
-    <div className="flex items-center justify-center h-full p-4">
-      <div className="text-center space-y-3">
-        <Layers className="h-12 w-12 sm:h-16 sm:w-16 text-slate-300 dark:text-slate-700 mx-auto" />
-        <h3 className="text-lg sm:text-xl font-semibold text-slate-600 dark:text-slate-400">No Service PO Selected</h3>
-        <p className="text-xs sm:text-sm text-slate-500 max-w-xs mx-auto">
-          Select a Service PO from the list to view details and take action
-        </p>
-        <Button variant="outline" className="lg:hidden mt-2" onClick={onOpenList}>
-          <Layers className="h-4 w-4 mr-2" />View List
-        </Button>
-      </div>
+      <StickyActionBar>
+        {canAct ? (
+          <DecisionButtons
+            className="@md:justify-end @md:[&>button]:min-w-44 @md:[&>button]:flex-none"
+            approveLabel="Approve"
+            rejectLabel="Reject"
+            onApprove={() => handleAction('approve')}
+            onReject={() => handleAction('reject')}
+          />
+        ) : (
+          <p className="py-1 text-center text-xs text-muted-foreground">View only — you are not the current approver</p>
+        )}
+      </StickyActionBar>
     </div>
   );
 }
 
 // ─── Root layout ──────────────────────────────────────────────────────────
 
-export default function ServicePOApprovalScreenLayout({
-  approvalName, poList, selectedPO, handlePOSelect, handleAction,
+export default function ServicePoApprovalScreenLayout({
+  approvalName, cycleList, selectedCycle, handleCycleSelect, handleAction,
   showApprovalDialog, setShowApprovalDialog, comments, setComments,
-  handleSubmit, loading, actionType, fieldDatas, toast,
-}: ServicePOApprovalScreenLayoutProps) {
+  handleSubmit, loading, actionType, toast,
+}: ServicePoApprovalScreenLayoutProps) {
   return (
     <>
       <SidebarDetailLayout
         sidebarTitle={approvalName}
-        sidebarCount={poList.length}
-        sidebarCountLabel="PO"
+        sidebarCount={cycleList.length}
+        sidebarCountLabel="cycle"
         toast={toast}
         listItems={(closeSheet) =>
-          poList.length === 0 ? (
-            <p className="p-6 text-center text-sm text-slate-500">No pending Service POs</p>
+          cycleList.length === 0 ? (
+            <p className="p-6 text-center text-sm text-muted-foreground">No pending Service PO cycles</p>
           ) : (
-            poList.map((po: any) => (
-              <POListCard
-                key={po.po_no}
-                po={po}
-                isSelected={selectedPO?.po_no === po.po_no}
-                onClick={() => { handlePOSelect(po); closeSheet(); }}
+            cycleList.map((cycle: any) => (
+              <CycleListCard
+                key={cycle.cycle_sno}
+                cycle={cycle}
+                isSelected={selectedCycle?.cycle_sno === cycle.cycle_sno}
+                onClick={() => { handleCycleSelect(cycle); closeSheet(); }}
               />
             ))
           )
         }
-        hasSelection={!!selectedPO}
+        hasSelection={!!selectedCycle}
         detailContent={
-          selectedPO
-            ? <PODetailPanel po={selectedPO} handleAction={handleAction} fieldDatas={fieldDatas} />
+          selectedCycle
+            ? <CycleDetailPanel cycle={selectedCycle} handleAction={handleAction} />
             : null
         }
-        emptyContent={<POEmptyState onOpenList={() => {}} />}
-        mobileListLabel="Service PO List"
-        mobileSelectionTitle={selectedPO?.po_no}
+        emptyContent={
+          <DetailEmptyState
+            icon={Layers}
+            title={cycleList.length === 0 ? 'Nothing waiting on you' : 'No cycle selected'}
+            description={cycleList.length === 0
+              ? 'Service PO cycles routed to you for approval will show up here.'
+              : 'Pick a Service PO cycle from the list to review its amount and take action.'}
+          />
+        }
+        mobileListLabel="Cycle list"
+        mobileSelectionTitle={selectedCycle?.agreement_no}
       />
 
-      <Dialog open={showApprovalDialog} onOpenChange={setShowApprovalDialog}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto mx-4">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-              {actionType === 'approve'
-                ? <><CheckCircle2 className="h-5 w-5 text-green-600" /> Approve Service PO</>
-                : <><XCircle className="h-5 w-5 text-red-600" /> Reject Service PO</>}
-            </DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              {actionType === 'approve'
-                ? 'Optionally add a comment before approving.'
-                : 'Please provide a reason for rejection.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2">
-            {actionType === 'approve' && (
-              <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800">
-                <p className="text-xs sm:text-sm font-semibold text-green-900 dark:text-green-100">Confirming Approval</p>
-                <p className="text-xs text-green-700 dark:text-green-300 mt-0.5">
-                  If this is the final stage, the PO PDF is generated and emailed to the supplier immediately.
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <Label htmlFor="po-comments" className="text-xs sm:text-sm">
-                Comments {actionType === 'reject' && <span className="text-red-500">*</span>}
-              </Label>
-              <Textarea
-                id="po-comments"
-                placeholder={actionType === 'approve' ? 'Any additional notes…' : 'Reason for rejection…'}
-                value={comments}
-                onChange={e => setComments(e.target.value)}
-                rows={3}
-                className="resize-none text-sm"
-              />
-            </div>
-
-            {selectedPO && (
-              <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-900 space-y-2 text-xs sm:text-sm">
-                <div className="flex justify-between gap-2">
-                  <span className="text-slate-500">PO No</span>
-                  <span className="font-semibold">{selectedPO.po_no}</span>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <span className="text-slate-500">Amount</span>
-                  <span className="font-semibold text-green-600 dark:text-green-400">{formatINR(poTotal(selectedPO))}</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={() => setShowApprovalDialog(false)} disabled={loading} className="w-full sm:w-auto text-sm">
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={loading || (actionType === 'reject' && !comments.trim())}
-              className={`w-full sm:w-auto text-sm ${actionType === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
-            >
-              {loading ? (
-                <><Clock className="mr-2 h-4 w-4 animate-spin" />Processing…</>
-              ) : actionType === 'approve' ? (
-                <><CheckCircle2 className="mr-2 h-4 w-4" />Confirm Approval</>
-              ) : (
-                <><XCircle className="mr-2 h-4 w-4" />Confirm Rejection</>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ApprovalDecisionDialog
+        open={showApprovalDialog}
+        onOpenChange={setShowApprovalDialog}
+        actionType={actionType}
+        comments={comments}
+        setComments={setComments}
+        onSubmit={handleSubmit}
+        loading={loading}
+        entityName="Service PO"
+        approveNote={selectedCycle?.vendors?.length > 1
+          ? `If this is the final stage, ${selectedCycle.vendors.length} POs are raised immediately — one for each supplier.`
+          : 'If this is the final stage, the PO is raised immediately.'}
+        summary={selectedCycle ? [
+          { label: 'Agreement', value: selectedCycle.agreement_no },
+          { label: 'PO generation', value: formatDate(selectedCycle.billing_period_start) },
+          { label: 'Net amount', value: <span className="text-emerald-600 dark:text-emerald-400">{amountLabel(selectedCycle)}</span> },
+        ] : undefined}
+      />
     </>
   );
 }

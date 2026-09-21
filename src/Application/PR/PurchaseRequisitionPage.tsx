@@ -27,7 +27,6 @@ import {
   prSaveDeptDraft,
   prUpdateDeptDraft,
   getAllRequiredMasterForOptions,
-  getActiveServiceAgreement,
 } from '@/Services/Api';
 import useFetch from '@/hooks/useFetchHook';
 
@@ -37,6 +36,7 @@ import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import type { FieldType } from '@/FieldDatas/fieldType/fieldType';
 import PRDraftSidebar, { type DeptDraft } from './PRDraftSidebar';
+import VendorDrivenPRForm from './VendorDrivenPRForm';
 
 interface FormErrors {
   [key: string]: string;
@@ -67,7 +67,7 @@ interface PRPageProps {
   permissionComponent?: string;
 }
 
-const DEFAULT_ITEM_TYPES: PRItemType[] = ['product', 'service'];
+const DEFAULT_ITEM_TYPES: PRItemType[] = ['product'];
 
 const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   editDraftId,
@@ -86,6 +86,10 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
     const u = Array.isArray(userData) ? userData[0] : userData;
     return u?.ecno ?? '';
   }, [userData]);
+
+  // Request Mode — Regular (existing dynamic form) vs Vendor Driven
+  // (supplier-first: date + supplier + per-line rate/GST/discount, own form)
+  const [requestMode, setRequestMode] = useState<'NORMAL' | 'VENDOR_DRIVEN'>('NORMAL');
 
   // Cascade tracking
   const [selectedCompany, setSelectedCompany] = useState<string>('');
@@ -382,17 +386,6 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
         }
       }
 
-      // When switching category, clear fields belonging to the other type
-      if (fieldName === 'item_type') {
-        if (value === 'service') {
-          updated.prod_sno = '';
-          updated.prod_name = '';
-          updated.item_attachment = null;
-        } else {
-          updated.service_desc = '';
-        }
-      }
-
       const field = itemDetailsFields.find((f) => f.field === fieldName);
       if (field?.options && Array.isArray(field.options) && fieldName !== 'prod_sno' && fieldName !== 'item_type') {
         const selectedOption = (field.options as any[]).find(
@@ -414,59 +407,6 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
       });
     }
   };
-
-  // ── Fixed Recurring service agreement auto-fill (spec §4) ──────────────────
-  // Whenever the current item's service_sno + this PR's org scope are both
-  // set, look up whether an Approved, in-period Service Agreement exists for
-  // that exact combination. We don't need to know client-side whether the
-  // selected service is FIXED_RECURRING — if the lookup returns a match, this
-  // line is agreement-backed and gets agreement_sno attached (so the server
-  // overrides rate/UOM from the agreement); if not, it's just a normal
-  // service line. The server's own validation
-  // (usp_InsertPurchaseRequest v3, sql/12_pr_agreement_autofill.sql) is the
-  // real authority on whether an agreement was actually required — this is
-  // best-effort UI, not the enforcement point.
-  const agreementLookupUrl =
-    currentItemType === 'service' &&
-    currentItem.service_sno && basicFormData.com_sno && basicFormData.div_sno && basicFormData.brn_sno && basicFormData.dept_sno
-      ? getActiveServiceAgreement
-      : null;
-  const { data: agreementLookupData, loading: agreementLookupLoading } = useFetch<{ success: boolean; data: any }>(
-    agreementLookupUrl,
-    '',
-    agreementLookupUrl
-      ? {
-          com_sno: basicFormData.com_sno,
-          div_sno: basicFormData.div_sno,
-          brn_sno: basicFormData.brn_sno,
-          dept_sno: basicFormData.dept_sno,
-          service_sno: currentItem.service_sno,
-        }
-      : null
-  );
-
-  useEffect(() => {
-    setCurrentItem((prev) => {
-      if (!prev.service_sno) return prev; // item was reset/cleared since the lookup fired
-      const agreement = agreementLookupData?.data;
-      if (agreement) {
-        return {
-          ...prev,
-          agreement_sno: agreement.agreement_sno,
-          agreement_no: agreement.agreement_no,
-          agreement_rate_amount: agreement.rate_amount,
-          agreement_rate_uom_name: agreement.rate_uom_name,
-          agreement_period_end_date: agreement.period_end_date,
-        };
-      }
-      if (prev.agreement_sno) {
-        const { agreement_sno, agreement_no, agreement_rate_amount, agreement_rate_uom_name, agreement_period_end_date, ...rest } = prev;
-        return rest;
-      }
-      return prev;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agreementLookupData]);
 
   // ── Item CRUD ─────────────────────────────────────────────────────────────
 
@@ -810,6 +750,42 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
         </div>
       </PageHeader>
 
+      {/* Request Mode toggle — Regular uses the existing dynamic-field form
+          below unchanged; Vendor Driven swaps in a separate, simpler
+          supplier-first form (own component, own submit path) since its
+          shape (vendor/rate/GST/discount per line) doesn't fit the
+          product-or-service item model the rest of this page is built on. */}
+      {requisitionType === 'purchase' && (
+        <div className="container mx-auto pt-6 px-4">
+          <div className="inline-flex rounded-md border bg-muted/50 p-1">
+            <button
+              type="button"
+              onClick={() => setRequestMode('NORMAL')}
+              className={cn(
+                'px-4 py-1.5 text-sm font-medium rounded-sm transition-colors',
+                requestMode === 'NORMAL' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              Regular
+            </button>
+            <button
+              type="button"
+              onClick={() => setRequestMode('VENDOR_DRIVEN')}
+              className={cn(
+                'px-4 py-1.5 text-sm font-medium rounded-sm transition-colors',
+                requestMode === 'VENDOR_DRIVEN' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              Vendor Driven
+            </button>
+          </div>
+        </div>
+      )}
+
+      {requestMode === 'VENDOR_DRIVEN' ? (
+        <VendorDrivenPRForm onSubmitted={onDraftSubmitted} />
+      ) : (
+      <>
       {/* Main form */}
       <div className="container mx-auto py-6 px-4">
         <Card className="shadow-md">
@@ -1031,21 +1007,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
 
                   </div>
 
-                  {/* ── Fixed Recurring service agreement info (spec §4) ── */}
-                  {currentItemType === 'service' && currentItem.service_sno && (
-                    agreementLookupLoading ? (
-                      <p className="text-xs text-muted-foreground">Checking for an approved service agreement…</p>
-                    ) : currentItem.agreement_sno ? (
-                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                        Billed per agreement <strong>{currentItem.agreement_no}</strong> — ₹
-                        {Number(currentItem.agreement_rate_amount).toLocaleString('en-IN')}
-                        {currentItem.agreement_rate_uom_name ? `/${currentItem.agreement_rate_uom_name}` : ''}, valid until{' '}
-                        {String(currentItem.agreement_period_end_date).slice(0, 10)}. Rate is set by the agreement and can't be edited here.
-                      </div>
-                    ) : null
-                  )}
-
-                  {/* ── Textarea fields (service description, remarks) ── */}
+                  {/* ── Textarea fields (remarks) ── */}
                   {itemTextareaFields.map((field) => (
                     <div key={field.field} data-error={!!itemErrors[field.field]}>
                       <CustomInputField
@@ -1264,6 +1226,8 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
           </CardContent>
         </Card>
       </div>
+      </>
+      )}
 
       {/* Real-time shared draft sidebar */}
       {/* <PRDraftSidebar

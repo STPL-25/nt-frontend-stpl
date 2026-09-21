@@ -12,12 +12,12 @@ import {
 } from '@/components/ui/table';
 import { StatusBadge } from '@/utils/statusUtils';
 import type { InventoryItem } from './types';
-import { formatINR, getStockStatus } from './helpers';
+import { formatINR, getStockStatus, getEffectiveLevels, getPackEquivalent, formatPackQty } from './helpers';
 
 type SortKey = 'item_name' | 'com_name' | 'div_name' | 'brn_name' | 'current_stock' | 'reorder_qty' | 'value';
 type SortDir = 'asc' | 'desc';
 
-const STOCK_STATUS_OPTIONS = ['In Stock', 'Low Stock', 'Out of Stock', 'Overstocked', 'Discontinued'];
+const STOCK_STATUS_OPTIONS = ['In Stock', 'Reorder Needed', 'Low Stock', 'Out of Stock', 'Overstocked', 'Expiry Stock', 'Discontinued'];
 
 export const displayStatus = (item: InventoryItem): string =>
   item.status === 'Discontinued' ? 'Discontinued' : getStockStatus(item).label;
@@ -25,8 +25,14 @@ export const displayStatus = (item: InventoryItem): string =>
 const initials = (name: string): string =>
   name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
 
-const sortValue = (item: InventoryItem, key: SortKey): string | number =>
-  key === 'value' ? item.current_stock * item.cost_price : (item[key] ?? '');
+const sortValue = (item: InventoryItem, key: SortKey): string | number => {
+  if (key === 'value') return item.current_stock * item.cost_price;
+  // Sort by the same EFFECTIVE reorder value shown in the column (master
+  // policy when configured, else the item's own reorder_qty) — matches what
+  // the Status column is also driven by.
+  if (key === 'reorder_qty') return getEffectiveLevels(item).reorder;
+  return item[key] ?? '';
+};
 
 interface InventoryTableProps {
   items: InventoryItem[];
@@ -202,7 +208,8 @@ const InventoryTable: React.FC<InventoryTableProps> = ({
               <TableHead className="whitespace-nowrap">Location Name</TableHead>
               <SortHead label="On Hand" k="current_stock" right />
               <TableHead className="text-right whitespace-nowrap">Min Stock</TableHead>
-              <SortHead label="Reorder Qty" k="reorder_qty" right />
+              <TableHead className="text-right whitespace-nowrap">Max Stock</TableHead>
+              <SortHead label="ROL" k="reorder_qty" right />
               <SortHead label="Value" k="value" right />
               <TableHead className="whitespace-nowrap">Status</TableHead>
             </TableRow>
@@ -210,6 +217,13 @@ const InventoryTable: React.FC<InventoryTableProps> = ({
           <TableBody>
             {rows.map(item => {
               const isSelected = item.item_sno != null && !!selected[item.item_sno];
+              // Master policy overrides the item's own fields when configured
+              // (same rule getStockStatus uses) — these are the numbers that
+              // actually decided the Status badge, so show those, not the raw
+              // item-level fields alone.
+              const levels = getEffectiveLevels(item);
+              // Same stock in the pack unit it is bought in (115 Liter ≈ 7.67 Tin).
+              const pack = getPackEquivalent(item);
               return (
                 <TableRow
                   key={item.item_sno ?? item.item_code}
@@ -243,9 +257,13 @@ const InventoryTable: React.FC<InventoryTableProps> = ({
                   <TableCell className="text-right tabular-nums">
                     {item.current_stock.toLocaleString('en-IN')}
                     <span className="text-xs text-muted-foreground ml-1">{item.uom}</span>
+                    {pack && (
+                      <div className="text-xs text-muted-foreground">≈ {formatPackQty(pack.qty)} {pack.unit}</div>
+                    )}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">{item.min_stock.toLocaleString('en-IN')}</TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">{item.reorder_qty.toLocaleString('en-IN')}</TableCell>
+                  <TableCell className="text-right tabular-nums text-muted-foreground">{levels.min.toLocaleString('en-IN')}</TableCell>
+                  <TableCell className="text-right tabular-nums text-muted-foreground">{levels.max.toLocaleString('en-IN')}</TableCell>
+                  <TableCell className="text-right tabular-nums text-muted-foreground">{levels.reorder.toLocaleString('en-IN')}</TableCell>
                   <TableCell className="text-right tabular-nums font-medium">{formatINR(item.current_stock * item.cost_price)}</TableCell>
                   <TableCell><StatusBadge status={displayStatus(item)} withDot /></TableCell>
                 </TableRow>

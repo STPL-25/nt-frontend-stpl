@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/sheet';
 import { StatusBadge } from '@/utils/statusUtils';
 import type { InventoryItem, StockMovement } from './types';
-import { formatINR, formatDate } from './helpers';
+import { formatINR, formatDate, getEffectiveLevels, getPackEquivalent, formatPackQty } from './helpers';
 import { displayStatus } from './InventoryTable';
 
 interface InventoryDetailDrawerProps {
@@ -53,6 +53,14 @@ const InventoryDetailDrawer: React.FC<InventoryDetailDrawerProps> = ({
     setAdjustQty('');
   };
 
+  // Min/Max/ROL shown here are the EFFECTIVE values (Product Stock Level
+  // Master policy when configured, else the item's own fields) — the same
+  // numbers that decide the Status badge above, so nothing shown here
+  // contradicts it.
+  const levels = item ? getEffectiveLevels(item) : null;
+  // Same stock in the pack unit it is bought in (115 Liter ≈ 7.67 Tin).
+  const pack = item ? getPackEquivalent(item) : null;
+
   return (
     <Sheet open={!!item} onOpenChange={open => { if (!open) { setAdjustQty(''); onClose(); } }}>
       <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
@@ -69,14 +77,27 @@ const InventoryDetailDrawer: React.FC<InventoryDetailDrawerProps> = ({
               <div className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg border bg-muted/40 p-4">
                 <Field label="Category">{item.category}</Field>
                 <Field label="Warehouse">{item.warehouse || '—'}</Field>
-                <Field label="On Hand" strong>{item.current_stock.toLocaleString('en-IN')} {item.uom}</Field>
-                <Field label="Min / Max">{item.min_stock.toLocaleString('en-IN')} / {item.max_stock.toLocaleString('en-IN')}</Field>
-                <Field label="Reorder Qty">{item.reorder_qty.toLocaleString('en-IN')}</Field>
+                <Field label="On Hand" strong>
+                  {item.current_stock.toLocaleString('en-IN')} {item.uom}
+                  {pack && (
+                    <span className="text-muted-foreground font-normal"> · ≈ {formatPackQty(pack.qty)} {pack.unit}</span>
+                  )}
+                </Field>
+                <Field label="Min / Max Stock">{levels!.min.toLocaleString('en-IN')} / {levels!.max.toLocaleString('en-IN')}</Field>
+                <Field label="ROL (Reorder Level)">{levels!.reorder.toLocaleString('en-IN')}</Field>
                 <Field label="Location">{item.location || '—'}</Field>
                 <Field label="Unit Cost">{formatINR(item.cost_price)}</Field>
                 {/* <Field label="Stock Value" strong>{formatINR(item.current_stock * item.cost_price)}</Field> */}
                 {/* <Field label="Selling Price">{formatINR(item.selling_price)}</Field> */}
                 <Field label="Last Updated">{formatDate(item.updated_at ?? item.created_at)}</Field>
+                {item.subcat_stock_type === 'Perishable' && (
+                  <Field label="Last Received">
+                    {formatDate(item.last_received_date ?? undefined)}
+                    {item.perishable_days != null && (
+                      <span className="text-muted-foreground font-normal"> · {item.perishable_days}-day shelf life</span>
+                    )}
+                  </Field>
+                )}
               </div>
 
               {/* {canAdjust && item.status !== 'Discontinued' && (

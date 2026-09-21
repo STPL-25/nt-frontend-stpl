@@ -41,6 +41,12 @@ export const apiKycApproveAction = baseUrl + "/api/kyc/approve_kyc";
 export const apiGetGSTNDetails = baseUrl + "/api/kyc/Get_GSTN_Details";
 export const apiGetKycOrgMappings = (kycId: number | string) => baseUrl + `/api/kyc/get_kyc_org_mappings/${kycId}`;
 
+// Public Supplier KYC — anonymous self-service submission at /supplier_kyc,
+// no staff session required (see backend-stpl/src/Kyc/routes/PublicKyc.routes.js)
+export const apiPublicKycMasterOptions = baseUrl + "/api/public_kyc/master_options";
+export const apiPublicKycCreate        = baseUrl + "/api/public_kyc/create_kyc_records";
+export const apiPublicKycGetGSTNDetails = baseUrl + "/api/public_kyc/Get_GSTN_Details";
+
 // Common Masters
 export const apiFetchCommonMaster = baseUrl + "/api/common_master/";
 export const getAllRequiredMasterForOptions = baseUrl + "/api/common_master/getRequiredMasterForOptions";
@@ -71,6 +77,7 @@ export const apiGetMasterItems = baseUrl + "/api/MasterItems";
 // Workflow Approval — approval_workflow_master
 export const apiSaveFullWorkflow    = baseUrl + "/api/workflow_approval/saveFullWorkflow";
 export const apiGetWorkflows        = baseUrl + "/api/workflow_approval/getWorkflows";
+export const apiGetEntityTypes      = baseUrl + "/api/workflow_approval/getEntityTypes";
 export const apiUpdateWorkflow      = baseUrl + "/api/workflow_approval/updateWorkflow";
 export const apiGetWorkflowByEntity = (entityType: string) =>
   `${baseUrl}/api/workflow_approval/getWorkflowByEntity/${entityType}`;
@@ -107,6 +114,16 @@ export const apiGetDefaultTermsConditions = (
   com_sno: number | string, div_sno: number | string, brn_sno: number | string, dept_sno: number | string
 ) => `${baseUrl}/api/terms_conditions/getDefaultTermsConditions?com_sno=${com_sno}&div_sno=${div_sno}&brn_sno=${brn_sno}&dept_sno=${dept_sno}`;
 
+// Product Stock Level Master — per-product Min Qty/Max Qty/Reorder Level
+// policy, scoped by Company/Division/Branch OR by a Warehouse Location.
+// Reference-only integration into the Inventory Stock page (grn-service
+// already returns master_min_qty/master_max_qty/master_reorder_level on
+// getItems — see grn-service/sql/29_inventory_stock_level_reference.sql).
+export const apiGetProductStockLevels    = baseUrl + "/api/product_stock_level/getProductStockLevels";
+export const apiCreateProductStockLevel  = baseUrl + "/api/product_stock_level/createProductStockLevel";
+export const apiUpdateProductStockLevel  = baseUrl + "/api/product_stock_level/updateProductStockLevel";
+export const apiDeleteProductStockLevel  = baseUrl + "/api/product_stock_level/deleteProductStockLevel";
+
 // Purchase Requisition — DB
 export const createPrRecord = baseUrl + "/api/pr/createPrRecords";
 export const getPrRecords = baseUrl + "/api/pr/getPrRecords";
@@ -123,52 +140,6 @@ export const prTrackingGetOrg = baseUrl + "/api/pr_tracking/getOrgTracking";
 export const prTrackingGetTimeline = (pr_no: string) =>
   `${baseUrl}/api/pr_tracking/getTimeline/${encodeURIComponent(pr_no)}`;
 
-// Service Purchase Order — DB
-export const createServicePO = baseUrl + "/api/service_po/createServicePO";
-export const createCallOffPO = baseUrl + "/api/service_po/createCallOffPO";
-export const getServicePORecords = baseUrl + "/api/service_po/getServicePORecords";
-export const servicePoApproveAction = baseUrl + "/api/service_po/approveServicePO";
-export const getAllServicePOs = baseUrl + "/api/service_po/getAllServicePOs";
-export const getEligiblePrLinesForServicePO = baseUrl + "/api/service_po/getEligiblePrLinesForServicePO";
-export const reviseServicePOCeiling = baseUrl + "/api/service_po/reviseServicePOCeiling";
-export const sendServicePOEmail = baseUrl + "/api/service_po/sendServicePOEmail";
-
-// Service Agreement — DB
-export const createServiceAgreement = baseUrl + "/api/service_agreement/createServiceAgreement";
-export const updateServiceAgreement = baseUrl + "/api/service_agreement/updateServiceAgreement";
-export const approveServiceAgreement = baseUrl + "/api/service_agreement/approveServiceAgreement";
-export const getServiceAgreements = baseUrl + "/api/service_agreement/getServiceAgreements";
-export const getActiveServiceAgreement = baseUrl + "/api/service_agreement/getActiveServiceAgreement";
-export const getServiceAgreementsForApproval = baseUrl + "/api/service_agreement/getServiceAgreementsForApproval";
-export const getApprovedSuppliersForService = baseUrl + "/api/service_agreement/getApprovedSuppliersForService";
-
-// Service Vendor Daily Entry — Vendor Driven daily logging + consolidation
-export const createServiceVendorEntry = baseUrl + "/api/service_vendor_entry/createEntry";
-export const getServiceVendorEntries = baseUrl + "/api/service_vendor_entry/getEntries";
-export const cancelServiceVendorEntry = baseUrl + "/api/service_vendor_entry/cancelEntry";
-export const consolidateServiceVendorEntries = baseUrl + "/api/service_vendor_entry/consolidate";
-
-// Service Bill Request — DB (Variable Recurring per-cycle invoice-first approval)
-export const createServiceBillRequest = baseUrl + "/api/service_bill_request/createServiceBillRequest";
-export const approveServiceBillRequest = baseUrl + "/api/service_bill_request/approveServiceBillRequest";
-export const getServiceBillRequests = baseUrl + "/api/service_bill_request/getServiceBillRequests";
-export const getActiveCeilingAgreementsForBilling = baseUrl + "/api/service_bill_request/getActiveCeilingAgreementsForBilling";
-export const getServiceBillRequestsForApproval = baseUrl + "/api/service_bill_request/getServiceBillRequestsForApproval";
-export const retryServiceBillRequestPOIssue = baseUrl + "/api/service_bill_request/retryPOIssue";
-
-// Service Vendor KYC — DB (separate KYC intake + approval for service vendors)
-export const createServiceVendorKyc = baseUrl + "/api/service_vendor_kyc/createServiceVendorKyc";
-export const approveServiceVendorKyc = baseUrl + "/api/service_vendor_kyc/approveServiceVendorKyc";
-export const getServiceVendorKycs = baseUrl + "/api/service_vendor_kyc/getServiceVendorKycs";
-export const getApprovedServiceVendorKycs = baseUrl + "/api/service_vendor_kyc/getApprovedServiceVendorKycs";
-export const getServiceVendorKycsForApproval = baseUrl + "/api/service_vendor_kyc/getServiceVendorKycsForApproval";
-
-// Service Entry — DB (grn-service)
-export const getPendingServicePOsForServiceEntry = baseUrl + "/api/service_entry/getPendingServicePOs";
-export const getServiceEntriesByPO = (po_basic_sno: number | string) => `${baseUrl}/api/service_entry/getServiceEntriesByPO/${po_basic_sno}`;
-export const createServiceEntry = baseUrl + "/api/service_entry/createServiceEntry";
-export const serviceEntryApproveAction = baseUrl + "/api/service_entry/approveServiceEntry";
-export const getAllServiceEntries = baseUrl + "/api/service_entry/getAllServiceEntries";
 
 // Invoice — DB (grn-service)
 export const createInvoice = baseUrl + "/api/invoice/createInvoice";
@@ -180,6 +151,8 @@ export const getInvoicesByPO = (po_basic_sno: number | string) => `${baseUrl}/ap
 export const getAllInvoices = baseUrl + "/api/invoice/getAllInvoices";
 export const getPendingInvoiceMatches = baseUrl + "/api/invoice/getPendingMatches";
 export const getPoItemsForAllocation = (po_basic_sno: number | string) => `${baseUrl}/api/invoice/getPoItemsForAllocation/${po_basic_sno}`;
+export const getVendorDrivenBillableChildPOs = baseUrl + "/api/invoice/getVendorDrivenBillableChildPOs";
+export const consolidateVendorDrivenBills = baseUrl + "/api/invoice/consolidateVendorDrivenBills";
 
 // Payment — DB (grn-service)
 export const getPayableBills = baseUrl + "/api/payment/getPayableBills";
@@ -272,3 +245,36 @@ export const inventoryAdjustStock = baseUrl + "/api/inventory/adjustStock";
 // export const acGetLedgers         = baseUrl + "/api/ac_entry/getLedgers";
 // export const acCreateLedger       = baseUrl + "/api/ac_entry/createLedger";
 // export const acUpdateLedger       = (ledger_sno: number) => `${baseUrl}/api/ac_entry/updateLedger/${ledger_sno}`;
+
+// Service Agreement
+export const createServiceAgreement          = baseUrl + "/api/service_agreement/createServiceAgreement";
+export const updateServiceAgreement          = baseUrl + "/api/service_agreement/updateServiceAgreement";
+export const approveServiceAgreement         = baseUrl + "/api/service_agreement/approveServiceAgreement";
+export const getServiceAgreements            = baseUrl + "/api/service_agreement/getServiceAgreements";
+export const getServiceAgreementsForApproval = baseUrl + "/api/service_agreement/getServiceAgreementsForApproval";
+export const getServiceAgreementHistory      = baseUrl + "/api/service_agreement/getServiceAgreementHistory";
+
+// Service GRN (Unfixed agreements only — PO reference + invoice, no stock tracking)
+export const createServiceGrn         = baseUrl + "/api/service_grn/createServiceGrn";
+export const getPendingServiceGrnPOs  = baseUrl + "/api/service_grn/getPendingServiceGrnPOs";
+export const getServiceGrns           = baseUrl + "/api/service_grn/getServiceGrns";
+
+export const submitServicePoEntry        = baseUrl + "/api/service_po/submitServicePoEntry";
+export const approveServicePoCycle       = baseUrl + "/api/service_po/approveServicePoCycle";
+export const getServicePoCycles          = baseUrl + "/api/service_po/getServicePoCycles";
+export const getServicePoCyclesForApproval = baseUrl + "/api/service_po/getServicePoCyclesForApproval";
+
+// Loan payments — rate history, interest calculator, bank payment vouchers
+export const getLoanAccounts                = baseUrl + "/api/loan_voucher/getLoanAccounts";
+export const getLoanDetail                  = baseUrl + "/api/loan_voucher/getLoanDetail";
+export const previewLoanInterest            = baseUrl + "/api/loan_voucher/previewLoanInterest";
+export const addLoanRatePeriod              = baseUrl + "/api/loan_voucher/addLoanRatePeriod";
+export const deleteLoanRatePeriod           = baseUrl + "/api/loan_voucher/deleteLoanRatePeriod";
+export const addLoanPrincipalTxn            = baseUrl + "/api/loan_voucher/addLoanPrincipalTxn";
+export const deleteLoanPrincipalTxn         = baseUrl + "/api/loan_voucher/deleteLoanPrincipalTxn";
+export const createBankPaymentVoucher       = baseUrl + "/api/loan_voucher/createBankPaymentVoucher";
+export const getBankPaymentVouchers         = baseUrl + "/api/loan_voucher/getBankPaymentVouchers";
+export const getBankPaymentVoucher          = baseUrl + "/api/loan_voucher/getBankPaymentVoucher";
+export const getBankPaymentVouchersForApproval = baseUrl + "/api/loan_voucher/getBankPaymentVouchersForApproval";
+export const approveBankPaymentVoucher      = baseUrl + "/api/loan_voucher/approveBankPaymentVoucher";
+export const markBankPaymentVoucherPaid     = baseUrl + "/api/loan_voucher/markBankPaymentVoucherPaid";

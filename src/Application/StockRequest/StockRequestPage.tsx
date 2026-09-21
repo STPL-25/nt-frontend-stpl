@@ -183,6 +183,7 @@ const StockRequestPage: React.FC = () => {
         })),
       });
       const created = res.data?.data?.[0];
+      console.log('Created stock request:', res.data);
       toast.success(`Stock request ${created?.request_no ?? ''} submitted`);
       setCart([]);
       setPurpose('');

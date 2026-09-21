@@ -67,37 +67,24 @@ export const SOCKET_JOIN_PR_TRACK  = "join-pr-track";
 export const SOCKET_LEAVE_PR_TRACK = "leave-pr-track";
 export const SOCKET_PR_TRACK_UPDATED = "pr:track:updated";
 
-// ── Service PO approval room + real-time events ──────────────────────────────
-export const SOCKET_JOIN_SERVICE_PO_APPROVAL = "join-service_po-approval";
-export const SOCKET_LEAVE_SERVICE_PO_APPROVAL = "leave-service_po-approval";
-export const SOCKET_SERVICE_PO_APPROVAL_UPDATED = "service_po:approval:updated";
-
-// ── Service Agreement approval room + real-time events ───────────────────────
-export const SOCKET_JOIN_SERVICE_AGREEMENT_APPROVAL = "join-service_agreement-approval";
-export const SOCKET_LEAVE_SERVICE_AGREEMENT_APPROVAL = "leave-service_agreement-approval";
-export const SOCKET_SERVICE_AGREEMENT_APPROVAL_UPDATED = "service_agreement:approval:updated";
-
-// ── Service Bill Request approval room + real-time events ────────────────────
-export const SOCKET_JOIN_SERVICE_BILL_REQUEST_APPROVAL = "join-service_bill_request-approval";
-export const SOCKET_LEAVE_SERVICE_BILL_REQUEST_APPROVAL = "leave-service_bill_request-approval";
-export const SOCKET_SERVICE_BILL_REQUEST_APPROVAL_UPDATED = "service_bill_request:approval:updated";
-
-// ── Service Vendor KYC approval room + real-time events ───────────────────────
-export const SOCKET_JOIN_SERVICE_VENDOR_KYC_APPROVAL = "join-service_vendor_kyc-approval";
-export const SOCKET_LEAVE_SERVICE_VENDOR_KYC_APPROVAL = "leave-service_vendor_kyc-approval";
-export const SOCKET_SERVICE_VENDOR_KYC_APPROVAL_UPDATED = "service_vendor_kyc:approval:updated";
-
-// ── Service Entry room + real-time events ────────────────────────────────────
-export const SOCKET_JOIN_SERVICE_ENTRY = "join-service_entry";
-export const SOCKET_LEAVE_SERVICE_ENTRY = "leave-service_entry";
-export const SOCKET_SERVICE_ENTRY_CREATED = "service_entry:created";
-export const SOCKET_SERVICE_ENTRY_APPROVAL_UPDATED = "service_entry:approval:updated";
-
 // ── KYC room + real-time events ───────────────────────────────────────────────
 export const SOCKET_JOIN_KYC_APPROVAL    = "join-kyc-approval";
 export const SOCKET_LEAVE_KYC_APPROVAL   = "leave-kyc-approval";
 export const SOCKET_KYC_SUBMITTED        = "kyc:submitted";
 export const SOCKET_KYC_APPROVAL_UPDATED = "kyc:approval:updated";
+
+// ── Service Agreement room + real-time events ─────────────────────────────────
+export const SOCKET_JOIN_SERVICE_AGREEMENT_APPROVAL    = "join-service-agreement-approval";
+export const SOCKET_LEAVE_SERVICE_AGREEMENT_APPROVAL   = "leave-service-agreement-approval";
+export const SOCKET_SERVICE_AGREEMENT_APPROVAL_UPDATED = "service_agreement:approval:updated";
+
+export const SOCKET_JOIN_SERVICE_PO_APPROVAL    = "join-service-po-approval";
+export const SOCKET_LEAVE_SERVICE_PO_APPROVAL   = "leave-service-po-approval";
+export const SOCKET_SERVICE_PO_APPROVAL_UPDATED = "service_po:approval:updated";
+
+export const SOCKET_JOIN_LOAN_VOUCHER_APPROVAL    = "join-loan-voucher-approval";
+export const SOCKET_LEAVE_LOAN_VOUCHER_APPROVAL   = "leave-loan-voucher-approval";
+export const SOCKET_LOAN_VOUCHER_APPROVAL_UPDATED = "loan_voucher:approval:updated";
 
 // ── PR draft real-time events ─────────────────────────────────────────────────
 export const SOCKET_PR_DRAFT_NEW = "pr:draft:new";

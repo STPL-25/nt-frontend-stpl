@@ -415,6 +415,28 @@ export function CustomInputField({
                   <CommandList>
                     <CommandEmpty>No options found.</CommandEmpty>
                     <CommandGroup>
+                      {optionsArray.length > 0 && (
+                        <CommandItem
+                          onSelect={() => {
+                            const allValues = optionsArray.map((o) => o.value);
+                            const allSelected = allValues.every((v) => value?.includes(v));
+                            handleChange(allSelected ? [] : allValues);
+                          }}
+                          className="flex items-center space-x-2 font-medium"
+                        >
+                          <Checkbox
+                            checked={
+                              optionsArray.every((o) => value?.includes(o.value))
+                                ? true
+                                : optionsArray.some((o) => value?.includes(o.value))
+                                  ? "indeterminate"
+                                  : false
+                            }
+                            className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                          />
+                          <span>Select All</span>
+                        </CommandItem>
+                      )}
                       {optionsArray.map((option) => (
                         <CommandItem
                           key={option.value}

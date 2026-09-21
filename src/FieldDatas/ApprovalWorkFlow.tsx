@@ -6,7 +6,7 @@ import {
   selectCompanyHierarchyError,
 } from "@/globalState/features/hierarchyCompanyDetailsSlice";
 import useFetch from "@/hooks/useFetchHook";
-import { apiGetWorkflows } from "@/Services/Api";
+import { apiGetWorkflows, apiGetEntityTypes } from "@/Services/Api";
 import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
 
 interface Option {
@@ -63,6 +63,7 @@ export const useApprovalFlowHierarchy = (
   const hierarchyLoading = useAppSelector(selectCompanyHierarchyLoading);
   const hierarchyError = useAppSelector(selectCompanyHierarchyError);
   const { data: workflowsData, loading: workflowsLoading } = useFetch<any>(apiGetWorkflows);
+  const { data: entityTypesData } = useFetch<any>(apiGetEntityTypes);
   const { options: masterOptions } = useMasterOptions(['DeptMaster']);
 
   // Full department master list, each option carrying its own real com_sno/div_sno/brn_sno —
@@ -112,14 +113,28 @@ export const useApprovalFlowHierarchy = (
   const entityTypeOptions: Option[] = useMemo(() => {
     const list: any[] = Array.isArray(workflowsData?.data) ? workflowsData.data : [];
     const seen = new Set<string>();
-    return list.reduce<Option[]>((acc, w) => {
+    const out: Option[] = [];
+    for (const w of list) {
       if (w.entity_type && !seen.has(w.entity_type)) {
         seen.add(w.entity_type);
-        acc.push({ label: w.entity_type, value: w.entity_type });
+        out.push({ label: w.entity_type, value: w.entity_type });
       }
-      return acc;
-    }, []);
-  }, [workflowsData]);
+    }
+    // entity_master carries every registerable type, including ones with no
+    // workflow configured yet — merged in (deduped) so a brand-new type is
+    // still selectable here instead of only appearing once someone has
+    // already created a workflow for it elsewhere (which was the previous
+    // chicken-and-egg gap).
+    const entities: any[] = Array.isArray(entityTypesData?.data) ? entityTypesData.data : [];
+    for (const e of entities) {
+      const code = e.entity_code;
+      if (code && !seen.has(code)) {
+        seen.add(code);
+        out.push({ label: e.entity_name || code, value: code });
+      }
+    }
+    return out;
+  }, [workflowsData, entityTypesData]);
 
   const entityTypeCount: Record<string, number> = useMemo(() => {
     const list: any[] = Array.isArray(workflowsData?.data) ? workflowsData.data : [];

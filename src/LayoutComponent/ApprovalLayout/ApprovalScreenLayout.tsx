@@ -350,6 +350,7 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
   const userEcno = userData[0]?.ecno ?? userData[0]?.login_id;
   const isCurrentApprover = pr.current_approver_id && userEcno && String(pr.current_approver_id).trim() === String(userEcno).trim();
   const { parsedItems, totalCost } = useMemo(() => parsePrItems(pr), [pr]);
+  const isVendorDriven = pr.request_mode === 'VENDOR_DRIVEN';
   const stages = useMemo(() => parseStages(pr), [pr]);
   const history = useMemo(() => parseHistory(pr), [pr]);
   const priorityLabel = getPriorityLabel(pr.priority_sno);
@@ -429,9 +430,15 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                           <th className="text-left p-2 lg:p-3">#</th>
                           <th className="text-left p-2 lg:p-3">Item </th>
                           <th className="text-right p-2 lg:p-3">Qty</th>
-                          {/* <th className="text-right p-2 lg:p-3">Est. Cost</th>
-                          <th className="text-right p-2 lg:p-3">Total</th> */}
-                          {/* <th className="text-left p-2 lg:p-3">Remarks</th> */}
+                          {isVendorDriven && (
+                            <>
+                              <th className="text-right p-2 lg:p-3">Rate</th>
+                              <th className="text-right p-2 lg:p-3">Discount %</th>
+                              <th className="text-right p-2 lg:p-3">GST %</th>
+                              <th className="text-right p-2 lg:p-3">Total</th>
+                              <th className="text-left p-2 lg:p-3">Proof</th>
+                            </>
+                          )}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -439,7 +446,7 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                           <tr key={item.pr_item_sno ?? idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors">
                             <td className="p-2 lg:p-3 text-slate-400 dark:text-slate-500 text-xs">{idx + 1}</td>
                             <td className="p-2 lg:p-3">
-                              
+
                               <p className="font-medium text-slate-900 dark:text-slate-50">{item.prod_name||item.service_name}</p>
                               <p className="text-xs text-slate-500">{item.remarks || item.service_code}</p>
 
@@ -452,13 +459,21 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                               <span className="font-medium">{parseFloat(item.qty || 0).toLocaleString('en-IN')}</span>
                               <span className="text-xs text-slate-500 ml-1">{item.uom_name}</span>
                             </td>
-                            {/* <td className="p-2 lg:p-3 text-right text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                              ₹{parseFloat(item.est_cost || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="p-2 lg:p-3 text-right font-semibold whitespace-nowrap">
-                              ₹{parseFloat(item.total_cost || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                            </td> */}
-                           
+                            {isVendorDriven && (
+                              <>
+                                <td className="p-2 lg:p-3 text-right whitespace-nowrap">₹{parseFloat(item.rate || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                                <td className="p-2 lg:p-3 text-right whitespace-nowrap">{parseFloat(item.discount_pct || 0)}%</td>
+                                <td className="p-2 lg:p-3 text-right whitespace-nowrap">{parseFloat(item.gst_pct || 0)}%</td>
+                                <td className="p-2 lg:p-3 text-right font-semibold whitespace-nowrap">₹{parseFloat(item.total_cost || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                                <td className="p-2 lg:p-3">
+                                  {item.item_attachment ? (
+                                    <a href={item.item_attachment} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-xs">View</a>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">—</span>
+                                  )}
+                                </td>
+                              </>
+                            )}
                           </tr>
                         ))}
                         {/* <tr className="bg-slate-50 dark:bg-slate-900 font-semibold border-t-2 border-slate-300 dark:border-slate-700">
@@ -495,7 +510,22 @@ function PRDetailPanel({ pr, handleAction, fieldDatas }: { pr: any; handleAction
                               <p className="text-slate-500">Est. Cost</p>
                               <p className="font-medium">₹{parseFloat(item.est_cost || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
                             </div>
+                            {isVendorDriven && (
+                              <>
+                                <div>
+                                  <p className="text-slate-500">Rate</p>
+                                  <p className="font-medium">₹{parseFloat(item.rate || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                                </div>
+                                <div>
+                                  <p className="text-slate-500">Discount / GST</p>
+                                  <p className="font-medium">{parseFloat(item.discount_pct || 0)}% / {parseFloat(item.gst_pct || 0)}%</p>
+                                </div>
+                              </>
+                            )}
                           </div>
+                          {isVendorDriven && item.item_attachment && (
+                            <a href={item.item_attachment} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-xs block">View verification document</a>
+                          )}
                           {item.remarks && (
                             <p className="text-xs text-slate-500">Remarks: {item.remarks}</p>
                           )}

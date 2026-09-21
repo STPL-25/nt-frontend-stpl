@@ -29,23 +29,19 @@ export const StoreInchargeApprovalPage = lazy(() => import("../Application/Store
  export const StockIssuePage = lazy(() => import("../Application/StockRequest/StockIssuePage"));
 //  export const AccountEntryPage = lazy(() => import("../Application/AccountEntry/AccountEntryPage"));
 //  export const AccountsBillPage = lazy(() => import("../Application/Accounts/AccountsBillPage"));
-//  export const PaymentPage = lazy(() => import("../Application/Payment/PaymentPage"));
-//  export const ServicePOPage = lazy(() => import("../Application/ServicePO/ServicePOPage"));
- export const ServicePOApprovalScreen = lazy(() => import("../Application/ServicePO/ServicePOApprovalScreen"));
- export const ServiceAgreementPage = lazy(() => import("../Application/ServiceAgreement/ServiceAgreementPage"));
- export const ServiceAgreementApprovalScreen = lazy(() => import("../Application/ServiceAgreement/ServiceAgreementApprovalScreen"));
- export const ServiceAgreementListPage = lazy(() => import("../Application/ServiceAgreement/ServiceAgreementListPage"));
- export const ServiceVendorConsolidationPage = lazy(() => import("../Application/ServiceVendorEntry/ServiceVendorConsolidationPage"));
- export const ServiceVendorKycPage = lazy(() => import("../Application/ServiceVendorKyc/ServiceVendorKycPage"));
- export const ServiceVendorKycApprovalScreen = lazy(() => import("../Application/ServiceVendorKyc/ServiceVendorKycApprovalScreen"));
- export const ServiceBillRequestPage = lazy(() => import("../Application/ServiceBillRequest/ServiceBillRequestPage"));
- export const ServiceBillRequestApprovalScreen = lazy(() => import("../Application/ServiceBillRequest/ServiceBillRequestApprovalScreen"));
- export const ServiceEntryPage = lazy(() => import("../Application/ServiceEntry/ServiceEntryPage"));
- export const ServiceEntryApprovalScreen = lazy(() => import("../Application/ServiceEntry/ServiceEntryApprovalScreen"));
+ export const PaymentPage = lazy(() => import("../Application/Payment/PaymentPage"));
+ export const VendorBillPage = lazy(() => import("../Application/VendorBill/VendorBillPage"));
  export const InvoiceAllocationPage = lazy(() => import("../Application/Invoice/InvoicePage"));
  export const PRTrackingPage = lazy(() => import("../Application/PRTracking/PRTrackingPage"));
  export const DebitNoteForm = lazy(() => import("../Application/GRN/GRN/DebitNoteForm"));
  export const NonStaffUserManagement = lazy(() => import("../Application/NonStaffPortal/NonStaffUserManagement"));
+ export const ServiceAgreementPage = lazy(() => import("../Application/ServiceAgreement/ServiceAgreementPage"));
+ export const ServiceAgreementApprovalScreen = lazy(() => import("../Application/ServiceAgreement/ServiceAgreementApprovalScreen"));
+ export const ServiceGrnPage = lazy(() => import("../Application/ServiceAgreement/ServiceGrnPage"));
+ export const ServicePoPage = lazy(() => import("../Application/ServiceAgreement/ServicePoPage"));
+ export const ServicePoApprovalScreen = lazy(() => import("../Application/ServiceAgreement/ServicePoApprovalScreen"));
+ export const LoanVoucherPage = lazy(() => import("../Application/LoanVoucher/LoanVoucherPage"));
+ export const LoanVoucherApprovalScreen = lazy(() => import("../Application/LoanVoucher/LoanVoucherApprovalScreen"));
 // Interface for the component map
 export interface SectionComponentsMap {
   [key: string]: LazyExoticComponent<ComponentType<any>>;
@@ -80,20 +76,16 @@ export const sectionComponents: SectionComponentsMap = {
   StockIssuePage,
   // AccountEntryPage,
   // AccountsBillPage,
-  // PaymentPage,
-  // ServicePOPage,
-  ServicePOApprovalScreen,
-  ServiceAgreementPage,
-  ServiceAgreementApprovalScreen,
-  ServiceAgreementListPage,
-  ServiceVendorConsolidationPage,
-  ServiceVendorKycPage,
-  ServiceVendorKycApprovalScreen,
-  ServiceBillRequestPage,
-  ServiceBillRequestApprovalScreen,
-  ServiceEntryPage,
-  ServiceEntryApprovalScreen,
+  PaymentPage,
+  VendorBillPage,
   InvoiceAllocationPage,
   PRTrackingPage,
   NonStaffUserManagement,
+  ServiceAgreementPage,
+  ServiceAgreementApprovalScreen,
+  ServiceGrnPage,
+  ServicePoPage,
+  ServicePoApprovalScreen,
+  LoanVoucherPage,
+  LoanVoucherApprovalScreen,
 };

@@ -498,7 +498,7 @@ export const usePRBasicInfoFields = (params?: PRBasicInfoFieldsParams): FieldTyp
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type PRItemType = "product" | "service";
+export type PRItemType = "product";
 
 interface PRItemFieldsParams {
   itemType?: PRItemType | "";
@@ -506,18 +506,15 @@ interface PRItemFieldsParams {
 }
 
 export const usePRItemDetailsFields = (params?: PRItemFieldsParams): FieldType[] => {
-  const itemType = params?.itemType ?? "";
   const allowedItemTypes =
     params?.allowedItemTypes && params.allowedItemTypes.length > 0
       ? params.allowedItemTypes
-      : (["product", "service"] as PRItemType[]);
+      : (["product"] as PRItemType[]);
 
-  const { options } = useMasterOptions(["ProductMaster", "UomMaster", "ServiceMaster"]);
+  const { options } = useMasterOptions(["ProductMaster", "UomMaster"]);
 
   const supportsProducts = allowedItemTypes.includes("product");
-  const supportsServices = allowedItemTypes.includes("service");
-  const isService = supportsServices && itemType === "service";
-  const isProduct = supportsProducts && (!isService);
+  const isProduct = supportsProducts;
   const showCategory = allowedItemTypes.length > 1;
   const itemTypeOptions = allowedItemTypes.map((type) => ({
     value: type,
@@ -565,25 +562,6 @@ export const usePRItemDetailsFields = (params?: PRItemFieldsParams): FieldType[]
         input: false,
       },
       {
-        field: "service_sno",
-        label: "Service",
-        require: isService,
-        view: false,
-        type: "search-select",
-        options: options?.ServiceMaster,
-        input: isService,
-      },
-      {
-        // Not its own table column — the "prod_name" field above shows
-        // item.prod_name || item.service_name for both categories.
-        field: "service_name",
-        label: "Service",
-        require: false,
-        view: false,
-        type: "text",
-        input: false,
-      },
-      {
         field: "qty",
         label: "Quantity",
         require: true,
@@ -626,6 +604,6 @@ export const usePRItemDetailsFields = (params?: PRItemFieldsParams): FieldType[]
         label: "Active",
       },
     ],
-    [options, isService, isProduct, showCategory, itemTypeOptions]
+    [options, isProduct, showCategory, itemTypeOptions]
   );
 };

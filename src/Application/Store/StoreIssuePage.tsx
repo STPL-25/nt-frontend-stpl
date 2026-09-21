@@ -279,8 +279,8 @@ const StoreIssuePage: React.FC = () => {
 
       {/* ── Issue dialog ── */}
       <Dialog open={!!selected} onOpenChange={open => { if (!open) setSelected(null); }}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[92vh] w-[calc(100%-1rem)] flex-col gap-0 overflow-hidden p-0 sm:w-full sm:max-w-3xl">
+          <DialogHeader className="border-b px-4 py-4 pr-12 text-left sm:px-6">
             <DialogTitle className="flex items-center gap-2">
               {selected?.request_no}
               {selected && <StatusBadge status={selected.status} withDot />}
@@ -296,82 +296,85 @@ const StoreIssuePage: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="border rounded-md overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead className="text-right">Requested</TableHead>
-                  <TableHead className="text-right">Issued</TableHead>
-                  <TableHead className="text-right">In Stock</TableHead>
-                  {actionable && <TableHead className="text-right w-28">Issue Now</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loadingLines ? (
-                  <TableRow><TableCell colSpan={actionable ? 5 : 4} className="text-center py-6 text-muted-foreground">
-                    <Loader2 size={15} className="inline animate-spin mr-2" />Loading…
-                  </TableCell></TableRow>
-                ) : lines.map(line => {
-                  const maxIssuable = Math.min(line.pending_qty, line.current_stock);
-                  const short = line.pending_qty > line.current_stock;
-                  return (
-                    <TableRow key={line.sr_item_sno}>
-                      <TableCell>
-                        <div className="font-medium text-sm">{line.item_name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {line.item_code}{line.warehouse ? ` · ${line.warehouse}` : ''}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right text-sm">{line.requested_qty} {line.uom}</TableCell>
-                      <TableCell className="text-right text-sm">{line.issued_qty} {line.uom}</TableCell>
-                      <TableCell className={`text-right text-sm ${short ? 'text-destructive font-medium' : ''}`}>
-                        {line.current_stock} {line.uom}
-                        {short && <div className="text-xs">short by {line.pending_qty - line.current_stock}</div>}
-                      </TableCell>
-                      {actionable && (
-                        <TableCell className="text-right">
-                          {line.pending_qty > 0 ? (
-                            <Input
-                              type="number"
-                              min={0}
-                              max={maxIssuable}
-                              className="h-8 w-24 ml-auto text-right"
-                              value={issueQty[line.sr_item_sno] ?? 0}
-                              onChange={e => setIssueQty(prev => ({
-                                ...prev,
-                                [line.sr_item_sno]: Number(e.target.value),
-                              }))}
-                              disabled={!canIssue}
-                            />
-                          ) : (
-                            <StatusBadge status={line.line_status} />
-                          )}
+          {/* Scrollable body — header and action buttons stay pinned however many products are listed */}
+          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
+            <div className="border rounded-md overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead className="text-right">Requested</TableHead>
+                    <TableHead className="text-right">Issued</TableHead>
+                    <TableHead className="text-right">In Stock</TableHead>
+                    {actionable && <TableHead className="text-right w-28">Issue Now</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loadingLines ? (
+                    <TableRow><TableCell colSpan={actionable ? 5 : 4} className="text-center py-6 text-muted-foreground">
+                      <Loader2 size={15} className="inline animate-spin mr-2" />Loading…
+                    </TableCell></TableRow>
+                  ) : lines.map(line => {
+                    const maxIssuable = Math.min(line.pending_qty, line.current_stock);
+                    const short = line.pending_qty > line.current_stock;
+                    return (
+                      <TableRow key={line.sr_item_sno}>
+                        <TableCell>
+                          <div className="font-medium text-sm">{line.item_name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {line.item_code}{line.warehouse ? ` · ${line.warehouse}` : ''}
+                          </div>
                         </TableCell>
-                      )}
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                        <TableCell className="text-right text-sm">{line.requested_qty} {line.uom}</TableCell>
+                        <TableCell className="text-right text-sm">{line.issued_qty} {line.uom}</TableCell>
+                        <TableCell className={`text-right text-sm ${short ? 'text-destructive font-medium' : ''}`}>
+                          {line.current_stock} {line.uom}
+                          {short && <div className="text-xs">short by {line.pending_qty - line.current_stock}</div>}
+                        </TableCell>
+                        {actionable && (
+                          <TableCell className="text-right">
+                            {line.pending_qty > 0 ? (
+                              <Input
+                                type="number"
+                                min={0}
+                                max={maxIssuable}
+                                className="h-8 w-24 ml-auto text-right"
+                                value={issueQty[line.sr_item_sno] ?? 0}
+                                onChange={e => setIssueQty(prev => ({
+                                  ...prev,
+                                  [line.sr_item_sno]: Number(e.target.value),
+                                }))}
+                                disabled={!canIssue}
+                              />
+                            ) : (
+                              <StatusBadge status={line.line_status} />
+                            )}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            {actionable && (
+              <div className="space-y-1">
+                <Label htmlFor="received-by-ecno" className="text-xs">Received By (ECNO)</Label>
+                <Input
+                  id="received-by-ecno"
+                  placeholder="ECNO of the employee receiving the item"
+                  value={receivedByEcno}
+                  onChange={e => setReceivedByEcno(e.target.value)}
+                  disabled={!canIssue}
+                  className="max-w-xs"
+                />
+              </div>
+            )}
           </div>
 
           {actionable && (
-            <div className="space-y-1">
-              <Label htmlFor="received-by-ecno" className="text-xs">Received By (ECNO)</Label>
-              <Input
-                id="received-by-ecno"
-                placeholder="ECNO of the employee receiving the item"
-                value={receivedByEcno}
-                onChange={e => setReceivedByEcno(e.target.value)}
-                disabled={!canIssue}
-                className="max-w-xs"
-              />
-            </div>
-          )}
-
-          {actionable && (
-            <DialogFooter className="gap-2">
+            <DialogFooter className="gap-2 border-t bg-background px-4 py-3 sm:px-6">
               <Button
                 variant="outline"
                 className="text-destructive border-destructive/40 hover:bg-destructive/10"

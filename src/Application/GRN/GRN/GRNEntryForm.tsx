@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { PackageCheck, Send, RotateCcw, Info, Save } from 'lucide-react';
+import { toast } from 'sonner';
+import { PackageCheck, Send, RotateCcw, Info, Save, MapPin } from 'lucide-react';
 import type { PORecord, GRNFormState, GRNItemEntry, WarehouseLocationOption } from './types';
 import { today, formatINR, getPODisplayNo, buildGRNItems } from './helpers';
 import { grnSvcGetWarehouseLocations } from '@/Services/GrnService/grnApi';
@@ -39,6 +40,8 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
   const [items, setItems] = useState<GRNItemEntry[]>(() => initialItems ?? buildGRNItems(po));
 
   const [locations, setLocations] = useState<WarehouseLocationOption[]>([]);
+  // Location chosen in the bulk bar above the table, before it is applied to the ticked items.
+  const [bulkLocation, setBulkLocation] = useState('');
 
   // Warehouse locations valid for this PO's company/division/branch — the
   // Location dropdown below is scoped to these so the user can only pick
@@ -73,6 +76,17 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
   const selectedItems = items.filter(it => it.selected);
   const allSelected = items.length > 0 && items.every(it => it.pending_qty === 0 || it.selected);
   const allReceived = items.every(it => it.pending_qty === 0);
+
+  // One location for every ticked item — "select all" = tick the header box, "select multiple" = tick rows.
+  const applyBulkLocation = () => {
+    const sno = Number(bulkLocation);
+    if (!sno || selectedItems.length === 0) return;
+    const name = locations.find(l => l.location_sno === sno)?.location_name ?? 'Location';
+    setItems(prev => prev.map(it => it.selected ? { ...it, warehouse_location_sno: sno } : it));
+    toast.success(`${name} set for ${selectedItems.length} item${selectedItems.length === 1 ? '' : 's'}`);
+    // Clear the picker so a second batch needs a deliberate choice, not a stale one.
+    setBulkLocation('');
+  };
 
   const handleSubmit = () => {
     onSubmit(form, selectedItems);
@@ -156,6 +170,43 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
           </div>
         ) : (
           <>
+            {/* Bulk location — same choice for every ticked item, instead of picking it row by row */}
+            {locations.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                <MapPin size={14} className="text-muted-foreground shrink-0" />
+                <span className="text-xs font-medium">Set location</span>
+                <Select value={bulkLocation} onValueChange={setBulkLocation}>
+                  <SelectTrigger className="h-8 w-48 text-xs">
+                    <SelectValue placeholder="Choose a location…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locations.map(loc => (
+                      <SelectItem key={loc.location_sno} value={String(loc.location_sno)} className="text-xs">
+                        {loc.location_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  disabled={!bulkLocation || selectedItems.length === 0}
+                  onClick={applyBulkLocation}
+                >
+                  {allSelected && selectedItems.length > 0
+                    ? `Apply to all ${selectedItems.length} item${selectedItems.length === 1 ? '' : 's'}`
+                    : `Apply to ${selectedItems.length} selected`}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {selectedItems.length === 0
+                    ? 'Tick the items below first.'
+                    : 'Tick the header box for all items, or pick specific rows.'}
+                </span>
+              </div>
+            )}
+
             <div className="border rounded-md overflow-x-auto">
               <Table>
                 <TableHeader>

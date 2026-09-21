@@ -2,7 +2,11 @@ import { useMemo } from "react";
 import { useMasterOptions } from "../hooks/ReUsableHook/useMasterOptions";
 import { FieldType } from "./fieldType/fieldType";
 
-export type AgreementType = "FIXED_RECURRING" | "VARIABLE_RECURRING" | "VENDOR_BILL";
+import type { AgreementType } from "@/CustomComponent/ServiceComponents/serviceUtils";
+
+// Fixed, Unfixed and Statutory (loan / repo / cash credit). Lives in serviceUtils so the
+// shared badges and helpers can use it too; re-exported for the existing importers.
+export type { AgreementType };
 
 interface CascadeOption {
   value: string | number;
@@ -76,11 +80,12 @@ interface ServiceAgreementFieldsParams extends OrgCascadeParams {
 }
 
 /**
- * Fields for the Service Agreement create form — Fixed Recurring and
- * Variable Recurring only (Vendor Driven never creates an agreement row,
- * see useVendorDrivenPOFields below). Fields for the type NOT currently
- * selected get input:false so they don't render, same technique
- * usePRItemDetailsFields uses for isProduct/isService-gated fields.
+ * Fields for the Service Agreement create/edit form — Fixed, Unfixed and
+ * Statutory. rate_amount/qty are entered here once and never re-entered at
+ * approval time (see sql/86) — for Unfixed and Statutory, the actual
+ * per-cycle amount is instead entered separately in the Service PO screen
+ * when each cycle comes due. Suppliers and the Statutory facility block are
+ * not plain fields; the page renders dedicated editors for them.
  */
 export const useServiceAgreementFields = (params: ServiceAgreementFieldsParams): FieldType[] => {
   const { agreementType, ...cascadeParams } = params;
@@ -89,9 +94,6 @@ export const useServiceAgreementFields = (params: ServiceAgreementFieldsParams):
     "ServiceMaster", "ServiceTypeMaster", "VendorMaster", "UomMaster", "RecurrenceCadenceMaster",
   ]);
   const { CompanyMaster, divisionOptions, branchOptions, deptOptions } = useOrgCascadeOptions(cascadeParams, options);
-
-  const isFixed = agreementType === "FIXED_RECURRING";
-  const isVariable = agreementType === "VARIABLE_RECURRING";
 
   // ServiceMaster narrowed to services whose type matches the chosen
   // agreement type — resolved via ServiceTypeMaster's service_type_code
@@ -106,98 +108,49 @@ export const useServiceAgreementFields = (params: ServiceAgreementFieldsParams):
     );
   }, [options?.ServiceMaster, options?.ServiceTypeMaster, agreementType]);
 
+  // Only month-based cadences need a PO generation day — a day-based cadence
+  // (e.g. every 15 days) counts from the agreement's own start date instead.
+  const cadenceOptions = options?.RecurrenceCadenceMaster ?? [];
+
   return useMemo<FieldType[]>(
     () => [
       ...orgCascadeFields(CompanyMaster, divisionOptions, branchOptions, deptOptions),
       { field: "service_sno", label: "Service", require: true, view: false, type: "search-select", options: serviceOptions, input: true },
       { field: "service_name", label: "Service", require: false, view: true, type: "text", input: false },
-      { field: "vendor_sno", label: "Supplier", require: true, view: false, type: "search-select", options: options?.VendorMaster, input: true },
+      // Suppliers are captured by the supplier-split editor (one or more suppliers, each with an
+      // amount), not a single select — so this is display-only; the form posts `vendors[]`.
+      { field: "vendor_sno", label: "Supplier", require: false, view: false, type: "search-select", options: options?.VendorMaster, input: false },
       { field: "vendor_name", label: "Supplier", require: false, view: true, type: "text", input: false },
 
-      { field: "rate_amount", label: "Rate Amount", require: isFixed, view: isFixed, type: "number", input: isFixed },
-      { field: "rate_uom_sno", label: "Rate UOM (per)", require: false, view: false, type: "search-select", options: options?.UomMaster, input: isFixed },
-      { field: "rate_uom_name", label: "Rate UOM", require: false, view: isFixed, type: "text", input: false },
+      { field: "qty", label: "Quantity", require: true, view: true, type: "number", input: true, defaultValue: 1 },
+      {
+        field: "rate_amount", label: "Rate Amount", require: true, view: true,
+        type: "number", input: true,
+      },
+      { field: "rate_uom_sno", label: "Rate UOM (per)", require: false, view: false, type: "search-select", options: options?.UomMaster, input: true },
+      { field: "rate_uom_name", label: "Rate UOM", require: false, view: true, type: "text", input: false },
 
-      { field: "ceiling_amount", label: "Ceiling Amount", require: isVariable, view: isVariable, type: "number", input: isVariable },
-      { field: "variance_tolerance_pct", label: "Variance Tolerance (%)", require: isVariable, view: isVariable, type: "number", input: isVariable },
-
-      { field: "recurrence_cadence_sno", label: "Recurrence Cadence", require: true, view: true, type: "select", options: options?.RecurrenceCadenceMaster, input: true },
+      { field: "recurrence_cadence_sno", label: "Recurrence Cadence", require: true, view: true, type: "select", options: cadenceOptions, input: true },
       { field: "cadence_name", label: "Cadence", require: false, view: false, type: "text", input: false },
 
       {
-        field: "po_generation_day", label: "PO Generation Day (1-31)", require: false, view: isFixed, type: "number",
-        input: isFixed, placeholder: "e.g. 5 for the 5th of every month",
+        field: "po_generation_day", label: "PO Generation Day (1-31)", require: false, view: true, type: "number",
+        input: true, placeholder: "e.g. 5 for the 5th",
       },
       {
-        field: "notify_days_before", label: "Notify Before (days)", require: false, view: isFixed || isVariable, type: "number",
-        input: isFixed || isVariable, defaultValue: 0, placeholder: "e.g. 2",
+        field: "notify_days_before", label: "Notify Before (days)", require: false, view: true, type: "number",
+        input: true, defaultValue: 0, placeholder: "e.g. 2",
       },
 
       { field: "period_start_date", label: "Duration From", require: true, view: true, type: "date", input: true },
       { field: "period_end_date", label: "Duration To", require: true, view: true, type: "date", input: true },
       { field: "agreement_document", label: "Agreement Document", require: true, view: false, type: "file", input: true },
       { field: "remarks", label: "Remarks", require: false, view: true, type: "textarea", input: true },
+      {
+        field: "terms_conditions", label: "Terms & Conditions", require: false, view: true, type: "textarea",
+        input: true, placeholder: "Optional — any terms specific to this agreement",
+      },
     ],
-    [CompanyMaster, divisionOptions, branchOptions, deptOptions, serviceOptions, options, isFixed, isVariable]
-  );
-};
-
-/**
- * Header fields for a Vendor Driven (VENDOR_BILL) submission — a standalone,
- * retrospective Service PO, no agreement/recurrence involved at all (see
- * sp_nt_CreateServiceAgreement's THROW 53006 — VENDOR_BILL services can
- * never have an agreement).
- */
-export const useVendorDrivenPOFields = (params: OrgCascadeParams | undefined): FieldType[] => {
-  const { options } = useMasterOptions(["CompanyMaster", "DivisionMaster", "BranchMaster", "DeptMaster", "VendorMaster"]);
-  const { CompanyMaster, divisionOptions, branchOptions, deptOptions } = useOrgCascadeOptions(params, options);
-
-  const poTypeOptions = useMemo(() => ([
-    { label: "One Time", value: "ONE_TIME" },
-    { label: "Standing", value: "STANDING" },
-  ]), []);
-
-  return useMemo<FieldType[]>(
-    () => [
-      ...orgCascadeFields(CompanyMaster, divisionOptions, branchOptions, deptOptions),
-      { field: "vendor_sno", label: "Supplier", require: true, view: false, type: "search-select", options: options?.VendorMaster, input: true },
-      { field: "vendor_name", label: "Supplier", require: false, view: true, type: "text", input: false },
-      { field: "po_type", label: "PO Type", require: true, view: true, type: "select", options: poTypeOptions, input: true, defaultValue: "ONE_TIME" },
-      { field: "delivery_address", label: "Delivery Address", require: false, view: true, type: "textarea", input: true },
-      { field: "terms_conditions", label: "Terms & Conditions", require: false, view: true, type: "textarea", input: true },
-      { field: "purpose", label: "Purpose", require: false, view: true, type: "textarea", input: true },
-    ],
-    [CompanyMaster, divisionOptions, branchOptions, deptOptions, options, poTypeOptions]
-  );
-};
-
-/** One item row of a Vendor Driven PO — field names match sp_nt_CreateServicePO's
- * item JSON shape exactly (service_sno, qty, unit, agreed_unit_price,
- * specification, remarks) so the saved rows can be submitted unmodified. */
-export const useVendorDrivenItemFields = (): FieldType[] => {
-  const { options } = useMasterOptions(["ServiceMaster", "ServiceTypeMaster", "UomMaster"]);
-
-  const serviceOptions = useMemo(() => {
-    const serviceTypeSno = (options?.ServiceTypeMaster ?? []).find(
-      (t: CascadeOption) => t.service_type_code === "VENDOR_BILL"
-    )?.value;
-    if (serviceTypeSno == null) return [];
-    return (options?.ServiceMaster ?? []).filter(
-      (s: CascadeOption) => String(s.service_type_sno) === String(serviceTypeSno)
-    );
-  }, [options?.ServiceMaster, options?.ServiceTypeMaster]);
-
-  return useMemo<FieldType[]>(
-    () => [
-      { field: "service_sno", label: "Service", require: true, view: false, type: "search-select", options: serviceOptions, input: true },
-      { field: "service_name", label: "Service", require: false, view: true, type: "text", input: false },
-      { field: "qty", label: "Quantity", require: true, view: true, type: "number", input: true, defaultValue: 1 },
-      { field: "unit", label: "Unit", require: false, view: false, type: "search-select", options: options?.UomMaster, input: true },
-      { field: "unit_name", label: "Unit", require: false, view: true, type: "text", input: false },
-      { field: "agreed_unit_price", label: "Unit Price", require: true, view: true, type: "number", input: true },
-      { field: "specification", label: "Specification", require: false, view: true, type: "text", input: true },
-      { field: "remarks", label: "Remarks", require: false, view: false, type: "textarea", input: true },
-    ],
-    [serviceOptions, options]
+    [CompanyMaster, divisionOptions, branchOptions, deptOptions, serviceOptions, cadenceOptions, options]
   );
 };

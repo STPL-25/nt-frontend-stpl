@@ -12,6 +12,7 @@ interface PermissionTableProps {
   permissions: Record<string, Record<number, boolean>>;
   permChecked: (screen: string, permissionId: number) => boolean;
   togglePerm: (screen: string, permissionId: number) => void;
+  setRowPermissions: (screen: string, enabled: boolean) => void;
   handleSave: () => void;
   permissionMap: Record<number, string>;       // id → description (tooltip)
   permissionDetails: PermissionDetail[];        // ordered list from API
@@ -21,6 +22,7 @@ export default function PermissionTable({
   groups,
   permChecked,
   togglePerm,
+  setRowPermissions,
   permissionMap,
   permissionDetails,
 }: PermissionTableProps) {
@@ -72,13 +74,25 @@ export default function PermissionTable({
               </thead>
 
               <tbody className="divide-y divide-border">
-                {screens.map((screen) => (
+                {screens.map((screen) => {
+                  const rowAllChecked = permissionDetails.length > 0 &&
+                    permissionDetails.every(({ permission_id }) => permChecked(screen, permission_id));
+                  const rowSomeChecked = !rowAllChecked &&
+                    permissionDetails.some(({ permission_id }) => permChecked(screen, permission_id));
+                  return (
                   <tr
                     key={screen}
                     className="transition-colors hover:bg-muted/40"
                   >
                     <td className="px-4 py-3 font-medium text-foreground">
-                      {screen}
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <Checkbox
+                          checked={rowAllChecked ? true : rowSomeChecked ? "indeterminate" : false}
+                          onCheckedChange={() => setRowPermissions(screen, !rowAllChecked)}
+                          className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                        />
+                        {screen}
+                      </label>
                     </td>
                     {permissionDetails.map(({ permission_id }) => (
                       <td key={permission_id} className="px-4 py-3 text-center">
@@ -94,7 +108,8 @@ export default function PermissionTable({
                       </td>
                     ))}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

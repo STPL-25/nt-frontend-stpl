@@ -79,11 +79,18 @@ const STATUS_DEFS: Record<string, StatusDef> = {
   REJECTED: { label: "Rejected", tone: "danger" },
   REVERSED: { label: "Reversed", tone: "danger" },
 
-  // Stock levels (Inventory)
+  // Stock levels (Inventory) — severity order: Out of Stock / Low Stock (at or
+  // under the floor) are danger (red); Reorder Needed (at or under the
+  // configured reorder level) and Overstocked are warning (amber).
   "IN STOCK": { label: "In Stock", tone: "success" },
-  "LOW STOCK": { label: "Low Stock", tone: "warning" },
+  "LOW STOCK": { label: "Low Stock", tone: "danger" },
+  "REORDER NEEDED": { label: "Reorder Needed", tone: "warning" },
   "OUT OF STOCK": { label: "Out of Stock", tone: "danger" },
   OVERSTOCKED: { label: "Overstocked", tone: "warning" },
+  // Perishable stock still on hand past its shelf life — a quality/spoilage
+  // problem, not a quantity one, so it gets its own tone rather than reusing
+  // danger (Low/Out of Stock) or warning (Reorder/Overstocked).
+  "EXPIRY STOCK": { label: "Expiry Stock", tone: "purple" },
   DISCONTINUED: { label: "Discontinued", tone: "neutral" },
 
   // Stock requests (StockRequestPage / StockIssuePage)

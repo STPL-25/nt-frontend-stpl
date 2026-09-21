@@ -3,12 +3,13 @@ import { AlertCircle, Clock } from 'lucide-react';
 import ApprovalScreenLayout from '@/LayoutComponent/ApprovalLayout/ApprovalScreenLayout';
 import useFetch from '@/hooks/useFetchHook';
 import usePost from '@/hooks/usePostHook';
-import { getPrRecords, prApproveAction } from '@/Services/Api';
+import { getPrRecords, prApproveAction, purchaseTeamSendPOEmail } from '@/Services/Api';
 import { useAppState } from '@/imports';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { usePrApprovalSideCardDatas } from '@/FieldDatas/PrApprovalData';
 import { socket, SOCKET_JOIN_PR_APPROVAL, SOCKET_LEAVE_PR_APPROVAL, SOCKET_PR_APPROVAL_UPDATED } from '@/Services/Socket';
 import { generatePOPdf } from '@/utils/generatePOPdf';
+import { buildVendorDrivenPOPdfBlob } from '@/Application/PurchaseOrder/PurchaseTeam/generateVendorDrivenPOPdfBlob';
 
 interface APIResponse {
   success: boolean;
@@ -28,6 +29,7 @@ const PRApprovalScreen: React.FC = () => {
   const { canEdit } = usePermissions();
   const fieldDatas = usePrApprovalSideCardDatas();
   const { postData, loading } = usePost();
+  const { postData: postSendPOEmail } = usePost();
 
   const { data, loading: fetchLoading, error } = useFetch<APIResponse>(
     getPrRecords,
@@ -76,6 +78,54 @@ const PRApprovalScreen: React.FC = () => {
     setComments('');
     setShowApprovalDialog(true);
   };
+
+  // Vendor-driven PRs have no quotation step and no manual "Send to
+  // Supplier" button — sp_nt_CreateVendorDrivenPOFromPR already auto-issued
+  // the child PO the moment final approval landed (PR.controller.js#approvePr),
+  // so the PO just needs to be emailed to the vendor right away. Mirrors
+  // POApprovalScreen.tsx's sendFinalPOToSupplier for the normal flow: build
+  // the PDF client-side, upload it to the same /sendPOEmail endpoint. Errors
+  // are caught here and never thrown — the approval itself already
+  // succeeded and must not be affected by an email failure.
+  const sendVendorDrivenPOToVendor = async (autoPo: any) => {
+    try {
+      if (!autoPo?.po_basic_sno || !autoPo?.po_no || !autoPo?.vendor_sno) return;
+
+      let items: any[] = [];
+      try {
+        items = typeof autoPo.items === 'string' ? JSON.parse(autoPo.items) : (autoPo.items ?? []);
+      } catch {
+        items = [];
+      }
+
+      const pdfBlob = buildVendorDrivenPOPdfBlob({
+        po_no: autoPo.po_no,
+        po_date: autoPo.po_date,
+        required_date: autoPo.required_date,
+        purpose: autoPo.purpose,
+        company_name: autoPo.company_name,
+        pr_no: selectedPR?.pr_no,
+        items,
+      });
+
+      const fd = new FormData();
+      fd.append('vendor_sno', String(autoPo.vendor_sno));
+      fd.append('po_no', String(autoPo.po_no));
+      fd.append('po_date', autoPo.po_date ?? '');
+      fd.append('required_date', autoPo.required_date ?? '');
+      fd.append('items', JSON.stringify(items));
+      fd.append('po_basic_sno', String(autoPo.po_basic_sno));
+      fd.append('po_pdf', pdfBlob, `${autoPo.po_no}.pdf`);
+
+      await postSendPOEmail(purchaseTeamSendPOEmail, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        withCredentials: true,
+      });
+    } catch (error) {
+      console.error('Unable to auto-send the vendor-driven PO to the vendor:', error);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!selectedPR) return;
     
@@ -104,8 +154,13 @@ const PRApprovalScreen: React.FC = () => {
       const result = await postData(prApproveAction, payload);
 
       const approvalData = result?.decrypted?.data?.[0];
+      const autoPo = result?.decrypted?.auto_po;
       if (approvalData?.next_approver === 'FINAL_STAGE') {
-        generatePOPdf(selectedPR, approvalData);
+        if (approvalData?.request_mode === 'VENDOR_DRIVEN' && autoPo?.result === 'SUCCESS') {
+          await sendVendorDrivenPOToVendor(autoPo);
+        } else {
+          generatePOPdf(selectedPR, approvalData);
+        }
       }
 
       setPrList(prev => prev.filter(pr => pr.pr_no !== selectedPR.pr_no));

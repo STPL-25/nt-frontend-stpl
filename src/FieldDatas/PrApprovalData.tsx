@@ -14,6 +14,10 @@ export const usePrApprovalSideCardDatas = (): FieldType[] => {
       { field: "reg_date",           label: "Request Date",       view: true, type: "date",  input: false },
       { field: "required_date",      label: "Required By",        view: true, type: "date",  input: false },
       { field: "current_approver_id",label: "Current Approver",   view: true, type: "text", input: false },
+      // Vendor-driven only — null/absent on every Regular PR, so these
+      // simply don't render there (ApprovalScreenLayout skips null/'' values).
+      { field: "vendor_name",        label: "Supplier",           view: true, type: "text", input: false },
+      { field: "payment_cycle_days", label: "Payment Cycle (days)", view: true, type: "text", input: false },
     ],
     []
   );

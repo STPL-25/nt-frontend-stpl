@@ -17,8 +17,10 @@ import { usePermissions } from "@/globalState/hooks/usePermissions";
 // DynamicTable/common_master pipeline render their own component instead of
 // going through MasterScreen's generic table below.
 const TermsConditionsMaster = lazy(() => import("../TermsConditions/TermsConditionsMaster"));
+const ProductStockLevelMaster = lazy(() => import("../ProductStockLevel/ProductStockLevelMaster"));
 const BESPOKE_MASTER_COMPONENTS: Record<string, React.LazyExoticComponent<React.ComponentType<any>>> = {
   TermsConditionsMaster,
+  ProductStockLevelMaster,
 };
 
 interface Category {

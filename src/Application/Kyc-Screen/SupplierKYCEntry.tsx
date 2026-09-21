@@ -11,7 +11,7 @@ import {
 } from "@/FieldDatas/KycFieldDatas";
 import usePost from "@/hooks/usePostHook";
 import { toast } from "sonner";
-import { apiPostKycData } from "@/Services/Api";
+import { apiPostKycData, apiGetGSTNDetails } from "@/Services/Api";
 import { encryptFormMeta } from "@/Services/apiCrypto";
 import DynamicDialog from "@/CustomComponent/InputComponents/CustomModelComponent";
 import { useKycSections } from "@/hooks/useKycSections";
@@ -21,6 +21,11 @@ import {
   ContactModalContent, DocumentModalContent,
 } from "./KycModalSections";
 import { IFSC_PATTERN, buildIfscBankPatch, getErrorMessage } from "./ifscUtils";
+import {
+  GSTIN_PATTERN, unwrapGstRecord, buildGstSubmissionFields, getGstLegalName,
+  buildGstAddressPatch, flattenGstDetails, clearGstSubmissionFields, derivePanFromGstin,
+  type UnknownRecord, type GstSubmissionFields,
+} from "./gstUtils";
 
 const toText = (value: unknown) =>
   value === null || value === undefined ? "" : String(value).trim();
@@ -32,25 +37,135 @@ const SECTION_META: Record<string, { title: string; description: string; icon: a
   documents: { title: "Documents",         description: "Upload GST certificate, PAN card and MSME certificate", icon: Upload },
 };
 
-export default function SupplierKYCEntry() {
+interface SupplierKYCEntryProps {
+  // All default to the staff-protected endpoints (used when this screen is
+  // rendered inside the authenticated Dashboard). The standalone /supplier_kyc
+  // route passes the public equivalents instead — see ApplicationPages/SupplierKycPage.tsx.
+  masterOptionsUrl?: string;
+  submitUrl?: string;
+  gstDetailsUrl?: string;
+}
+
+export default function SupplierKYCEntry({
+  masterOptionsUrl, submitUrl = apiPostKycData, gstDetailsUrl = apiGetGSTNDetails,
+}: SupplierKYCEntryProps = {}) {
   const addressFields  = useAddressFields();
   const documentFields = useDocumentFields();
-  const bankFields     = useBankFields();
+  const bankFields     = useBankFields(masterOptionsUrl);
   const contactFields  = useContactFields();
   const { postData, loading: submitting, error: submitError } = usePost();
+  const { postData: fetchGstDetails, loading: fetchingGst } = usePost<{
+    success: boolean;
+    data?: unknown;
+  }>();
 
   const [basicInfo, setBasicInfo]           = useState<Record<string, any>>({});
   const [isModalOpen, setIsModalOpen]       = useState(false);
   const [currentSection, setCurrentSection] = useState("");
+  const [isGstDialogOpen, setIsGstDialogOpen] = useState(false);
+  const [gstDetails, setGstDetails]           = useState<UnknownRecord | null>(null);
+  const [gstSubmissionFields, setGstSubmissionFields] = useState<GstSubmissionFields | null>(null);
 
-  const basicInfoFields = useBasicInfoFields(basicInfo);
+  const basicInfoFields = useBasicInfoFields(basicInfo, masterOptionsUrl);
   const kyc = useKycSections(addressFields, bankFields, contactFields, documentFields);
   const lastFetchedIfscRef = useRef<Record<string, string>>({});
   const latestIfscRef = useRef<Record<string, string>>({});
   const [fetchingIfscId, setFetchingIfscId] = useState<string | null>(null);
+  const lastFetchedGstRef = useRef("");
 
-  const handleBasicChange = (field: string, value: any) =>
-    setBasicInfo((prev) => ({ ...prev, [field]: value }));
+  const maybeFetchGstDetails = async (gstValue: unknown, isGstAvailable: unknown) => {
+    const gst = toText(gstValue).toUpperCase();
+
+    if (
+      isGstAvailable !== "true" ||
+      !GSTIN_PATTERN.test(gst) ||
+      lastFetchedGstRef.current === gst
+    ) {
+      return;
+    }
+
+    lastFetchedGstRef.current = gst;
+
+    // PAN is embedded in the GSTIN itself (characters 3-12), so it can be
+    // filled in immediately, independent of whether the GST lookup below
+    // succeeds — no need to wait on (or fail alongside) that network call.
+    const panFromGstin = derivePanFromGstin(gst);
+    if (panFromGstin) {
+      setBasicInfo((prev) => ({ ...prev, pan_no: panFromGstin }));
+    }
+
+    try {
+      const response = await fetchGstDetails(gstDetailsUrl, { gst });
+      const gstRecord = unwrapGstRecord(response?.data);
+
+      if (!gstRecord) {
+        throw new Error("GST details response was empty");
+      }
+
+      const submissionFields = buildGstSubmissionFields(response?.data);
+      const legalName = getGstLegalName(response?.data);
+      const addressPatch = buildGstAddressPatch(response?.data);
+
+      setGstDetails(gstRecord);
+      setGstSubmissionFields(submissionFields);
+      setIsGstDialogOpen(true);
+
+      setBasicInfo((prev) => ({
+        ...prev,
+        ...submissionFields,
+        ...(legalName ? { company_name: legalName } : {}),
+      }));
+
+      if (Object.keys(addressPatch).length === 0) {
+        toast.error(
+          legalName
+            ? "GST legal name loaded, but address information was unavailable"
+            : "GST details found, but address information was unavailable"
+        );
+        return;
+      }
+
+      const primaryAddressIndex = kyc.addresses.findIndex((address) => address.isPrimary);
+      kyc.patchAddress(primaryAddressIndex >= 0 ? primaryAddressIndex : 0, addressPatch);
+      toast.success(
+        legalName
+          ? "GST legal name and address details loaded"
+          : "GST address details loaded into the primary address"
+      );
+    } catch (error: unknown) {
+      lastFetchedGstRef.current = "";
+      toast.error(getErrorMessage(error, "Unable to fetch GST details"));
+    }
+  };
+
+  const handleBasicChange = (field: string, value: any) => {
+    const nextValue = field === "gst_no" ? toText(value).toUpperCase() : value;
+    const nextGstNo = field === "gst_no" ? nextValue : basicInfo.gst_no;
+    const nextIsGstAvailable =
+      field === "is_gst_avail" ? nextValue : basicInfo.is_gst_avail;
+
+    setBasicInfo((prev) => {
+      const shouldClearDerivedGst =
+        (field === "gst_no" && nextValue !== prev.gst_no) ||
+        (field === "is_gst_avail" && nextValue !== "true");
+      const next = shouldClearDerivedGst ? clearGstSubmissionFields(prev) : { ...prev };
+      return { ...next, [field]: nextValue };
+    });
+
+    if (
+      (field === "gst_no" && nextValue !== basicInfo.gst_no) ||
+      (field === "is_gst_avail" && nextValue !== "true")
+    ) {
+      lastFetchedGstRef.current = "";
+      setGstDetails(null);
+      setGstSubmissionFields(null);
+      setIsGstDialogOpen(false);
+    }
+
+    if (field === "gst_no" || field === "is_gst_avail") {
+      void maybeFetchGstDetails(nextGstNo, nextIsGstAvailable);
+    }
+  };
 
   const maybeFetchIfscDetails = async (bankId: string, ifscValue: unknown) => {
     const ifsc = toText(ifscValue).toUpperCase();
@@ -114,6 +229,10 @@ export default function SupplierKYCEntry() {
 
   const handleReset = () => {
     setBasicInfo({});
+    setGstDetails(null);
+    setGstSubmissionFields(null);
+    setIsGstDialogOpen(false);
+    lastFetchedGstRef.current = "";
     lastFetchedIfscRef.current = {};
     latestIfscRef.current = {};
     setFetchingIfscId(null);
@@ -149,7 +268,7 @@ export default function SupplierKYCEntry() {
       kyc.contacts.forEach((c, i)    => { if (c.document) formData.append(`contactDocument_${i}`, c.document); });
       Object.entries(kyc.documentInfo).forEach(([k, v]) => { if (v instanceof File) formData.append(k, v); });
 
-      const response = await postData(apiPostKycData, formData, { headers: { "Content-Type": "multipart/form-data" } });
+      const response = await postData(submitUrl, formData, { headers: { "Content-Type": "multipart/form-data" } });
       if (response) {
         toast.success("KYC submitted successfully! Our team will review and contact you.");
         handleReset();
@@ -212,6 +331,17 @@ export default function SupplierKYCEntry() {
   };
 
   const meta = SECTION_META[currentSection];
+  const gstDetailRows = gstDetails ? flattenGstDetails(gstDetails) : [];
+  const gstSummaryRows = gstSubmissionFields
+    ? [
+        { label: "Legal Name", value: gstSubmissionFields.legal_name },
+        { label: "Trade Name", value: gstSubmissionFields.trade_name },
+        { label: "Taxpayer Type", value: gstSubmissionFields.txp_type },
+        { label: "GST Status", value: gstSubmissionFields.gst_status },
+        { label: "GST Block Status", value: gstSubmissionFields.gst_blk_status },
+        { label: "Date Of Registration", value: gstSubmissionFields.date_of_reg },
+      ]
+    : [];
 
   return (
     <div className="min-h-full bg-muted/20">
@@ -221,12 +351,12 @@ export default function SupplierKYCEntry() {
         title="Supplier KYC Registration"
         description="Please fill in your business details accurately. Our team will review your submission."
       >
-        <div className="flex items-center gap-2 mt-3 lg:mt-0 bg-primary-foreground/10 rounded-lg px-3 py-2 w-fit border border-primary-foreground/20">
+        {/* <div className="flex items-center gap-2 mt-3 lg:mt-0 bg-primary-foreground/10 rounded-lg px-3 py-2 w-fit border border-primary-foreground/20">
           <Info className="h-4 w-4 text-primary-foreground/70" />
           <span className="text-xs text-primary-foreground/80">
             Fields marked <span className="text-red-300 font-bold">*</span> are mandatory
           </span>
-        </div>
+        </div> */}
       </PageHeader>
 
       <div className="max-w-5xl mx-auto px-4 lg:px-8 py-6 space-y-6">
@@ -258,6 +388,7 @@ export default function SupplierKYCEntry() {
                     placeholder={f.placeholder}
                     type={f.type}
                     options={f.options || []}
+                    disabled={f.field === "gst_no" && fetchingGst}
                   />
                 ))}
             </div>
@@ -321,6 +452,45 @@ export default function SupplierKYCEntry() {
         onCancel={closeModal}
       >
         {renderModalContent()}
+      </DynamicDialog>
+
+      <DynamicDialog
+        open={isGstDialogOpen}
+        onOpenChange={setIsGstDialogOpen}
+        title="GST Details"
+        Icon={FileText}
+        cancelText="Close"
+        onCancel={() => setIsGstDialogOpen(false)}
+      >
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {gstSummaryRows.map(({ label, value }) => (
+              <div key={label} className="rounded-md border bg-muted/20 p-3">
+                <p className="text-xs text-muted-foreground">{label}</p>
+                <p className="mt-1 text-sm font-medium break-words">{value || "-"}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold">All GST Response Details</h3>
+            <div className="divide-y rounded-md border">
+              {gstDetailRows.length > 0 ? (
+                gstDetailRows.map(({ label, value }, index) => (
+                  <div
+                    key={`${label}-${index}`}
+                    className="grid grid-cols-1 gap-1 p-3 text-sm sm:grid-cols-[minmax(180px,240px)_1fr] sm:gap-4"
+                  >
+                    <span className="text-muted-foreground break-words">{label}</span>
+                    <span className="font-medium break-words">{value}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="p-3 text-sm text-muted-foreground">No GST details available.</div>
+              )}
+            </div>
+          </div>
+        </div>
       </DynamicDialog>
     </div>
   );

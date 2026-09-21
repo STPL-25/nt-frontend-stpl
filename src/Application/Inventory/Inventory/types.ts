@@ -43,6 +43,32 @@ export interface InventoryItem {
   updated_at?: string;
   location_name?: string; // Added for display purposes
   location_code?: string; // Added for display purposes
+  // Reference-only values from the Product Stock Level Master (see
+  // grn-service/sql/29_inventory_stock_level_reference.sql) — the best-matching
+  // configured policy for this item's product + scope, if any. Shown alongside
+  // this item's own independently-editable min_stock/max_stock/reorder_qty
+  // above; never auto-applied to them. Undefined/null when the product has no
+  // configured policy (the normal case for a "rare"/untracked product).
+  master_min_qty?: number | null;
+  master_max_qty?: number | null;
+  master_reorder_level?: number | null;
+  master_scope_type?: 'ORG' | 'LOCATION' | null;
+  // Perishable/expiry signal (see grn-service/sql/30_perishable_expiry_stock.sql).
+  // subcat_stock_type/perishable_days come from the product's subcategory;
+  // last_received_date is an approximation — MAX(GRN received_date) across
+  // every receipt of this product, not true per-batch aging (this codebase
+  // has no batch/lot stock tracking). is_expiry_stock is the server-computed
+  // "still on hand past its shelf life" flag the Inventory page badges.
+  subcat_stock_type?: 'Regular' | 'Non-Regular' | 'Perishable' | null;
+  perishable_days?: number | null;
+  last_received_date?: string | null;
+  days_since_last_received?: number | null;
+  is_expiry_stock?: boolean;
+  // The product's purchase/pack unit and how many stock units it holds (Tin, 15),
+  // attached by grn-service for products with a per-product pack size. Lets the
+  // list show the same stock in both units — 115 Liter ≈ 7.67 Tin.
+  pack_uom_name?: string | null;
+  pack_factor?: number | null;
 }
 
 export interface StockMovement {

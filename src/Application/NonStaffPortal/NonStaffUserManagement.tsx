@@ -24,8 +24,6 @@ interface NonStaffUserRow {
   created_at: string;
 }
 
-const LOGIN_ID_PATTERN = /^[A-Za-z0-9_-]{3,30}$/;
-
 /**
  * Admin-facing "create a non-staff login" page — the equivalent of the
  * Supplier portal's "Send Portal Invite" action, but as a direct create
@@ -39,7 +37,6 @@ const NonStaffUserManagement: React.FC = () => {
 
   const [fullName, setFullName] = useState('');
   const [designationSno, setDesignationSno] = useState('');
-  const [loginId, setLoginId] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -52,32 +49,28 @@ const NonStaffUserManagement: React.FC = () => {
   const { postData, loading: submitting } = usePost();
 
   const resetForm = () => {
-    setFullName(''); setDesignationSno(''); setLoginId(''); setEmail(''); setPhone('');
+    setFullName(''); setDesignationSno(''); setEmail(''); setPhone('');
   };
 
   const handleSubmit = async () => {
-    if (!fullName.trim() || !designationSno || !loginId.trim() || !email.trim()) {
-      toast.error('Full name, designation, login ID and email are required');
-      return;
-    }
-    if (!LOGIN_ID_PATTERN.test(loginId.trim())) {
-      toast.error('Login ID must be 3-30 characters: letters, numbers, "-" or "_" only');
+    if (!fullName.trim() || !designationSno || !email.trim()) {
+      toast.error('Full name, designation and email are required');
       return;
     }
 
     try {
       const result = await postData(apiNonStaffCreate, {
-        login_id: loginId.trim().toUpperCase(),
         full_name: fullName.trim(),
         designation_sno: Number(designationSno),
         email: email.trim(),
         phone: phone.trim() || undefined,
       });
       const emailSent = (result as any)?.data?.emailSent;
+      const generatedLoginId = (result as any)?.data?.login?.login_id;
       toast.success(
         emailSent
-          ? `Invite email sent to ${email.trim()}`
-          : `User created, but the invite email could not be sent (check the mail server) — login ID: ${loginId.trim().toUpperCase()}`
+          ? `Invite email sent to ${email.trim()} — login ID: ${generatedLoginId}`
+          : `User created, but the invite email could not be sent (check the mail server) — login ID: ${generatedLoginId}`
       );
       resetForm();
       setRefreshKey((k) => k + 1);
@@ -115,14 +108,6 @@ const NonStaffUserManagement: React.FC = () => {
                       <option key={d.value} value={d.value}>{d.label}</option>
                     ))}
                   </select>
-                </div>
-                <div>
-                  <Label>Login ID</Label>
-                  <Input
-                    value={loginId}
-                    onChange={(e) => setLoginId(e.target.value)}
-                    placeholder="e.g., MD001 or IA-CBE3"
-                  />
                 </div>
                 <div>
                   <Label>Email</Label>

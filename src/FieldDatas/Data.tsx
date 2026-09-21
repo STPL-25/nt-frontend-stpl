@@ -1,8 +1,10 @@
-import React, { ReactElement, useMemo } from "react";
+import React, { ReactElement, useMemo, useState, useEffect } from "react";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import {  Building, MapPin, FileCheck, IndianRupee, Package, FolderOpen,
-  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck, Landmark, Warehouse, Wrench, UserCog, FileText, Repeat, Link2,} from "lucide-react";
+  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck, Landmark, Warehouse, Wrench, UserCog, FileText, Repeat, Link2, Gauge,} from "lucide-react";
 import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
+import usePost from "@/hooks/usePostHook";
+import { apiGetSignEmployee } from "@/Services/Api";
 import type { FieldType, OptionType } from "./fieldType/fieldType";
 
 export type { FieldType, OptionType };
@@ -38,17 +40,18 @@ const masterItems: MasterItemType[] = [
   { icon: <FolderOpen className="w-5 h-5" />, name: "Product Category", category: "inventory", color: "bg-yellow-500", id: "ProductCategoryMaster" },
   { icon: <FolderOpen className="w-5 h-5" />, name: "Product Sub Category", category: "inventory", color: "bg-amber-500", id: "ProductSubCategoryMaster" },
   { icon: <Package className="w-5 h-5" />, name: "Product", category: "inventory", color: "bg-indigo-500", id: "ProductMaster" },
-  { icon: <Wrench className="w-5 h-5" />, name: "Service Master", category: "inventory", color: "bg-teal-600", id: "ServiceMaster" },
    { icon: <Hash className="w-5 h-5" />, name: "UOM", category: "inventory", color: "bg-green-600", id: "UomMaster" },
   { icon: <Truck className="w-5 h-5" />, name: "Transporter Master", category: "logistics", color: "bg-red-600", id: "TransportMaster" },
   { icon: <Landmark className="w-5 h-5" />, name: "Bank Account Type", category: "compliance", color: "bg-cyan-600", id: "BankAccountTypeMaster" },
   { icon: <Warehouse className="w-5 h-5" />, name: "Warehouse Location", category: "inventory", color: "bg-orange-600", id: "WarehouseLocationMaster" },
   { icon: <UserCog className="w-5 h-5" />, name: "Designation Master", category: "administration", color: "bg-fuchsia-600", id: "DesignationMaster" },
   { icon: <FileText className="w-5 h-5" />, name: "Terms & Conditions", category: "compliance", color: "bg-sky-600", id: "TermsConditionsMaster", staffOnly: true },
-  { icon: <Repeat className="w-5 h-5" />, name: "Recurrence Cadence", category: "approvals", color: "bg-violet-500", id: "RecurrenceCadenceMaster" },
-  { icon: <Link2 className="w-5 h-5" />, name: "Service Supplier Mapping", category: "inventory", color: "bg-teal-500", id: "ServiceMasterSupplierMapping" },
+  { icon: <Gauge className="w-5 h-5" />, name: "Product Stock Level", category: "inventory", color: "bg-pink-600", id: "ProductStockLevelMaster", staffOnly: true },
   { icon: <FolderOpen className="w-5 h-5" />, name: "Supplier Category", category: "compliance", color: "bg-lime-600", id: "SupplierCatagoryMaster" },
   { icon: <Landmark className="w-5 h-5" />, name: "Payment Mode", category: "compliance", color: "bg-emerald-500", id: "PaymentModeMaster" },
+  { icon: <Repeat className="w-5 h-5" />, name: "Service Type", category: "services", color: "bg-violet-500", id: "ServiceTypeMaster" },
+  { icon: <Wrench className="w-5 h-5" />, name: "Service", category: "services", color: "bg-indigo-600", id: "ServiceMaster" },
+  { icon: <Gauge className="w-5 h-5" />, name: "Recurrence Cadence", category: "services", color: "bg-teal-600", id: "RecurrenceCadenceMaster" },
 
   // { icon: <FileText className="w-5 h-5" />, name: "KYC", category: "compliance", color: "bg-teal-500", id: "kyc_master" },
   // { icon: <Tag className="w-5 h-5" />, name: "Product Rate and Discount", category: "inventory", color: "bg-cyan-500", id: "product_rate_discount" },
@@ -165,13 +168,26 @@ const useBranchMasterFields = (formData?: any): FieldType[] => {
   );
 };
 
+// Fixed taxonomy already in live use across every existing uom_master row —
+// enforcing it as a dropdown (rather than free text) stops a typo'd class
+// (e.g. "Wieght") from silently orphaning a unit out of its class's
+// same-class conversion-unit picker on Product Master (see
+// useProductFieldsMaster's conversionUnitOptions below).
+const UOM_CLASS_OPTIONS = [
+  { label: "Mass / Weight", value: "MASS" },
+  { label: "Volume", value: "VOLUME" },
+  { label: "Length", value: "LENGTH" },
+  { label: "Area", value: "AREA" },
+  { label: "Quantity / Count", value: "QUANTITY" },
+];
+
 const useUomMasterFields = (formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
       { field: "uom_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "uom_code", label: "Code", require: true, view: true, type: "text", input: true },
       { field: "uom_name", label: "Name", require: true, view: true, type: "text", input: true },
-      { field: "uom_class", label: "UOM Class", require: true, view: true, type: "text", input: true },
+      { field: "uom_class", label: "UOM Class", require: true, view: true, type: "select", options: UOM_CLASS_OPTIONS, input: true },
       { field: "uom_base_uom_flag", label: "UOM Base", require: true, view: true, type: "text", input: true },
       // Leave blank for a packaging unit whose count varies per product
       // (e.g. Box) — that product then supplies its own conversion via
@@ -381,6 +397,7 @@ const useSupplierCatagoryFieldsMaster = (): FieldType[] => {
 };
 const useProductSubCatagoryMaster = (): FieldType[] => {
   const { options, loading } = useMasterOptions(['ProductCategoryMaster']);
+  const { formData } = useAppState();
   return useMemo<FieldType[]>(
     () => [
       { field: "subcat_sno", label: "Sub Category ID", require: false, view: false, type: "text", input: false },
@@ -393,18 +410,31 @@ const useProductSubCatagoryMaster = (): FieldType[] => {
       { field: "subcat_notes", label: "Sub Category Notes", require: false, view: true, type: "text", input: true },
       // Regular = day-to-day stock drawn via Store Requisition; Non-Regular =
       // one-off/specific-need items that skip requisition and go straight to
-      // Store Issue once GRN receives them. Defaults to Regular server-side.
+      // Store Issue once GRN receives them; Perishable = same auto-issue-off-
+      // GRN fast path as Non-Regular, plus a shelf-life (below) that flags
+      // unconsumed stock as Expiry Stock on the Inventory page. Defaults to
+      // Regular server-side.
       {
         field: "subcat_stock_type", label: "Stock Type", require: false, view: true, type: "select",
         options: [
           { label: "Regular", value: "Regular" },
           { label: "Non-Regular", value: "Non-Regular" },
+          { label: "Perishable", value: "Perishable" },
         ],
         input: true,
       },
+      {
+        field: "perishable_days",
+        label: "Perishable Days (shelf life)",
+        require: formData?.subcat_stock_type === "Perishable",
+        view: true,
+        type: "number",
+        input: formData?.subcat_stock_type === "Perishable",
+        placeholder: "e.g. 2",
+      },
       { field: "subcat_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
-    [options, loading]
+    [options, loading, formData?.subcat_stock_type]
   );
 };
 
@@ -439,11 +469,12 @@ const useProductFieldsMaster = (): FieldType[] => {
   const {options, loading} = useMasterOptions(['ProductCategoryMaster','ProductSubCategoryMaster','UomMaster','TaxMaster']);
 
   // The selected UOM's own base/conversion flags (uom_base_uom_flag,
-  // uom_con_factor) ride along as `extra` on each UomMaster option (see
-  // CommonMasterRepo.js fieldMappings). A non-base unit with no fixed
-  // uom_con_factor (e.g. Box) varies per product, so the moment one is
-  // selected here, "Pieces per Unit" appears and is required — that's the
-  // pop-up-on-selection behavior for capturing "1 Box = how many pieces".
+  // uom_con_factor, uom_class) ride along as `extra` on each UomMaster option
+  // (see CommonMasterRepo.js fieldMappings). A non-base unit with no fixed
+  // uom_con_factor (e.g. Box, Tin) varies per product, so the moment one is
+  // selected here, a Quantity + Unit pair appears and is required — that's
+  // the pop-up-on-selection behavior for capturing "1 Box = how many pieces"
+  // or "1 Tin = how many KG".
   const selectedUom: any = useMemo(
     () => options?.UomMaster?.find((u: any) => String(u.value) === String(formData?.uom_sno)),
     [options?.UomMaster, formData?.uom_sno]
@@ -451,6 +482,16 @@ const useProductFieldsMaster = (): FieldType[] => {
   const needsProdConFactor = !!selectedUom
     && selectedUom.uom_base_uom_flag === 'N'
     && (selectedUom.uom_con_factor === null || selectedUom.uom_con_factor === undefined);
+
+  // Restrict the conversion-unit picker to units sharing the selected UOM's
+  // class (e.g. Tin → MASS → KG/G/LB/OZ/TON only, never Liters), so "1 Tin =
+  // 20 ___" can only be answered with a weight unit.
+  const conversionUnitOptions = useMemo(
+    () => (selectedUom
+      ? (options?.UomMaster ?? []).filter((u: any) => u.uom_class === selectedUom.uom_class)
+      : []),
+    [options?.UomMaster, selectedUom]
+  );
 
   return useMemo<FieldType[]>(
     () => [
@@ -472,12 +513,22 @@ const useProductFieldsMaster = (): FieldType[] => {
       { field: "uom_name", label: "Unit of Measurement", require: true, view: true, type: "select", options: options?.UomMaster, input: false },
       {
         field: "prod_uom_con_factor",
-        label: "Pieces per Unit (e.g. pieces in 1 Box)",
+        label: selectedUom ? `Quantity per 1 ${selectedUom.label} (e.g. 20 for a 20 KG Tin)` : "Quantity per Unit",
         require: needsProdConFactor,
         view: true,
         type: "number",
         input: needsProdConFactor,
       },
+      {
+        field: "prod_uom_con_uom_sno",
+        label: "In Unit",
+        require: needsProdConFactor,
+        view: false,
+        type: "select",
+        options: conversionUnitOptions,
+        input: needsProdConFactor,
+      },
+      { field: "con_uom_name", label: "In Unit", require: false, view: true, type: "text", input: false },
       { field: "tax_sno", label: "Tax", require: true, view: false, type: "select", options: options?.TaxMaster, input: false },
       { field: "sku", label: "SKU", require: false, view: false, type: "text", input: false },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
@@ -489,120 +540,82 @@ const useProductFieldsMaster = (): FieldType[] => {
       // { field: "modified_date", label: "Modified Date", require: false, view: false, type: "date", input: false },
       // { field: "modified_by", label: "Modified By", require: false, view: false, type: "text", input: false },
     ],
-    [options, loading, needsProdConFactor]
+    [options, loading, needsProdConFactor, selectedUom, conversionUnitOptions]
   );
 };
 
-const useServiceMasterFields = (): FieldType[] => {
-  const { formData } = useAppState();
-  const { options, loading } = useMasterOptions(['ServiceTypeMaster', 'UomMaster', 'ProductMaster']);
 
-  // default_product_sno only makes sense for Vendor Driven services (e.g.
-  // "Milk Vendor" -> "Milk 1L") — resolved via ServiceTypeMaster's
-  // service_type_code extra field, same pattern useServiceAgreementFields
-  // uses to narrow services by type.
-  const isVendorBill = useMemo(() => {
-    const match = ((options?.ServiceTypeMaster ?? []) as any[]).find(
-      (t: any) => String(t.value) === String(formData?.service_type_sno)
-    );
-    return match?.service_type_code === 'VENDOR_BILL';
-  }, [options?.ServiceTypeMaster, formData?.service_type_sno]);
-
+const useServiceTypeFieldsMaster = (formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
-      { field: "service_sno", label: "S.No", require: false, view: false, type: "text", input: false },
-      { field: "service_code", label: "Service Code", require: true, view: true, type: "text", input: true },
-      { field: "service_name", label: "Service Name", require: true, view: true, type: "text", input: true },
-
-      { field: "service_type_sno", label: "Service Type", require: true, view: false, type: "select", options: options?.ServiceTypeMaster || [], input: true },
-      { field: "service_type_name", label: "Service Type", require: true, view: true, type: "select", options: options?.ServiceTypeMaster || [], input: false },
-
-      { field: "default_uom_sno", label: "Default UOM", require: false, view: false, type: "select", options: options?.UomMaster || [], input: true },
-      { field: "default_uom_name", label: "Default UOM", require: false, view: true, type: "select", options: options?.UomMaster || [], input: false },
-
-      { field: "sac_code", label: "SAC Code", require: false, view: true, type: "text", input: true },
-
-      { field: "is_recurring", label: "Recurring", require: false, view: true, type: "checkbox", input: true },
-      // Only meaningful when Recurring is on — usp/sp_nt_CreateServiceRecords
-      // throws if is_recurring=1 with no cadence, so gate it the same way
-      // CompanyMaster gates its GST fields on is_gst_applicable.
-      {
-        field: "recurrence_cadence",
-        label: "Recurrence Cadence",
-        require: !!formData?.is_recurring,
-        view: true,
-        type: "select",
-        options: [
-          { value: "DAILY", label: "Daily" },
-          { value: "EVERY_N_DAYS", label: "Every N Days" },
-          { value: "MONTHLY", label: "Monthly" },
-          { value: "QUARTERLY", label: "Quarterly" },
-          { value: "HALF_YEARLY", label: "Half Yearly" },
-          { value: "YEARLY_FIXED_DATE", label: "Yearly (Fixed Date)" },
-        ],
-        input: !!formData?.is_recurring,
-      },
-      {
-        field: "recurrence_interval_days",
-        label: "Recurrence Interval (Days)",
-        require: formData?.recurrence_cadence === "EVERY_N_DAYS",
-        view: true,
-        type: "number",
-        input: !!formData?.is_recurring && formData?.recurrence_cadence === "EVERY_N_DAYS",
-      },
-
-      // Linked catalogue product — Vendor Driven only, so daily entries can
-      // show product details (name/description/HSN/UOM) without a second lookup.
-      {
-        field: "default_product_sno", label: "Linked Product", require: false, view: isVendorBill, type: "select",
-        options: options?.ProductMaster || [], input: isVendorBill,
-      },
-
-      { field: "description", label: "Description", require: false, view: true, type: "textarea", input: true },
-      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
-    ],
-    [options, loading, formData?.is_recurring, formData?.recurrence_cadence, isVendorBill]
-  );
-};
-
-// Admin-editable cadence master (sql/23_service_recurring_flow_redesign.sql) —
-// lets an admin add arbitrary "every N days/months" cadences (e.g.
-// Bi-Monthly for electricity) without a SQL migration. Get+Create only, same
-// pattern as BankAccountTypeMaster.
-const useRecurrenceCadenceMasterFieldsMaster = (formData?: any): FieldType[] => {
-  return useMemo<FieldType[]>(
-    () => [
-      { field: "recurrence_cadence_sno", label: "S.No", require: false, view: false, type: "text", input: false },
-      { field: "cadence_code", label: "Code", require: true, view: true, type: "text", input: true },
-      { field: "cadence_name", label: "Cadence Name", require: true, view: true, type: "text", input: true },
-      {
-        field: "interval_unit", label: "Interval Unit", require: true, view: true, type: "select",
-        options: [{ label: "Day", value: "DAY" }, { label: "Month", value: "MONTH" }], input: true,
-      },
-      { field: "interval_value", label: "Interval Value", require: true, view: true, type: "number", input: true, placeholder: "e.g. 2 for every 2 months" },
-      { field: "description", label: "Description", require: false, view: true, type: "text", input: true },
+      { field: "service_type_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "service_type_code", label: "Code", require: true, view: true, type: "text", input: true },
+      { field: "service_type_name", label: "Service Type Name", require: true, view: true, type: "text", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
     []
   );
 };
 
-// Predefined-supplier mapping (sql/45_service_master_supplier_and_product.sql)
-// — each grid row is one service+supplier pair; admin adds a row per
-// supplier they want to allow for a service. Reuses the standard
-// masters-grid add-row UX, no bespoke multi-select component needed.
-const useServiceMasterSupplierMappingFieldsMaster = (formData?: any): FieldType[] => {
-  const { options } = useMasterOptions(['ServiceMaster', 'VendorMaster']);
+const useServiceFieldsMaster = (formData?: any): FieldType[] => {
+  const { options } = useMasterOptions(["ServiceTypeMaster", "UomMaster"]);
+
+  // Incharge = the employee responsible when this service is fulfilled
+  // internally instead of by a vendor (sql/81_service_agreement_dispatch_grn.sql).
+  // Set here, at service creation, only — no update proc exists for
+  // service_master. ecno is stored as an opaque string (same convention as
+  // approver_ecno elsewhere), so the employee list is fetched the same way
+  // ApprovalWorkflowManager.tsx already does for its approver picker, rather
+  // than through a master/FK the backend doesn't have.
+  const { postData } = usePost<any>();
+  const [employeeOptions, setEmployeeOptions] = useState<OptionType[]>([]);
+  useEffect(() => {
+    postData(apiGetSignEmployee, {})
+      .then((res: any) => {
+        const list: any[] = Array.isArray(res?.data) ? res.data : [];
+        setEmployeeOptions(list.map((e) => ({ label: `${e.ename} (${e.ecno})`, value: e.ecno })));
+      })
+      .catch(() => setEmployeeOptions([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return useMemo<FieldType[]>(
     () => [
-      { field: "mapping_sno", label: "S.No", require: false, view: false, type: "text", input: false },
-      { field: "service_sno", label: "Service", require: true, view: false, type: "select", options: options?.ServiceMaster || [], input: true },
-      { field: "service_name", label: "Service", require: false, view: true, type: "select", options: options?.ServiceMaster || [], input: false },
-      { field: "kyc_basic_info_sno", label: "Supplier", require: true, view: false, type: "select", options: options?.VendorMaster || [], input: true },
-      { field: "company_name", label: "Supplier", require: false, view: true, type: "select", options: options?.VendorMaster || [], input: false },
+      { field: "service_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "service_name", label: "Service Name", require: true, view: true, type: "text", input: true },
+      { field: "service_code", label: "Code", require: true, view: true, type: "text", input: true },
+      { field: "service_type_sno", label: "Service Type", require: true, view: false, type: "select", options: options?.ServiceTypeMaster || [], input: true },
+      { field: "service_type_name", label: "Service Type", require: false, view: true, type: "text", input: false },
+      { field: "default_uom_sno", label: "Default UOM", require: false, view: false, type: "select", options: options?.UomMaster || [], input: true },
+      { field: "default_uom_name", label: "Default UOM", require: false, view: true, type: "text", input: false },
+      {
+        field: "incharge_ecno", label: "Incharge", require: false, view: true, type: "select",
+        options: employeeOptions, input: true,
+        placeholder: "Only needed if this service can be routed to an internal Incharge instead of the supplier",
+      },
+      { field: "description", label: "Description", require: false, view: true, type: "textarea", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
-    [options]
+    [options, employeeOptions]
+  );
+};
+
+const useRecurrenceCadenceFieldsMaster = (formData?: any): FieldType[] => {
+  const interval_unit_options: OptionType[] = useMemo(() => ([
+    { label: "Day", value: "DAY" },
+    { label: "Month", value: "MONTH" },
+  ]), []);
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "recurrence_cadence_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "cadence_code", label: "Code", require: true, view: true, type: "text", input: true },
+      { field: "cadence_name", label: "Cadence Name", require: true, view: true, type: "text", input: true },
+      { field: "interval_unit", label: "Interval Unit", require: true, view: true, type: "select", options: interval_unit_options, input: true },
+      { field: "interval_value", label: "Interval Value", require: true, view: true, type: "number", input: true, placeholder: "e.g. 15 for DAY, 1/2/3/12 for MONTH" },
+      { field: "description", label: "Description", require: false, view: true, type: "textarea", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    [interval_unit_options]
   );
 };
 
@@ -628,9 +641,9 @@ export {
   useProductSubCatagoryMaster,
   useSupplierCatagoryFieldsMaster,
   usePaymentModeFieldsMaster,
-  useServiceMasterFields,
   useWorkflowMasterFields,
-  useRecurrenceCadenceMasterFieldsMaster,
-  useServiceMasterSupplierMappingFieldsMaster,
+  useServiceTypeFieldsMaster,
+  useServiceFieldsMaster,
+  useRecurrenceCadenceFieldsMaster,
 };
 

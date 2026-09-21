@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
-import { Menu, X } from 'lucide-react';
+import { Menu } from 'lucide-react';
 
 interface SidebarDetailLayoutProps {
   sidebarTitle: string;
@@ -37,24 +37,16 @@ export default function SidebarDetailLayout({
 
   const sidebarHeader = (
     <div className="flex-shrink-0 p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-50">
-            {sidebarTitle}
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {sidebarCount} pending {sidebarCountLabel}
-            {sidebarCount !== 1 ? 's' : ''}
-          </p>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={closeSheet}
-          className="lg:hidden ml-2"
-        >
-          <X className="h-5 w-5" />
-        </Button>
+      {/* In the mobile drawer the Sheet supplies its own close button (top-right),
+          so the title just leaves room for it. */}
+      <div className="pr-8 lg:pr-0">
+        <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-50">
+          {sidebarTitle}
+        </h2>
+        <p className="text-xs text-slate-500 mt-0.5">
+          {sidebarCount} pending {sidebarCountLabel}
+          {sidebarCount !== 1 ? 's' : ''}
+        </p>
       </div>
     </div>
   );
@@ -63,7 +55,9 @@ export default function SidebarDetailLayout({
     <div className="flex flex-col h-full">
       {sidebarHeader}
       <div className="flex-1 overflow-hidden">
-        <ScrollArea className="h-full">
+        {/* Radix wraps ScrollArea content in a `display: table` div, which lets long
+            unbroken text stretch the list wider than the sidebar instead of truncating. */}
+        <ScrollArea className="h-full [&>[data-radix-scroll-area-viewport]>div]:block!">
           <div className="p-2 sm:p-3 space-y-2">
             {listItems(closeSheet)}
           </div>

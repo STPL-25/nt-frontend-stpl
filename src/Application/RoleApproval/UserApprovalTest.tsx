@@ -424,6 +424,7 @@ export default function PermissionManager() {
                 permissions={permissions}
                 permChecked={permChecked}
                 togglePerm={togglePerm}
+                setRowPermissions={() => {}}
                 // setMorePermModal={setMorePermModal}
                 handleSave={handleSave}
                 permissionMap={permissionMap}

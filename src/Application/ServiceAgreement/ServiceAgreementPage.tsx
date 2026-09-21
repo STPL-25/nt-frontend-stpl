@@ -1,23 +1,36 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  FileText, Building2, RefreshCw, Send, Package,
-  Repeat, Wallet, Truck, CalendarClock, Bell, ClipboardCheck,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  FileText, Building2, RefreshCw, Send, Repeat, Wallet, CalendarClock, Bell, ClipboardList,
+  Pencil, Loader2, Briefcase, ScrollText, Check, FilePlus2, AlertCircle, SearchX, Layers,
+  Landmark, History, RotateCcw,
 } from 'lucide-react';
-import { FormSection, PageHeader } from '@/CustomComponent/PageComponents';
-import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
+import type { LucideIcon } from 'lucide-react';
+import { EmptyState, PageHeader } from '@/CustomComponent/PageComponents';
 import {
-  useServiceAgreementFields,
-  type AgreementType,
-} from '@/FieldDatas/ServiceAgreementData';
-import { useServiceVendorDailyEntryFields } from '@/FieldDatas/ServiceVendorEntryData';
+  Callout, FilterChips, Panel, SearchInput, StatusPill, SupplierSummary, TypeBadge,
+} from '@/CustomComponent/ServiceComponents/ServiceParts';
+import {
+  AGREEMENT_STATUS, buildStatutoryPayload, buildSupplierPayload, dateOnly, emptyStatutory, emptySupplierRow,
+  entersAmountPerCycle, facilityLabel, formatDate, formatINR, ordinalDay, statusMeta, statutoryFromRow, suggestRenewalTerm,
+  validateStatutory, validateSuppliers,
+  type StatutoryForm, type SupplierRowValue, type SupplierShare,
+} from '@/CustomComponent/ServiceComponents/serviceUtils';
+import { SupplierSplitEditor } from '@/CustomComponent/ServiceComponents/SupplierSplitEditor';
+import { StatutoryFieldsPanel } from '@/CustomComponent/ServiceComponents/StatutoryFieldsPanel';
+import { AgreementHistoryDialog } from '@/CustomComponent/ServiceComponents/AgreementHistoryDialog';
+import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
+import { useServiceAgreementFields, type AgreementType } from '@/FieldDatas/ServiceAgreementData';
 import axios from 'axios';
-import { createServiceAgreement, createServiceVendorEntry, getServiceVendorEntries, getApprovedSuppliersForService } from '@/Services/Api';
+import { createServiceAgreement, updateServiceAgreement, getServiceAgreements } from '@/Services/Api';
 import { toast } from 'sonner';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import type { FieldType } from '@/FieldDatas/fieldType/fieldType';
@@ -26,6 +39,29 @@ import useFetch from '@/hooks/useFetchHook';
 
 interface FormErrors {
   [key: string]: string;
+}
+
+interface AgreementRow {
+  agreement_sno: number;
+  agreement_no: string;
+  com_sno: number; div_sno: number; brn_sno: number; dept_sno: number;
+  service_sno: number; service_name: string; service_type_code: AgreementType;
+  vendor_sno?: number; vendor_name?: string;
+  vendors?: SupplierShare[]; supplier_count?: number;
+  qty?: number;
+  rate_amount?: number; rate_uom_sno?: number; rate_uom_name?: string;
+  recurrence_cadence_sno?: number; cadence_name?: string;
+  po_generation_day?: number; notify_days_before?: number;
+  period_start_date: string; period_end_date: string;
+  agreement_doc_url: string; remarks?: string; terms_conditions?: string;
+  facility_type?: string; facility_ref_no?: string; sanctioned_amount?: number; drawing_power?: number;
+  rate_type?: string; benchmark_rate_pct?: number; spread_pct?: number; interest_rate_pct?: number;
+  benchmark_name?: string; disbursed_amount?: number; disbursement_date?: string;
+  interest_payment_day?: number; day_count_basis?: number;
+  version_no?: number; renewal_count?: number;
+  status: 'P' | 'A' | 'R' | 'X';
+  dispatch_type?: 'S' | 'I'; incharge_ecno?: string;
+  created_by?: string; created_at?: string;
 }
 
 const NAME_FIELD_MAP: Record<string, string> = {
@@ -37,7 +73,6 @@ const NAME_FIELD_MAP: Record<string, string> = {
   vendor_sno: 'vendor_name',
   rate_uom_sno: 'rate_uom_name',
   recurrence_cadence_sno: 'cadence_name',
-  unit: 'unit_name',
 };
 
 function resolveNameField(fieldName: string): string {
@@ -45,89 +80,425 @@ function resolveNameField(fieldName: string): string {
 }
 
 const AGREEMENT_TYPES: { value: AgreementType; label: string; description: string; Icon: React.ElementType }[] = [
-  { value: 'FIXED_RECURRING', label: 'Fixed Recurring', description: 'Same amount, auto-generated on a schedule', Icon: Repeat },
-  { value: 'VARIABLE_RECURRING', label: 'Unfixed Recurring', description: 'Ceiling-capped, invoice submitted each cycle', Icon: Wallet },
-  { value: 'VENDOR_BILL', label: 'Vendor Driven', description: 'Daily entries (e.g. milk) — consolidate later to raise one PO', Icon: Truck },
+  { value: 'FIXED_RECURRING', label: 'Fixed', description: 'Same amount every cycle, auto-generated on a schedule', Icon: Repeat },
+  { value: 'VARIABLE_RECURRING', label: 'Unfixed', description: 'Amount varies by billing cycle — entered per cycle in Service PO', Icon: Wallet },
+  { value: 'STATUTORY', label: 'Statutory', description: 'Loans, repo and cash credit — no POs; interest is worked out on the outstanding principal and paid by Bank Payment Voucher', Icon: Landmark },
 ];
+
+// A loan is priced by its own facility terms and billed through Bank Payment Vouchers, so the
+// per-cycle pricing / PO-cadence fields don't apply. The server fills them in (see
+// ServiceAgreement.controller's withLoanDefaults); the form just doesn't ask.
+const LOAN_HIDDEN_FIELDS = new Set(['qty', 'rate_amount', 'rate_uom_sno', 'recurrence_cadence_sno', 'po_generation_day', 'notify_days_before']);
+
+type ListTab = 'fixed' | 'variable' | 'statutory';
+const TAB_FOR_TYPE: Record<AgreementType, ListTab> = { FIXED_RECURRING: 'fixed', VARIABLE_RECURRING: 'variable', STATUTORY: 'statutory' };
+
+// The form's fields are grouped into sections purely by field name, so a field
+// added to useServiceAgreementFields but not listed here still renders (in a
+// trailing "More details" section) instead of silently disappearing. Suppliers
+// and the Statutory facility block are not plain fields — they are rendered by
+// dedicated editors, slotted in after the section named in `slots`.
+interface FormSectionDef {
+  key: string;
+  title: string;
+  description?: string;
+  icon: LucideIcon;
+  fields: string[];
+  grid: string;
+  compactGrid: string;
+}
+
+const FORM_SECTIONS: FormSectionDef[] = [
+  {
+    key: 'org', title: 'Organisation', description: 'Who this agreement is raised for', icon: Building2,
+    fields: ['com_sno', 'div_sno', 'brn_sno', 'dept_sno'],
+    grid: 'sm:grid-cols-2 xl:grid-cols-4', compactGrid: 'sm:grid-cols-2',
+  },
+  {
+    key: 'service', title: 'Service', icon: Briefcase,
+    fields: ['service_sno'],
+    grid: 'sm:grid-cols-2', compactGrid: 'sm:grid-cols-2',
+  },
+  {
+    key: 'pricing', title: 'Pricing', icon: Wallet,
+    fields: ['qty', 'rate_amount', 'rate_uom_sno'],
+    grid: 'sm:grid-cols-3', compactGrid: 'sm:grid-cols-2',
+  },
+  {
+    key: 'schedule', title: 'Schedule', description: 'Term and PO cadence', icon: CalendarClock,
+    fields: ['recurrence_cadence_sno', 'po_generation_day', 'notify_days_before', 'period_start_date', 'period_end_date'],
+    grid: 'sm:grid-cols-2 lg:grid-cols-3', compactGrid: 'sm:grid-cols-2',
+  },
+  {
+    key: 'docs', title: 'Document & terms', icon: ScrollText,
+    fields: ['agreement_document', 'remarks', 'terms_conditions'],
+    grid: 'sm:grid-cols-2', compactGrid: 'sm:grid-cols-2',
+  },
+];
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/** What the supplier shares must add up to: the amount per cycle (rate × quantity). */
+const totalPerCycle = (formData: Record<string, any>) => round2((Number(formData.qty) || 0) * (Number(formData.rate_amount) || 0));
+
+const defaultPlaceholder = (f: FieldType) =>
+  f.placeholder
+  ?? (f.type === 'select' || f.type === 'search-select' ? `Select ${f.label.toLowerCase()}`
+    : f.type === 'textarea' ? `Enter ${f.label.toLowerCase()}…` : undefined);
+
+const scrollToFirstError = () => {
+  requestAnimationFrame(() => {
+    document.querySelector('[data-error="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+};
+
+/** One validation pass shared by the create form and the edit/renew dialog. */
+function validateAgreementForm(args: {
+  inputFields: FieldType[]; formData: Record<string, any>; agreementType: AgreementType; renewAfter?: string;
+}): FormErrors {
+  const { inputFields, formData, agreementType, renewAfter } = args;
+  const isLoan = agreementType === 'STATUTORY';
+  const errs: FormErrors = {};
+  inputFields.forEach((f) => {
+    if (isLoan && LOAN_HIDDEN_FIELDS.has(f.field)) return;
+    if (f.require && !formData[f.field]) errs[f.field] = `${f.label} is required`;
+  });
+  if (!isLoan) {
+    if (formData.qty && Number(formData.qty) <= 0) errs.qty = 'Quantity must be greater than 0';
+    if (formData.rate_amount && Number(formData.rate_amount) <= 0) errs.rate_amount = 'Rate must be greater than 0';
+  }
+
+  const start = formData.period_start_date, end = formData.period_end_date;
+  if (start && end && end <= start) errs.period_end_date = 'Duration To must be after Duration From';
+  if (renewAfter && start && start <= renewAfter) errs.period_start_date = `A renewal must start after the previous term ended (${formatDate(renewAfter)})`;
+
+  if (isLoan) {
+    if (!formData.vendor_sno) errs.vendor_sno = 'Select the lender';
+    Object.assign(errs, validateStatutory(formData.statutory ?? emptyStatutory(), { start, end }));
+  } else {
+    const supplierError = validateSuppliers(formData.vendors ?? [], totalPerCycle(formData));
+    if (supplierError) errs.vendors = supplierError;
+  }
+  return errs;
+}
+
+/** Multipart body for create / edit / renew. Suppliers and the facility block go as JSON strings. */
+function buildAgreementFormData(formData: Record<string, any>, agreementType: AgreementType, extra?: Record<string, string>): FormData {
+  const fd = new FormData();
+  const isLoan = agreementType === 'STATUTORY';
+  const skip = new Set(['agreement_document', 'vendors', 'statutory', 'vendor_sno', 'vendor_name']);
+  Object.entries(formData).forEach(([key, value]) => {
+    if (skip.has(key) || value === null || value === undefined || value === '') return;
+    if (isLoan && LOAN_HIDDEN_FIELDS.has(key)) return;
+    fd.append(key, String(value));
+  });
+  Object.entries(extra ?? {}).forEach(([k, v]) => fd.append(k, v));
+  if (isLoan) {
+    // One lender; the server derives the rest (amount, monthly cadence, payment day).
+    fd.append('vendor_sno', String(formData.vendor_sno));
+    fd.append('statutory', JSON.stringify(buildStatutoryPayload(formData.statutory ?? emptyStatutory())));
+  } else {
+    fd.append('vendors', JSON.stringify(buildSupplierPayload(formData.vendors ?? [], totalPerCycle(formData))));
+  }
+  if (formData.agreement_document instanceof File) fd.append('agreement_document', formData.agreement_document);
+  return fd;
+}
+
+const FieldCell: React.FC<{
+  field: FieldType;
+  formData: Record<string, any>;
+  errors: Record<string, string>;
+  onChange: (field: string, value: any) => void;
+}> = ({ field, formData, errors, onChange }) => {
+  const isTextarea = field.type === 'textarea';
+  const isFile = field.type === 'file';
+  return (
+    <div
+      data-error={!!errors[field.field]}
+      className={cn('flex flex-col', (isTextarea || isFile) && 'sm:col-span-full', isFile && 'sm:max-w-sm')}
+    >
+      <CustomInputField
+        field={field.field}
+        label={field.label}
+        require={field.require}
+        type={field.type}
+        options={field.options}
+        value={formData[field.field] ?? (isFile ? null : '')}
+        onChange={(value) => onChange(field.field, value)}
+        error={errors[field.field]}
+        placeholder={defaultPlaceholder(field)}
+        {...(isTextarea ? { rows: 3, className: 'resize-none' } : isFile ? {} : { className: 'h-10' })}
+      />
+    </div>
+  );
+};
+
+// Shared by the create form and the edit dialog so the two can't drift apart.
+const AgreementFormSections: React.FC<{
+  fields: FieldType[];
+  formData: Record<string, any>;
+  errors: Record<string, string>;
+  onChange: (field: string, value: any) => void;
+  agreementType: AgreementType;
+  compact?: boolean;
+}> = ({ fields, formData, errors, onChange, agreementType, compact }) => {
+  const byName = useMemo(() => new Map(fields.map((f) => [f.field, f])), [fields]);
+  const isLoan = agreementType === 'STATUTORY';
+  const perCycleEntry = entersAmountPerCycle(agreementType);
+  const sections = useMemo(() => {
+    const placed = new Set(FORM_SECTIONS.flatMap((s) => s.fields));
+    const leftovers = fields.filter((f) => !placed.has(f.field)).map((f) => f.field);
+    const more: FormSectionDef = {
+      key: 'more', title: 'More details', icon: Layers, fields: leftovers, grid: 'sm:grid-cols-2', compactGrid: 'sm:grid-cols-2',
+    };
+    const all: FormSectionDef[] = (leftovers.length ? [...FORM_SECTIONS, more] : FORM_SECTIONS)
+      // A loan's tenure is just its start and end — the pricing / PO-cadence fields don't apply.
+      .map((s) => (isLoan && s.key === 'schedule'
+        ? { ...s, title: 'Loan term', description: 'Tenure of the facility — interest is billed monthly on the payment day set under Loan details' }
+        : s));
+    return all
+      .map((s) => ({
+        ...s,
+        defs: s.fields
+          .filter((n) => !(isLoan && LOAN_HIDDEN_FIELDS.has(n)))
+          .map((n) => byName.get(n))
+          .filter((f): f is FieldType => !!f),
+      }))
+      .filter((s) => s.defs.length > 0);
+  }, [fields, byName, isLoan]);
+
+  // Dedicated editors, each placed right after the section it belongs with.
+  const slots: Record<string, React.ReactNode> = {
+    service: isLoan ? (
+      <StatutoryFieldsPanel
+        value={(formData.statutory as StatutoryForm) ?? emptyStatutory()}
+        onChange={(v) => onChange('statutory', v)}
+        errors={errors}
+        lender={formData.vendor_sno ? String(formData.vendor_sno) : ''}
+        onLenderChange={(v) => onChange('vendor_sno', v)}
+        lenderError={errors.vendor_sno}
+      />
+    ) : null,
+    pricing: isLoan ? null : (
+      <SupplierSplitEditor
+        rows={(formData.vendors as SupplierRowValue[]) ?? [emptySupplierRow()]}
+        onChange={(rows) => onChange('vendors', rows)}
+        total={totalPerCycle(formData)}
+        error={errors.vendors}
+      />
+    ),
+  };
+
+  return (
+    <>
+      {sections.map((s) => (
+        <React.Fragment key={s.key}>
+          <Panel icon={s.icon} title={s.title} description={s.description} bodyClassName="space-y-4">
+            <div className={cn('grid grid-cols-1 gap-x-4 gap-y-5', compact ? s.compactGrid : s.grid)}>
+              {s.defs.map((f) => (
+                <FieldCell key={f.field} field={f} formData={formData} errors={errors} onChange={onChange} />
+              ))}
+            </div>
+
+            {s.key === 'schedule' && !isLoan && (
+              <Callout tone="primary" icon={Bell}>
+                <b>PO Generation Day</b> is required for monthly, bi-monthly, quarterly and annual cadences (e.g. 5 = generate on the 5th of every eligible month).
+                {' '}<b>Notify Before</b> sends an in-app reminder that many days before each auto-generation.
+              </Callout>
+            )}
+            {s.key === 'pricing' && perCycleEntry && (
+              <Callout tone="violet" icon={Wallet}>
+                The rate and quantity entered here are the agreed baseline — the actual amount for each billing cycle is entered separately in Service PO.
+              </Callout>
+            )}
+          </Panel>
+          {slots[s.key]}
+        </React.Fragment>
+      ))}
+    </>
+  );
+};
+
+// ── Edit / renew dialog — reuses the exact field set the create form uses
+// (useServiceAgreementFields), pre-filled from the selected row, submitting
+// to updateServiceAgreement (re-enters approval). For an Expired agreement it
+// is a renewal: same agreement number, a new version, a new term.
+const EditAgreementDialog: React.FC<{
+  row: AgreementRow; mode: 'edit' | 'renew'; onClose: () => void; onSaved: () => void;
+}> = ({ row, mode, onClose, onSaved }) => {
+  const renewing = mode === 'renew';
+  const agreementType = row.service_type_code;
+  const [selectedCompany, setSelectedCompany] = useState(String(row.com_sno));
+  const [selectedDivision, setSelectedDivision] = useState(String(row.div_sno));
+  const [selectedBranch, setSelectedBranch] = useState(String(row.brn_sno));
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const baseFields = useServiceAgreementFields({ agreementType, selectedCompany, selectedDivision, selectedBranch });
+  // Editing never forces a fresh document upload — the existing
+  // agreement_doc_url carries forward unless the user picks a new file.
+  const fields = useMemo(
+    () => baseFields.map((f) => (f.field === 'agreement_document'
+      ? { ...f, require: false, label: renewing ? 'Renewed Agreement Document (recommended)' : 'Replace Agreement Document (optional)' }
+      : f)),
+    [baseFields, renewing]
+  );
+
+  const prevStart = dateOnly(row.period_start_date);
+  const prevEnd = dateOnly(row.period_end_date);
+
+  const [formData, setFormData] = useState<Record<string, any>>(() => {
+    const term = renewing ? suggestRenewalTerm(prevStart, prevEnd) : { start: prevStart, end: prevEnd };
+    const vendors: SupplierRowValue[] = row.vendors?.length
+      ? row.vendors.map((v) => ({ vendor_sno: String(v.vendor_sno), share_amount: String(v.share_amount) }))
+      : [{ vendor_sno: row.vendor_sno ? String(row.vendor_sno) : '', share_amount: '' }];
+    return {
+      com_sno: row.com_sno, div_sno: row.div_sno, brn_sno: row.brn_sno, dept_sno: row.dept_sno,
+      service_sno: row.service_sno, service_name: row.service_name,
+      vendors,
+      vendor_sno: row.vendor_sno ? String(row.vendor_sno) : '',   // a loan has one lender
+      statutory: statutoryFromRow(row),
+      qty: row.qty ?? 1,
+      rate_amount: row.rate_amount ?? '', rate_uom_sno: row.rate_uom_sno ?? '', rate_uom_name: row.rate_uom_name ?? '',
+      recurrence_cadence_sno: row.recurrence_cadence_sno ?? '',
+      po_generation_day: row.po_generation_day ?? '', notify_days_before: row.notify_days_before ?? 0,
+      period_start_date: term.start, period_end_date: term.end,
+      agreement_document: null, agreement_doc_url: row.agreement_doc_url,
+      remarks: row.remarks ?? '', terms_conditions: row.terms_conditions ?? '',
+    };
+  });
+
+  const handleFieldChange = (fieldName: string, value: any) => {
+    setFormData((prev) => {
+      const updated = { ...prev, [fieldName]: value };
+      if (fieldName === 'com_sno') {
+        updated.div_sno = ''; updated.div_name = ''; updated.brn_sno = ''; updated.brn_name = '';
+        updated.dept_sno = ''; updated.dept_name = '';
+        setSelectedCompany(String(value)); setSelectedDivision(''); setSelectedBranch('');
+      } else if (fieldName === 'div_sno') {
+        updated.brn_sno = ''; updated.brn_name = ''; updated.dept_sno = ''; updated.dept_name = '';
+        setSelectedDivision(String(value)); setSelectedBranch('');
+      } else if (fieldName === 'brn_sno') {
+        updated.dept_sno = ''; updated.dept_name = '';
+        setSelectedBranch(String(value));
+      }
+      const field = fields.find((f) => f.field === fieldName);
+      if (field?.options && Array.isArray(field.options)) {
+        const opt = (field.options as any[]).find((o) => String(o.value) === String(value));
+        if (opt) updated[resolveNameField(fieldName)] = opt.label;
+      }
+      return updated;
+    });
+    setErrors((prev) => {
+      if (!prev[fieldName] && !(fieldName === 'statutory' && Object.keys(prev).some((k) => k.startsWith('stat_')))) return prev;
+      const e = { ...prev };
+      delete e[fieldName];
+      if (fieldName === 'statutory') Object.keys(e).forEach((k) => { if (k.startsWith('stat_')) delete e[k]; });
+      return e;
+    });
+  };
+
+  const inputFields = useMemo(() => fields.filter((f) => f.input), [fields]);
+
+  const validate = (): boolean => {
+    const errs = validateAgreementForm({ inputFields, formData, agreementType, renewAfter: renewing ? prevEnd : undefined });
+    setErrors(errs);
+    if (Object.keys(errs).length > 0) scrollToFirstError();
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleSubmit = async () => {
+    if (!validate()) return;
+    setSubmitting(true);
+    try {
+      const fd = buildAgreementFormData(formData, agreementType, { agreement_sno: String(row.agreement_sno) });
+      await axios.post(updateServiceAgreement, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success(renewing
+        ? `${row.agreement_no} renewed and submitted for approval`
+        : `${row.agreement_no} updated and resubmitted for approval`);
+      onSaved();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error ?? (renewing ? 'Failed to renew agreement' : 'Failed to update agreement'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const nextVersion = (row.version_no ?? 1) + 1;
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="flex max-h-[92vh] w-[calc(100%-1rem)] flex-col gap-0 overflow-hidden p-0 sm:w-full sm:max-w-3xl">
+        <DialogHeader className="border-b px-4 py-4 pr-12 text-left sm:px-6">
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            {renewing ? 'Renew' : 'Edit'} {row.agreement_no} <TypeBadge type={agreementType} />
+          </DialogTitle>
+          <DialogDescription>
+            {renewing
+              ? `Renewing creates version ${nextVersion} of this agreement for a new term. It goes through approval again; the expired terms stay available under History.`
+              : `Saving resubmits this agreement for approval as version ${nextVersion} — the current Approved values stay in effect until it's approved again, and the earlier version is kept under History.`}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 space-y-4 overflow-y-auto bg-muted/30 px-4 py-4 sm:px-6">
+          {renewing && (
+            <Callout tone="violet" icon={RotateCcw}>
+              Previous term: <b>{formatDate(row.period_start_date)} – {formatDate(row.period_end_date)}</b>
+              {agreementType === 'STATUTORY'
+                ? (row.sanctioned_amount != null && <> on a sanctioned <b>{formatINR(row.sanctioned_amount)}</b></>)
+                : (row.rate_amount != null && <> at <b>{formatINR(row.rate_amount)}</b></>)}. The new term must start after it ended —
+              review the dates, {agreementType === 'STATUTORY' ? 'interest rate and lender' : 'rate and suppliers'} below, which are pre-filled from the last version.
+            </Callout>
+          )}
+          <AgreementFormSections
+            compact
+            fields={inputFields}
+            formData={formData}
+            errors={errors}
+            onChange={handleFieldChange}
+            agreementType={agreementType}
+          />
+        </div>
+
+        <DialogFooter className="border-t bg-card px-4 py-3 sm:px-6">
+          <Button variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={submitting}>
+            {submitting
+              ? <><Loader2 size={15} className="animate-spin" /> Saving…</>
+              : renewing ? <><RotateCcw size={15} /> Renew & Submit</> : <><Send size={15} /> Save & Resubmit</>}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+type StatusFilter = 'ALL' | 'P' | 'A' | 'R' | 'X';
+type PageView = 'create' | 'list';
 
 const ServiceAgreementPage: React.FC = () => {
   const { canCreate, canEdit } = usePermissions();
   const permissionComponent = 'ServiceAgreementPage';
   const canSubmit = canCreate(permissionComponent) || canEdit(permissionComponent);
 
-  const [agreementType, setAgreementType] = useState<AgreementType>('FIXED_RECURRING');
-  const isVendorDriven = agreementType === 'VENDOR_BILL';
+  // View-only users have nothing to do on the create form, so they only get the list.
+  const [requestedView, setView] = useState<PageView>('create');
+  const view: PageView = canSubmit ? requestedView : 'list';
 
-  // Cascade tracking — shared across all three types
+  const [agreementType, setAgreementType] = useState<AgreementType>('FIXED_RECURRING');
+
   const [selectedCompany, setSelectedCompany] = useState('');
   const [selectedDivision, setSelectedDivision] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('');
 
-  const agreementFields = useServiceAgreementFields({
+  const activeFields = useServiceAgreementFields({
     agreementType,
     selectedCompany, selectedDivision, selectedBranch,
   });
-  const vendorEntryFields = useServiceVendorDailyEntryFields({ selectedCompany, selectedDivision, selectedBranch });
-
-  const activeFields = isVendorDriven ? vendorEntryFields : agreementFields;
 
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
-
-  // Vendor Driven: entries logged for the currently selected vendor+service,
-  // still PENDING (not yet consolidated into a PO) — pure visibility, this
-  // page only ever creates PENDING rows via createServiceVendorEntry now.
-  const [recentEntries, setRecentEntries] = useState<Record<string, any>[]>([]);
-  const [loadingEntries, setLoadingEntries] = useState(false);
-
-  // Predefined-supplier picker (sql/45_service_master_supplier_and_product.sql)
-  // — reactive fetch scoped to whichever suppliers are mapped to the
-  // currently-selected service, replacing the old globally-scoped VendorMaster
-  // list for the vendor_sno field on both the agreement form and the Vendor
-  // Driven daily-entry form (same field name in both).
-  const { data: supplierData } = useFetch<{ success: boolean; data: any[] }>(
-    formData.service_sno ? getApprovedSuppliersForService : null,
-    '',
-    formData.service_sno ? { service_sno: formData.service_sno } : null
-  );
-  const approvedSuppliers = useMemo(
-    () => (supplierData?.data ?? []).map((v: any) => ({
-      value: v.kyc_basic_info_sno, label: v.company_name,
-      supp_code: v.supp_code, email: v.email, mobile_number: v.mobile_number,
-    })),
-    [supplierData]
-  );
-
-  // Auto-select the sole predefined supplier — no dropdown interaction
-  // needed when there's only one to choose from.
-  useEffect(() => {
-    if (!formData.service_sno || approvedSuppliers.length !== 1) return;
-    const only = approvedSuppliers[0];
-    if (formData.vendor_sno === only.value) return;
-    setFormData((prev) => ({ ...prev, vendor_sno: only.value, vendor_name: only.label }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approvedSuppliers, formData.service_sno]);
-
-  // The FieldType arrays above are built from the globally-scoped VendorMaster
-  // master; override just the vendor_sno field's options here with the
-  // service-scoped list so the dropdown only ever shows valid suppliers.
-  const displayFields = useMemo(
-    () => activeFields.map((f) => (f.field === 'vendor_sno' ? { ...f, options: approvedSuppliers } : f)),
-    [activeFields, approvedSuppliers]
-  );
-
-  // Vendor Driven: product details for the selected service (joined server-side
-  // in sp_nt_GetServiceRecords v2, riding along on the same ServiceMaster
-  // options fetch the service_sno field already uses — no second lookup).
-  const selectedVendorDrivenProduct = useMemo(() => {
-    if (!isVendorDriven) return null;
-    const serviceField = vendorEntryFields.find((f) => f.field === 'service_sno');
-    const opt = (serviceField?.options as any[] | undefined)?.find(
-      (o) => String(o.value) === String(formData.service_sno)
-    );
-    return opt?.product_name ? opt : null;
-  }, [isVendorDriven, vendorEntryFields, formData.service_sno]);
 
   const buildInitialFormData = useCallback((fields: FieldType[]) => {
     const d: Record<string, any> = {};
@@ -139,41 +510,18 @@ const ServiceAgreementPage: React.FC = () => {
       else if (field.type === 'file') d[field.field] = null;
       else d[field.field] = '';
     });
+    d.vendors = [emptySupplierRow()];
+    d.statutory = emptyStatutory();
     return d;
   }, []);
 
-  // Reset the form whenever the type changes — the three types share no
-  // required fields whose values would still be valid across the switch.
+  // Reset the form whenever the type changes — Fixed, Unfixed and Statutory
+  // share no required values whose meaning would still be valid across the switch.
   useEffect(() => {
     setFormData(buildInitialFormData(activeFields));
     setErrors({});
-    setRecentEntries([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agreementType]);
-
-  const fetchRecentEntries = useCallback(async (vendor_sno: any, service_sno: any) => {
-    if (!vendor_sno || !service_sno) {
-      setRecentEntries([]);
-      return;
-    }
-    setLoadingEntries(true);
-    try {
-      const res = await axios.get(getServiceVendorEntries, { params: { vendor_sno, service_sno, status: 'PENDING' } });
-      setRecentEntries(res?.data?.data ?? []);
-    } catch {
-      // non-fatal — the entry list is a convenience view, not required for logging
-    } finally {
-      setLoadingEntries(false);
-    }
-  }, []);
-
-  // Refresh the pending-entries list whenever vendor or service changes
-  // while on the Vendor Driven tab.
-  useEffect(() => {
-    if (!isVendorDriven) return;
-    fetchRecentEntries(formData.vendor_sno, formData.service_sno);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isVendorDriven, formData.vendor_sno, formData.service_sno]);
 
   const handleFieldChange = (fieldName: string, value: any) => {
     setFormData((prev) => {
@@ -194,12 +542,6 @@ const ServiceAgreementPage: React.FC = () => {
       } else if (fieldName === 'brn_sno') {
         updated.dept_sno = ''; updated.dept_name = '';
         setSelectedBranch(String(value));
-      } else if (fieldName === 'service_sno') {
-        // The predefined-supplier list is scoped to the service — a vendor
-        // valid for the old service selection may not be valid for the new
-        // one, so clear it (the auto-select effect re-fills it if the new
-        // service has exactly one supplier).
-        updated.vendor_sno = ''; updated.vendor_name = '';
       }
 
       const field = activeFields.find((f) => f.field === fieldName);
@@ -211,62 +553,22 @@ const ServiceAgreementPage: React.FC = () => {
       return updated;
     });
 
-    if (errors[fieldName]) {
-      setErrors((prev) => {
-        const e = { ...prev };
-        delete e[fieldName];
-        return e;
-      });
-    }
+    setErrors((prev) => {
+      const clearsStatutory = fieldName === 'statutory' && Object.keys(prev).some((k) => k.startsWith('stat_'));
+      if (!prev[fieldName] && !clearsStatutory) return prev;
+      const e = { ...prev };
+      delete e[fieldName];
+      if (fieldName === 'statutory') Object.keys(e).forEach((k) => { if (k.startsWith('stat_')) delete e[k]; });
+      return e;
+    });
   };
 
-  // ── Validation ──────────────────────────────────────────────────────────
-
-  const inputFields = useMemo(() => displayFields.filter((f) => f.input), [displayFields]);
+  const inputFields = useMemo(() => activeFields.filter((f) => f.input), [activeFields]);
 
   const validateForm = (): boolean => {
-    const errs: FormErrors = {};
-    inputFields.forEach((field) => {
-      if (field.require && !formData[field.field]) errs[field.field] = `${field.label} is required`;
-    });
-    if (isVendorDriven && formData.qty && Number(formData.qty) <= 0) errs.qty = 'Quantity must be greater than 0';
+    const errs = validateAgreementForm({ inputFields, formData, agreementType });
     setErrors(errs);
     return Object.keys(errs).length === 0;
-  };
-
-  // ── Submit ──────────────────────────────────────────────────────────────
-
-  const buildAgreementFormData = (): FormData => {
-    const fd = new FormData();
-    Object.entries(formData).forEach(([key, value]) => {
-      if (key === 'agreement_document') return;
-      if (value === null || value === undefined || value === '') return;
-      fd.append(key, String(value));
-    });
-    if (formData.agreement_document instanceof File) {
-      fd.append('agreement_document', formData.agreement_document);
-    }
-    return fd;
-  };
-
-  const buildVendorEntryFormData = (): FormData => {
-    const fd = new FormData();
-    fd.append('com_sno', String(formData.com_sno));
-    fd.append('div_sno', String(formData.div_sno));
-    fd.append('brn_sno', String(formData.brn_sno));
-    fd.append('dept_sno', String(formData.dept_sno));
-    fd.append('vendor_sno', String(formData.vendor_sno));
-    fd.append('service_sno', String(formData.service_sno));
-    fd.append('entry_date', String(formData.entry_date));
-    fd.append('qty', String(formData.qty));
-    if (formData.unit) fd.append('unit', String(formData.unit));
-    fd.append('unit_price', String(formData.unit_price));
-    if (formData.specification) fd.append('specification', String(formData.specification));
-    if (formData.remarks) fd.append('remarks', String(formData.remarks));
-    if (formData.receipt_document instanceof File) {
-      fd.append('receipt_document', formData.receipt_document);
-    }
-    return fd;
   };
 
   const handleReset = () => {
@@ -275,41 +577,41 @@ const ServiceAgreementPage: React.FC = () => {
     setSelectedCompany(''); setSelectedDivision(''); setSelectedBranch('');
   };
 
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refresh = () => setRefreshKey((k) => k + 1);
+
+  // ── Existing agreements list ────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<ListTab>('fixed');
+  const [editing, setEditing] = useState<{ row: AgreementRow; mode: 'edit' | 'renew' } | null>(null);
+  const [historyRow, setHistoryRow] = useState<AgreementRow | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [search, setSearch] = useState('');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!validateForm()) { scrollToFirstError(); return; }
 
-    if (!isVendorDriven && !(formData.agreement_document instanceof File)) {
+    if (!(formData.agreement_document instanceof File)) {
       setErrors((prev) => ({ ...prev, agreement_document: 'Agreement document is required' }));
-      return;
-    }
-    if (isVendorDriven && !(formData.receipt_document instanceof File)) {
-      setErrors((prev) => ({ ...prev, receipt_document: "Today's receipt/bill is required" }));
+      scrollToFirstError();
       return;
     }
 
+    const submittedType = agreementType;
     setSubmitting(true);
     try {
-      if (isVendorDriven) {
-        const res = await axios.post(createServiceVendorEntry, buildVendorEntryFormData(), {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        const entry = res?.data?.data;
-        toast.success(`Entry logged for ${formData.entry_date}${entry?.total_amount != null ? ` — total ₹${entry.total_amount}` : ''}. Consolidate accumulated entries on "Vendor Entry Consolidation" when ready to raise the PO.`);
-
-        // Soft reset: keep org/vendor/service selected (the common case is
-        // logging several days in a row for the same vendor+service),
-        // clear only what's specific to today's entry.
-        setFormData((prev) => ({ ...prev, qty: '', unit_price: '', specification: '', remarks: '', receipt_document: null }));
-        await fetchRecentEntries(formData.vendor_sno, formData.service_sno);
-      } else {
-        const res = await axios.post(createServiceAgreement, buildAgreementFormData(), {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        const data = res?.data?.data;
-        toast.success(`Service Agreement ${data?.agreement_no ?? ''} submitted for approval`);
-        handleReset();
-      }
+      const res = await axios.post(createServiceAgreement, buildAgreementFormData(formData, submittedType), {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const data = res?.data?.data;
+      toast.success(`Service Agreement ${data?.agreement_no ?? ''} submitted for approval`);
+      handleReset();
+      refresh();
+      // Land on the list, on the right tab, so the new agreement is visible.
+      setStatusFilter('ALL');
+      setSearch('');
+      setActiveTab(TAB_FOR_TYPE[submittedType]);
+      setView('list');
     } catch (error: any) {
       const errMsg = error?.response?.data?.error || 'Submission failed. Please try again.';
       toast.error(errMsg);
@@ -318,227 +620,346 @@ const ServiceAgreementPage: React.FC = () => {
     }
   };
 
-  // ── Render field grouping ──────────────────────────────────────────────
-
-  const gridFields = useMemo(
-    () => inputFields.filter((f) => f.type !== 'textarea' && f.type !== 'file'),
-    [inputFields]
+  const { data: agreementsRes, loading: loadingAgreements } = useFetch<{ success: boolean; data: AgreementRow[] }>(
+    getServiceAgreements, '', null, refreshKey
   );
-  const textareaFields = useMemo(() => inputFields.filter((f) => f.type === 'textarea'), [inputFields]);
-  const fileField = useMemo(() => inputFields.find((f) => f.type === 'file') ?? null, [inputFields]);
+  const agreements = useMemo(() => agreementsRes?.data ?? [], [agreementsRes]);
 
-  return (
-    <div className="flex flex-col h-full bg-muted/30 min-h-full">
-      <PageHeader icon={FileText} title="Service PO / Agreement" description="Fixed Recurring, Unfixed Recurring, or Vendor Driven" />
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { ALL: agreements.length };
+    agreements.forEach((a) => { counts[a.status] = (counts[a.status] ?? 0) + 1; });
+    return counts;
+  }, [agreements]);
 
-      <div className="container mx-auto py-6 px-4">
-        <Card className="shadow-md">
-          <CardContent className="pt-6">
-            <form onSubmit={handleSubmit} className="space-y-6">
+  // Client-side filters — the fetched list is already small enough that a
+  // second API round-trip isn't worth it (same scale as the type tab split below).
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return agreements.filter((a) => {
+      if (statusFilter !== 'ALL' && a.status !== statusFilter) return false;
+      if (!q) return true;
+      const supplierNames = (a.vendors ?? []).map((v) => v.vendor_name);
+      return [a.agreement_no, a.service_name, a.vendor_name, ...supplierNames].some((v) => v?.toLowerCase().includes(q));
+    });
+  }, [agreements, statusFilter, search]);
+  const rowsByTab = useMemo<Record<ListTab, AgreementRow[]>>(() => ({
+    fixed: filtered.filter((a) => a.service_type_code === 'FIXED_RECURRING'),
+    variable: filtered.filter((a) => a.service_type_code === 'VARIABLE_RECURRING'),
+    statutory: filtered.filter((a) => a.service_type_code === 'STATUTORY'),
+  }), [filtered]);
+  const canEditAgreements = canEdit('ServiceAgreementPage');
+  const isFiltering = statusFilter !== 'ALL' || search.trim() !== '';
 
-              {/* ── Type selector ──────────────────────────────────── */}
-              <FormSection icon={Building2} title="Service PO Type">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {AGREEMENT_TYPES.map(({ value, label, description, Icon }) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setAgreementType(value)}
-                      className={cn(
-                        'flex flex-col items-start gap-1.5 p-4 rounded-xl border text-left transition-colors',
-                        agreementType === value
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-background border-border hover:border-primary/50'
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Icon className="h-4 w-4" />
-                        <span className="font-semibold text-sm">{label}</span>
-                      </div>
-                      <span className={cn('text-xs', agreementType === value ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
-                        {description}
-                      </span>
-                    </button>
-                  ))}
+  const statusChips = [
+    { value: 'ALL' as const, label: 'All', count: statusCounts.ALL },
+    { value: 'P' as const, label: 'Pending', count: statusCounts.P ?? 0 },
+    { value: 'A' as const, label: 'Approved', count: statusCounts.A ?? 0 },
+    { value: 'R' as const, label: 'Rejected', count: statusCounts.R ?? 0 },
+    { value: 'X' as const, label: 'Expired', count: statusCounts.X ?? 0 },
+  ];
+
+  // History is open to everyone who can see the list; Edit / Renew need edit rights.
+  // Expired agreements are renewed (new term, same number); Approved / Rejected ones edited.
+  const rowActions = (row: AgreementRow, className?: string) => (
+    <div className={cn('flex flex-wrap items-center justify-end gap-2', className)}>
+      <Button size="sm" variant="ghost" onClick={() => setHistoryRow(row)} className={className ? 'flex-1' : undefined}>
+        <History size={14} /> History
+      </Button>
+      {canEditAgreements && row.status === 'X' && (
+        <Button size="sm" onClick={() => setEditing({ row, mode: 'renew' })} className={className ? 'flex-1' : undefined}>
+          <RotateCcw size={14} /> Renew
+        </Button>
+      )}
+      {canEditAgreements && (row.status === 'A' || row.status === 'R') && (
+        <Button size="sm" variant="outline" onClick={() => setEditing({ row, mode: 'edit' })} className={className ? 'flex-1' : undefined}>
+          <Pencil size={14} /> Edit
+        </Button>
+      )}
+    </div>
+  );
+
+  const versionNote = (row: AgreementRow) =>
+    (row.version_no ?? 1) > 1
+      ? <>v{row.version_no}{row.renewal_count ? ` · renewed ${row.renewal_count}×` : ''}</>
+      : null;
+
+  const statutoryLine = (row: AgreementRow) =>
+    row.service_type_code === 'STATUTORY' && row.facility_type
+      ? [
+          facilityLabel(row.facility_type),
+          `${row.interest_rate_pct}%${row.rate_type === 'FLOATING' ? ` ${row.benchmark_name ?? 'Repo'}-linked` : ' fixed'}`,
+          row.interest_payment_day ? `interest on the ${ordinalDay(row.interest_payment_day)}` : null,
+        ].filter(Boolean).join(' · ')
+      : null;
+
+  const renderRows = (rows: AgreementRow[]) => {
+    if (loadingAgreements) {
+      return (
+        <div className="space-y-3">
+          {[0, 1, 2].map((i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
+        </div>
+      );
+    }
+    if (rows.length === 0) {
+      return (
+        <EmptyState
+          icon={isFiltering ? SearchX : ClipboardList}
+          message={isFiltering ? 'No agreements match your filters' : 'No agreements yet'}
+          description={isFiltering ? 'Try a different status or search term.' : 'Agreements you submit will be listed here.'}
+          action={isFiltering ? (
+            <Button variant="outline" size="sm" onClick={() => { setStatusFilter('ALL'); setSearch(''); }}>Clear filters</Button>
+          ) : undefined}
+        />
+      );
+    }
+    return (
+      <>
+        {/* Wide screens: table */}
+        <div className="hidden overflow-hidden rounded-lg border lg:block">
+          <Table>
+            <TableHeader className="bg-muted/40">
+              <TableRow>
+                <TableHead>Agreement</TableHead>
+                <TableHead>Service / Suppliers</TableHead>
+                <TableHead className="text-right">Qty</TableHead>
+                <TableHead className="text-right">Rate / Sanctioned</TableHead>
+                <TableHead>Period</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-60" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => {
+                const status = statusMeta(AGREEMENT_STATUS, row.status);
+                const facility = statutoryLine(row);
+                return (
+                  <TableRow key={row.agreement_sno} className={cn(row.status === 'X' && 'bg-muted/30')}>
+                    <TableCell>
+                      <div className="font-semibold">{row.agreement_no}</div>
+                      {versionNote(row) && <div className="text-[11px] text-muted-foreground">{versionNote(row)}</div>}
+                    </TableCell>
+                    <TableCell className="max-w-[18rem]">
+                      <div className="truncate font-medium">{row.service_name}</div>
+                      <SupplierSummary suppliers={row.vendors} fallback={row.vendor_name} className="text-xs text-muted-foreground" />
+                      {facility && <div className="truncate text-xs text-sky-700 dark:text-sky-300">{facility}</div>}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{row.service_type_code === 'STATUTORY' ? '—' : (row.qty ?? '—')}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {row.service_type_code === 'STATUTORY'
+                        ? (row.sanctioned_amount != null ? formatINR(row.sanctioned_amount) : '—')
+                        : (row.rate_amount != null ? formatINR(row.rate_amount) : '—')}
+                      {row.service_type_code !== 'STATUTORY' && row.rate_uom_name && <span className="ml-1 text-xs text-muted-foreground">/ {row.rate_uom_name}</span>}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                      {formatDate(row.period_start_date)} – {formatDate(row.period_end_date)}
+                    </TableCell>
+                    <TableCell><StatusPill tone={status.tone}>{status.label}</StatusPill></TableCell>
+                    <TableCell className="text-right">{rowActions(row)}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Narrow screens: cards */}
+        <ul className="space-y-3 lg:hidden">
+          {rows.map((row) => {
+            const status = statusMeta(AGREEMENT_STATUS, row.status);
+            const facility = statutoryLine(row);
+            return (
+              <li key={row.agreement_sno} className="rounded-xl border bg-card p-3.5 shadow-xs">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">
+                      {row.agreement_no}
+                      {versionNote(row) && <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">{versionNote(row)}</span>}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{row.service_name}</p>
+                    <SupplierSummary suppliers={row.vendors} fallback={row.vendor_name} className="text-xs text-muted-foreground" />
+                    {facility && <p className="truncate text-xs text-sky-700 dark:text-sky-300">{facility}</p>}
+                  </div>
+                  <StatusPill tone={status.tone}>{status.label}</StatusPill>
                 </div>
-              </FormSection>
-
-              {/* ── Dynamic fields ──────────────────────────────────── */}
-              <FormSection icon={isVendorDriven ? Truck : CalendarClock} title={isVendorDriven ? "Log Today's Entry" : 'Details'}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-5">
-                  {gridFields.map((field) => (
-                    <div key={field.field} data-error={!!errors[field.field]} className="flex flex-col">
-                      <CustomInputField
-                        field={field.field}
-                        label={field.label}
-                        require={field.require}
-                        type={field.type}
-                        options={field.options}
-                        value={formData[field.field] ?? ''}
-                        onChange={(value) => handleFieldChange(field.field, value)}
-                        error={errors[field.field]}
-                        placeholder={field.placeholder ?? (field.type === 'select' || field.type === 'search-select' ? `Select ${field.label.toLowerCase()}` : undefined)}
-                        className="h-10"
-                      />
-                      {field.field === 'vendor_sno' && !!formData.service_sno && approvedSuppliers.length === 0 && (
-                        <p className="text-xs text-amber-600 mt-1">
-                          No suppliers are mapped to this service yet — add one via Masters → Service Supplier Mapping.
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {textareaFields.map((field) => (
-                  <div key={field.field} data-error={!!errors[field.field]}>
-                    <CustomInputField
-                      field={field.field}
-                      label={field.label}
-                      require={field.require}
-                      type={field.type}
-                      value={formData[field.field] ?? ''}
-                      onChange={(value) => handleFieldChange(field.field, value)}
-                      error={errors[field.field]}
-                      placeholder={`Enter ${field.label.toLowerCase()}...`}
-                      rows={2}
-                      className="resize-none"
-                    />
-                  </div>
-                ))}
-
-                {fileField && (
-                  <div data-error={!!errors[fileField.field]} className="max-w-xs">
-                    <CustomInputField
-                      field={fileField.field}
-                      label={fileField.label}
-                      require={fileField.require}
-                      type={fileField.type}
-                      value={formData[fileField.field] ?? null}
-                      onChange={(file) => handleFieldChange(fileField.field, file)}
-                      error={errors[fileField.field]}
-                    />
-                  </div>
-                )}
-
-                {isVendorDriven && selectedVendorDrivenProduct && (
-                  <div className="rounded-md border p-3 bg-muted/30 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Product</p>
-                      <p className="text-sm font-medium">{selectedVendorDrivenProduct.product_name}</p>
-                    </div>
-                    {selectedVendorDrivenProduct.product_description && (
-                      <div>
-                        <p className="text-xs text-muted-foreground">Description</p>
-                        <p className="text-sm font-medium">{selectedVendorDrivenProduct.product_description}</p>
-                      </div>
-                    )}
-                    {selectedVendorDrivenProduct.product_hsn_code && (
-                      <div>
-                        <p className="text-xs text-muted-foreground">HSN Code</p>
-                        <p className="text-sm font-medium">{selectedVendorDrivenProduct.product_hsn_code}</p>
-                      </div>
-                    )}
-                    {selectedVendorDrivenProduct.product_uom_name && (
-                      <div>
-                        <p className="text-xs text-muted-foreground">Product UOM</p>
-                        <p className="text-sm font-medium">{selectedVendorDrivenProduct.product_uom_name}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {!isVendorDriven && (agreementType === 'FIXED_RECURRING' || agreementType === 'VARIABLE_RECURRING') && (
-                  <div className="rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800 px-3 py-2 text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
-                    <Bell className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                    <span>
-                      {agreementType === 'FIXED_RECURRING'
-                        ? '"PO Generation Day" is required for monthly/quarterly/annual cadences (e.g. 5 = generate on the 5th of every eligible month). '
-                        : ''}
-                      "Notify Before" sends an in-app reminder that many days before {agreementType === 'FIXED_RECURRING' ? 'each auto-generation' : 'each expected billing cycle, as a reminder to submit a Service Bill Request'}.
-                    </span>
-                  </div>
-                )}
-
-                {isVendorDriven && (
-                  <div className="rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800 px-3 py-2 text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
-                    <ClipboardCheck className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                    <span>
-                      Log one entry per delivery day (e.g. milk quantity/price). Entries accumulate below, unbilled.
-                      When ready, go to <strong>Vendor Entry Consolidation</strong> in the sidebar, select the entries to bill, and raise the PO.
-                    </span>
-                  </div>
-                )}
-
-                {Object.keys(errors).length > 0 && (
-                  <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3">
-                    <ul className="list-disc list-inside text-destructive text-xs space-y-0.5">
-                      {Object.values(errors).map((err, i) => <li key={i}>{err}</li>)}
-                    </ul>
-                  </div>
-                )}
-              </FormSection>
-
-              {/* ── Vendor Driven: pending entries for this vendor+service ── */}
-              {isVendorDriven && (
-                <section className="space-y-3">
-                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                    Pending Entries (not yet consolidated){recentEntries.length > 0 && <Badge variant="secondary">{recentEntries.length}</Badge>}
-                  </h3>
-                  {recentEntries.length > 0 ? (
-                    <div className="border rounded-xl overflow-hidden">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/50 hover:bg-muted/50">
-                            <TableHead className="text-xs">Date</TableHead>
-                            <TableHead className="text-xs">Qty</TableHead>
-                            <TableHead className="text-xs">Unit</TableHead>
-                            <TableHead className="text-xs">Unit Price</TableHead>
-                            <TableHead className="text-xs">Total</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {recentEntries.map((entry) => (
-                            <TableRow key={entry.entry_sno}>
-                              <TableCell className="text-xs">{String(entry.entry_date).slice(0, 10)}</TableCell>
-                              <TableCell className="text-xs">{entry.qty}</TableCell>
-                              <TableCell className="text-xs">{entry.unit_name ?? '—'}</TableCell>
-                              <TableCell className="text-xs">{entry.unit_price}</TableCell>
-                              <TableCell className="text-xs font-medium">{entry.total_amount}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t pt-3 text-xs">
+                  {row.service_type_code === 'STATUTORY' ? (
+                    <div className="col-span-2">
+                      <dt className="text-muted-foreground">Sanctioned</dt>
+                      <dd className="mt-0.5 text-sm font-semibold tabular-nums">{row.sanctioned_amount != null ? formatINR(row.sanctioned_amount) : '—'}</dd>
                     </div>
                   ) : (
-                    <div className="text-center py-8 text-muted-foreground border rounded-xl bg-muted/10">
-                      <Package className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                      <p className="text-sm">{loadingEntries ? 'Loading…' : 'No pending entries yet for this vendor + service.'}</p>
-                    </div>
+                    <>
+                      <div>
+                        <dt className="text-muted-foreground">Rate</dt>
+                        <dd className="mt-0.5 text-sm font-semibold tabular-nums">
+                          {row.rate_amount != null ? formatINR(row.rate_amount) : '—'}
+                          {row.rate_uom_name && <span className="ml-1 text-xs font-normal text-muted-foreground">/ {row.rate_uom_name}</span>}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Quantity</dt>
+                        <dd className="mt-0.5 text-sm font-semibold tabular-nums">{row.qty ?? '—'}</dd>
+                      </div>
+                    </>
                   )}
-                </section>
-              )}
+                  <div className="col-span-2">
+                    <dt className="text-muted-foreground">Period</dt>
+                    <dd className="mt-0.5 font-medium">{formatDate(row.period_start_date)} – {formatDate(row.period_end_date)}</dd>
+                  </div>
+                </dl>
+                {rowActions(row, 'mt-3')}
+              </li>
+            );
+          })}
+        </ul>
+      </>
+    );
+  };
 
-              {/* ── Actions ───────────────────────────────────────────── */}
-              <div className="flex items-center justify-between gap-3 pt-4 border-t flex-wrap">
-                <Button type="button" variant="outline" onClick={handleReset} disabled={submitting} className="h-9">
-                  <RefreshCw className="h-4 w-4 mr-2" />Reset
-                </Button>
+  return (
+    <div className="min-h-full bg-muted/30">
+      <PageHeader
+        icon={FileText}
+        title="Service Agreements"
+        description="Fixed and Unfixed agreements raise a PO each cycle; Statutory (loan / repo / cash credit) agreements are billed through Bank Payment Vouchers under Loan Payments"
+      />
 
-                {canSubmit && (
-                  <Button
-                    type="submit"
-                    className="bg-blue-600 hover:bg-blue-700 h-9"
-                    disabled={submitting}
-                  >
-                    {submitting ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-                    {isVendorDriven ? 'Log Entry' : 'Submit for Approval'}
-                  </Button>
+      <div className="mx-auto w-full max-w-6xl space-y-5 px-3 py-4 sm:px-6 sm:py-6">
+        <Tabs value={view} onValueChange={(v) => setView(v as PageView)}>
+          <TabsList className="h-10 w-full sm:w-fit">
+            {canSubmit && (
+              <TabsTrigger value="create" className="px-4"><FilePlus2 size={15} /> New agreement</TabsTrigger>
+            )}
+            <TabsTrigger value="list" className="px-4">
+              <ClipboardList size={15} /> All agreements
+              <span className="rounded-full bg-muted px-1.5 text-[11px] tabular-nums text-muted-foreground">{statusCounts.ALL}</span>
+            </TabsTrigger>
+          </TabsList>
+
+          {/* ── Create ─────────────────────────────────────────────────── */}
+          {canSubmit && (
+            <TabsContent value="create" className="mt-5">
+              <form onSubmit={handleSubmit} noValidate className="space-y-4">
+                <Panel icon={Repeat} title="Agreement type" description="Decides how each cycle's amount is set">
+                  <div role="radiogroup" aria-label="Agreement type" className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    {AGREEMENT_TYPES.map(({ value, label, description, Icon }) => {
+                      const active = agreementType === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          onClick={() => setAgreementType(value)}
+                          className={cn(
+                            'flex items-start gap-3 rounded-xl border p-4 text-left transition-all',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+                            active
+                              ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                              : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40',
+                          )}
+                        >
+                          <span className={cn(
+                            'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
+                            active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+                          )}>
+                            <Icon className="h-5 w-5" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-semibold">{label}</span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">{description}</span>
+                          </span>
+                          <span className={cn(
+                            'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
+                            active ? 'border-primary bg-primary text-primary-foreground' : 'border-border',
+                          )}>
+                            {active && <Check className="h-3 w-3" />}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Panel>
+
+                <AgreementFormSections
+                  fields={inputFields}
+                  formData={formData}
+                  errors={errors}
+                  onChange={handleFieldChange}
+                  agreementType={agreementType}
+                />
+
+                {Object.keys(errors).length > 0 && (
+                  <Callout tone="danger" icon={AlertCircle}>
+                    <p className="font-semibold">Please fix {Object.keys(errors).length} field{Object.keys(errors).length !== 1 ? 's' : ''} before submitting</p>
+                    <ul className="mt-1 list-inside list-disc space-y-0.5">
+                      {Object.values(errors).map((err, i) => <li key={i}>{err}</li>)}
+                    </ul>
+                  </Callout>
                 )}
+
+                <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card/95 p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/85">
+                  <Button type="button" variant="outline" onClick={handleReset} disabled={submitting}>
+                    <RefreshCw className="h-4 w-4" />Reset
+                  </Button>
+                  <Button type="submit" disabled={submitting} className="min-w-44">
+                    {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    Submit for Approval
+                  </Button>
+                </div>
+              </form>
+            </TabsContent>
+          )}
+
+          {/* ── List ───────────────────────────────────────────────────── */}
+          <TabsContent value="list" className="mt-5">
+            <Panel
+              icon={ClipboardList}
+              title="Existing agreements"
+              action={
+                <Button variant="outline" size="sm" onClick={refresh} disabled={loadingAgreements}>
+                  <RefreshCw size={14} className={cn(loadingAgreements && 'animate-spin')} /> <span className="hidden sm:inline">Refresh</span>
+                </Button>
+              }
+              bodyClassName="space-y-4"
+            >
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <FilterChips options={statusChips} value={statusFilter} onChange={setStatusFilter} />
+                <SearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search agreements"
+                  className="w-full md:w-72"
+                />
               </div>
-            </form>
-          </CardContent>
-        </Card>
+
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ListTab)}>
+                <TabsList className="w-full sm:w-fit">
+                  <TabsTrigger value="fixed" className="sm:px-4"><Repeat size={14} /> Fixed ({rowsByTab.fixed.length})</TabsTrigger>
+                  <TabsTrigger value="variable" className="sm:px-4"><Wallet size={14} /> Unfixed ({rowsByTab.variable.length})</TabsTrigger>
+                  <TabsTrigger value="statutory" className="sm:px-4"><Landmark size={14} /> Statutory ({rowsByTab.statutory.length})</TabsTrigger>
+                </TabsList>
+                <TabsContent value="fixed" className="mt-4">{renderRows(rowsByTab.fixed)}</TabsContent>
+                <TabsContent value="variable" className="mt-4">{renderRows(rowsByTab.variable)}</TabsContent>
+                <TabsContent value="statutory" className="mt-4">{renderRows(rowsByTab.statutory)}</TabsContent>
+              </Tabs>
+            </Panel>
+          </TabsContent>
+        </Tabs>
       </div>
+
+      {editing && (
+        <EditAgreementDialog
+          row={editing.row}
+          mode={editing.mode}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); refresh(); }}
+        />
+      )}
+
+      {historyRow && (
+        <AgreementHistoryDialog agreement={historyRow} onClose={() => setHistoryRow(null)} />
+      )}
     </div>
   );
 };

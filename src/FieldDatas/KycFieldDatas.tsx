@@ -145,10 +145,13 @@ export const useComDivBranchDeptFields = (
   };
 };
 
-export const useBasicInfoFields = (basicInfo: any) => {
+export const useBasicInfoFields = (basicInfo: any, masterOptionsUrl?: string) => {
   const isGstAvail = basicInfo?.is_gst_avail === "true";
   const isMsmeAvail = basicInfo?.is_msme_avail === "true";
-  const { options } = useMasterOptions(['SupplierCatagoryMaster','BusinessDetailsMatster','BankAccountTypeMaster']);
+  const { options } = useMasterOptions(
+    ['SupplierCatagoryMaster','BusinessDetailsMatster','BankAccountTypeMaster'],
+    masterOptionsUrl
+  );
   return useMemo<FieldType[]>(
     () => [
       {
@@ -201,7 +204,7 @@ export const useBasicInfoFields = (basicInfo: any) => {
         label: "PAN Number",
         require: true,
         type: "text",
-        placeholder: "ABCDE1234F",
+        placeholder: "ABCDE1234F (auto-filled from GST)",
         input: true,
         view: true,
       },
@@ -299,10 +302,10 @@ export const useAddressFields = (): FieldType[] => {
       },
       {
         field: "taluk",
-        label: "Taluk",
+        label: "Town",
         require: false,
         type: "text",
-        placeholder: "Taluk name",
+        placeholder: "Town name",
         input: true,
         view: true,
       },
@@ -321,6 +324,15 @@ export const useAddressFields = (): FieldType[] => {
         require: true,
         type: "text",
         placeholder: "State name",
+        input: true,
+        view: true,
+      },
+      {
+        field: "state_code",
+        label: "State Code",
+        require: false,
+        type: "text",
+        placeholder: "Auto-filled from GST",
         input: true,
         view: true,
       },
@@ -379,10 +391,10 @@ export const useDocumentFields = (): FieldType[] => {
   );
 };
 
-export const useBankFields = (): FieldType[] => {
+export const useBankFields = (masterOptionsUrl?: string): FieldType[] => {
   // Real bank-account-type master (Savings/Current/Cash Credit/Overdraft, admin-managed
   // via the Masters screen) instead of the old free-text "Savings / Current" placeholder.
-  const { options: masterOptions } = useMasterOptions(["BankAccountTypeMaster"]);
+  const { options: masterOptions } = useMasterOptions(["BankAccountTypeMaster"], masterOptionsUrl);
 
   return useMemo<FieldType[]>(
     () => [

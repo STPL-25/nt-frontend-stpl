@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 
 import { Badge }  from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { PageHeader } from "@/CustomComponent/PageComponents";
 import { Button } from "@/components/ui/button";
 import { cn }     from "@/lib/utils";
@@ -42,6 +43,7 @@ import useUpdate from "@/hooks/useUpdateHook";
 import useDelete from "@/hooks/useDeleteHook";
 import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
 import PermissionTable      from "@/CustomComponent/InputComponents/PermissionTableProps";
+import { useApprovalFlowHierarchy } from "@/FieldDatas/ApprovalWorkFlow";
 import {
   socket,
   SOCKET_USER_NEW,
@@ -110,6 +112,7 @@ interface ExistingPermData {
   companies?:   Array<string | number>;
   divisions?:   Array<string | number>;
   branches?:    Array<string | number>;
+  departments?: Array<string | number>;
 }
 interface ExistingPermResponse extends Partial<ExistingPermData> {
   decrypted?: ExistingPermData;
@@ -220,9 +223,18 @@ export default function PermissionManager() {
   // ── Selection state ────────────────────────────────────────────────────────
   const [selectedUser,      setSelectedUser]      = useState("");
   const [selectedUserEcno,  setSelectedUserEcno]  = useState("");
-  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
-  const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
-  const [selectedBranches,  setSelectedBranches]  = useState<string[]>([]);
+  const [selectedCompanies,  setSelectedCompanies]  = useState<string[]>([]);
+  const [selectedDivisions,  setSelectedDivisions]  = useState<string[]>([]);
+  const [selectedBranches,   setSelectedBranches]   = useState<string[]>([]);
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
+  const [copyFromUserId,     setCopyFromUserId]     = useState("");
+
+  // Baseline scope (as last saved / loaded) — compared against the selected* state above so
+  // a scope-only change (no permission checkboxes touched) still enables Save.
+  const [originalCompanies,   setOriginalCompanies]   = useState<string[]>([]);
+  const [originalDivisions,   setOriginalDivisions]   = useState<string[]>([]);
+  const [originalBranches,    setOriginalBranches]    = useState<string[]>([]);
+  const [originalDepartments, setOriginalDepartments] = useState<string[]>([]);
 
   // ── Permission state ───────────────────────────────────────────────────────
   const [permissions,         setPermissions]         = useState<Permissions>({});
@@ -285,6 +297,17 @@ export default function PermissionManager() {
     "", null, permRefreshKey
   );
 
+  // "Copy access from…" — reuses the same read endpoint the selected-user fetch above uses,
+  // just keyed on a different user id. Reset to "" once applied so it behaves as a one-shot
+  // action rather than a linked field.
+  const {
+    data: copySourceRes,
+  } = useFetch<ExistingPermResponse>(
+    copyFromUserId
+      ? `${getUserPermissionsJson(rawUserId(copyFromUserId))}${identityQuery(copyFromUserId)}`
+      : null
+  );
+
   const { postData }             = usePost();
   const { updateData }           = useUpdate();
   const { deleteData }           = useDelete();
@@ -303,6 +326,14 @@ export default function PermissionManager() {
       })),
     [nonStaffRes]
   );
+  // Department options — sourced from the same shared hook ApprovalWorkflowManager already
+  // uses for its Department cascade (DeptMaster). departmentOptions is filtered by selected
+  // branches for the dropdown; allDepartments (unfiltered, carries brn_sno/div_sno/com_sno on
+  // each entry) is used below to resolve a selected department's company/division/branch.
+  const { departmentOptions, allDepartments: allDeptRecords } = useApprovalFlowHierarchy(
+    [], [], selectedBranches.map(Number)
+  );
+
   const allUsers       = [...(usersRes?.data ?? []), ...nonStaffUsers];
   const allCompanies   = hierarchyRes?.data?.companies ?? [];
   const allScreens     = screensRes?.data            ?? [];
@@ -366,6 +397,12 @@ export default function PermissionManager() {
     setSelectedCompanies([]);
     setSelectedDivisions([]);
     setSelectedBranches([]);
+    setSelectedDepartments([]);
+    setCopyFromUserId("");
+    setOriginalCompanies([]);
+    setOriginalDivisions([]);
+    setOriginalBranches([]);
+    setOriginalDepartments([]);
     const base = buildFromScreens(allScreens).permissions;
     setPermissions(base);
     setOriginalPermissions(base);
@@ -382,9 +419,18 @@ export default function PermissionManager() {
     const base = buildFromScreens(allScreens).permissions;
 
     restoringFromExisting.current = true;
-    setSelectedCompanies((existingPermData?.companies ?? []).map(String));
-    setSelectedDivisions((existingPermData?.divisions ?? []).map(String));
-    setSelectedBranches((existingPermData?.branches ?? []).map(String));
+    const baseCompanies   = (existingPermData?.companies ?? []).map(String);
+    const baseDivisions   = (existingPermData?.divisions ?? []).map(String);
+    const baseBranches    = (existingPermData?.branches ?? []).map(String);
+    const baseDepartments = (existingPermData?.departments ?? []).map(String);
+    setSelectedCompanies(baseCompanies);
+    setSelectedDivisions(baseDivisions);
+    setSelectedBranches(baseBranches);
+    setSelectedDepartments(baseDepartments);
+    setOriginalCompanies(baseCompanies);
+    setOriginalDivisions(baseDivisions);
+    setOriginalBranches(baseBranches);
+    setOriginalDepartments(baseDepartments);
 
     if (!existingPermData?.permissions || Object.keys(existingPermData.permissions).length === 0) {
       // No existing permissions found → blank slate
@@ -405,6 +451,38 @@ export default function PermissionManager() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingPermRes]);
 
+  // ── Apply a "Copy access from…" pick once its data arrives ─────────────────
+  // Deliberately leaves originalPermissions/baseline untouched, so the copied
+  // scope + permissions show up as pending changes the admin still has to Save.
+  useEffect(() => {
+    if (!copyFromUserId || !copySourceRes) return;
+    const src = (copySourceRes as ExistingPermResponse)?.decrypted ?? copySourceRes;
+
+    if (!src?.exists) {
+      toast.error("That user has no saved access to copy.");
+      setCopyFromUserId("");
+      return;
+    }
+
+    restoringFromExisting.current = true;
+    setSelectedCompanies((src.companies ?? []).map(String));
+    setSelectedDivisions((src.divisions ?? []).map(String));
+    setSelectedBranches((src.branches ?? []).map(String));
+    setSelectedDepartments((src.departments ?? []).map(String));
+
+    const base = buildFromScreens(allScreens).permissions;
+    const merged: Permissions = { ...base };
+    for (const [screen, perms] of Object.entries(src.permissions ?? {})) {
+      merged[screen] = { ...(merged[screen] ?? {}), ...perms };
+    }
+    setPermissions(merged);
+
+    const sourceName = allUsers.find((u) => String(u.nt_sign_up_sno) === String(copyFromUserId))?.ename ?? "user";
+    toast.success(`Copied access from ${sourceName} — review and Save to apply.`);
+    setCopyFromUserId("");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [copySourceRes]);
+
   // ── Cascade: prune stale divisions / branches when parents deselected ──────
   useEffect(() => {
     if (!selectedCompanies.length) return;
@@ -421,6 +499,14 @@ export default function PermissionManager() {
     setSelectedBranches((p) => p.filter((id) => valid.has(String(id))));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDivisions]);
+
+  useEffect(() => {
+    if (!selectedBranches.length) return;
+    if (restoringFromExisting.current) { restoringFromExisting.current = false; return; }
+    const valid = new Set(departmentOptions.map((d) => String(d.value)));
+    setSelectedDepartments((p) => p.filter((id) => valid.has(String(id))));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBranches]);
 
   // ── Permission description map ─────────────────────────────────────────────
   useEffect(() => {
@@ -456,29 +542,46 @@ export default function PermissionManager() {
     [permissions]
   );
 
+  // Per-row "select all" — sets every permission on one screen to the same value in one go
+  // (bulk-set, not a loop of individual toggles, so mixed pre-existing states resolve cleanly).
+  const setRowPermissions = useCallback((screen: string, enabled: boolean) => {
+    setPermissions((curr) => ({
+      ...curr,
+      [screen]: Object.fromEntries(permDetails.map((p) => [p.permission_id, enabled])),
+    }));
+  }, [permDetails]);
+
   // ── Payload builders ───────────────────────────────────────────────────────
   const buildHierarchyPayload = useCallback(() => {
-    const coms = selectedCompanies;
-    const divs = selectedDivisions;
-    const brs  = selectedBranches;
+    const coms  = selectedCompanies;
+    const divs  = selectedDivisions;
+    const brs   = selectedBranches;
+    const depts = selectedDepartments;
     const allDivs = allCompanies.flatMap((c) => c.divisions);
     const allBrs  = allDivs.flatMap((d) => d.branches);
 
     return {
       hierarchy: [
-        ...coms.map((id) => ({ com_sno: id, div_sno: null, brn_sno: null })),
+        ...coms.map((id) => ({ com_sno: id, div_sno: null, brn_sno: null, dept_sno: null })),
         ...divs.map((id) => {
           const com = allCompanies.find((c) => c.divisions.some((d) => String(d.div_sno) === String(id)));
-          return { com_sno: com?.com_sno ?? null, div_sno: id, brn_sno: null };
+          return { com_sno: com?.com_sno ?? null, div_sno: id, brn_sno: null, dept_sno: null };
         }),
         ...brs.map((id) => {
           const div = allDivs.find((d) => d.branches.some((b) => String(b.brn_sno) === String(id)));
           const com = allCompanies.find((c) => c.divisions.some((d) => d.branches.some((b) => String(b.brn_sno) === String(id))));
-          return { com_sno: com?.com_sno ?? null, div_sno: div?.div_sno ?? null, brn_sno: id };
+          return { com_sno: com?.com_sno ?? null, div_sno: div?.div_sno ?? null, brn_sno: id, dept_sno: null };
+        }),
+        ...depts.map((id) => {
+          const dept = allDeptRecords.find((d) => String(d.value) === String(id));
+          const brn  = dept?.brn_sno ?? null;
+          const div  = brn != null ? allDivs.find((d) => d.branches.some((b) => String(b.brn_sno) === String(brn))) : undefined;
+          const com  = brn != null ? allCompanies.find((c) => c.divisions.some((d) => d.branches.some((b) => String(b.brn_sno) === String(brn)))) : undefined;
+          return { com_sno: com?.com_sno ?? null, div_sno: div?.div_sno ?? null, brn_sno: brn, dept_sno: id };
         }),
       ],
     };
-  }, [allCompanies, selectedCompanies, selectedDivisions, selectedBranches]);
+  }, [allCompanies, selectedCompanies, selectedDivisions, selectedBranches, selectedDepartments, allDeptRecords]);
 
   const buildPermissionsPayload = useCallback(() => {
     const nameToId = new Map<string, number>(allScreens.map((s) => [s.screen_name, s.screen_id]));
@@ -499,6 +602,11 @@ export default function PermissionManager() {
     setSelectedCompanies([]);
     setSelectedDivisions([]);
     setSelectedBranches([]);
+    setSelectedDepartments([]);
+    setOriginalCompanies([]);
+    setOriginalDivisions([]);
+    setOriginalBranches([]);
+    setOriginalDepartments([]);
     const base = buildFromScreens(allScreens).permissions;
     setPermissions(base);
     setOriginalPermissions(base);
@@ -506,7 +614,12 @@ export default function PermissionManager() {
 
   const handleDiscardChanges = useCallback(() => {
     setPermissions(JSON.parse(JSON.stringify(originalPermissions)));
-  }, [originalPermissions]);
+    restoringFromExisting.current = true;
+    setSelectedCompanies(originalCompanies);
+    setSelectedDivisions(originalDivisions);
+    setSelectedBranches(originalBranches);
+    setSelectedDepartments(originalDepartments);
+  }, [originalPermissions, originalCompanies, originalDivisions, originalBranches, originalDepartments]);
 
   // ── Save (create on first assignment, update once a record already exists) ─
   const handleSave = useCallback(async () => {
@@ -538,6 +651,10 @@ export default function PermissionManager() {
       if (res?.success) {
         // Update baseline so diff resets to 0 after save
         setOriginalPermissions(JSON.parse(JSON.stringify(permissions)));
+        setOriginalCompanies(selectedCompanies);
+        setOriginalDivisions(selectedDivisions);
+        setOriginalBranches(selectedBranches);
+        setOriginalDepartments(selectedDepartments);
         setPermRefreshKey((k) => k + 1);
         toast.success("Saved — permissions pushed to user instantly via WebSocket.");
       } else {
@@ -552,6 +669,7 @@ export default function PermissionManager() {
     selectedUser, selectedUserEcno, existingPermData,
     buildHierarchyPayload, buildPermissionsPayload,
     postData, updateData, permissions,
+    selectedCompanies, selectedDivisions, selectedBranches, selectedDepartments,
   ]);
 
   // ── Delete (revoke) — removes the user's saved hierarchy + screen permissions record ──
@@ -569,6 +687,11 @@ export default function PermissionManager() {
         setSelectedCompanies([]);
         setSelectedDivisions([]);
         setSelectedBranches([]);
+        setSelectedDepartments([]);
+        setOriginalCompanies([]);
+        setOriginalDivisions([]);
+        setOriginalBranches([]);
+        setOriginalDepartments([]);
         setPermRefreshKey((k) => k + 1);
         toast.success("Permissions revoked for this user.");
       } else {
@@ -586,9 +709,53 @@ export default function PermissionManager() {
     () => diffPermissions(originalPermissions, permissions),
     [originalPermissions, permissions]
   );
-  const hasChanges = added > 0 || removed > 0;
+
+  // Order-independent array comparison — used so re-selecting the same scope in a
+  // different click order doesn't falsely report a change.
+  const scopeChanged = useMemo(() => {
+    const differs = (a: string[], b: string[]) => {
+      if (a.length !== b.length) return true;
+      const sortedA = [...a].sort();
+      const sortedB = [...b].sort();
+      return sortedA.some((v, i) => v !== sortedB[i]);
+    };
+    return (
+      differs(selectedCompanies, originalCompanies) ||
+      differs(selectedDivisions, originalDivisions) ||
+      differs(selectedBranches, originalBranches) ||
+      differs(selectedDepartments, originalDepartments)
+    );
+  }, [
+    selectedCompanies, selectedDivisions, selectedBranches, selectedDepartments,
+    originalCompanies, originalDivisions, originalBranches, originalDepartments,
+  ]);
+
+  const hasChanges = added > 0 || removed > 0 || scopeChanged;
 
   const enabledCount = useMemo(() => countEnabled(permissions), [permissions]);
+
+  // ── Select-all (every screen × every permission) ──────────────────────────
+  const allScreenNames = useMemo(
+    () => Array.from(new Set(Object.values(groups).flat())),
+    [groups]
+  );
+  const totalPossibleCells = allScreenNames.length * permDetails.length;
+  const allSelected = totalPossibleCells > 0 && enabledCount === totalPossibleCells;
+  const someSelected = enabledCount > 0 && !allSelected;
+
+  const toggleSelectAll = useCallback(() => {
+    const selectAll = !(totalPossibleCells > 0 && enabledCount === totalPossibleCells);
+    setPermissions(() => {
+      const next: Permissions = {};
+      for (const screen of allScreenNames) {
+        next[screen] = {};
+        for (const { permission_id } of permDetails) {
+          next[screen][permission_id] = selectAll;
+        }
+      }
+      return next;
+    });
+  }, [allScreenNames, permDetails, enabledCount, totalPossibleCells]);
 
   const companyNames = useMemo(() => {
     return selectedCompanies
@@ -609,6 +776,13 @@ export default function PermissionManager() {
   const selectedUserName = useMemo(
     () => allUsers.find((u) => u.nt_sign_up_sno === selectedUser)?.ename ?? "",
     [allUsers, selectedUser]
+  );
+
+  // "Copy access from…" — same option list as the main user picker, minus whoever is
+  // currently selected as the target (copying a user's access onto themselves is a no-op).
+  const copyFromOptions = useMemo(
+    () => userOptions.filter((u) => String(u.value) !== String(selectedUser)),
+    [userOptions, selectedUser]
   );
 
   const showPermissions = !!selectedUser && Object.keys(groups).length > 0;
@@ -647,6 +821,21 @@ export default function PermissionManager() {
               />
             </div>
 
+            {/* Copy access from another user — one-shot: applies immediately, then clears */}
+            {selectedUser && (
+              <div>
+                <CustomInputField
+                  field="copyFromUser"
+                  label="Copy access from…"
+                  type="select"
+                  options={copyFromOptions}
+                  value={copyFromUserId}
+                  onChange={setCopyFromUserId}
+                  placeholder="Copy scope + permissions from another user"
+                />
+              </div>
+            )}
+
             {/* Organisation scope */}
             {selectedUser && (
               <div>
@@ -675,6 +864,14 @@ export default function PermissionManager() {
                     options={availableBranches().map((b) => ({ label: b.brn_name, value: String(b.brn_sno) }))}
                     value={selectedBranches}
                     onChange={setSelectedBranches}
+                  />
+                  <CustomInputField
+                    field="departments"
+                    label="Departments"
+                    type="multi-select"
+                    options={departmentOptions.map((d) => ({ label: d.label, value: String(d.value) }))}
+                    value={selectedDepartments}
+                    onChange={setSelectedDepartments}
                   />
                 </div>
               </div>
@@ -728,7 +925,9 @@ export default function PermissionManager() {
                   {saving
                     ? "Saving…"
                     : hasChanges
-                      ? `Save ${added + removed} Change${added + removed !== 1 ? "s" : ""}`
+                      ? (added + removed) > 0
+                        ? `Save ${added + removed} Change${added + removed !== 1 ? "s" : ""}`
+                        : "Save Scope Changes"
                       : "No Changes"}
                 </Button>
                 {hasChanges && (
@@ -794,13 +993,25 @@ export default function PermissionManager() {
                     Existing permissions are pre-checked. Uncheck to revoke.
                   </p>
                 </div>
-                {hasChanges && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {added   > 0 && <StatChip icon={<Plus  className="h-3 w-3" />} label="added"   value={added}   variant="add"    />}
-                    {removed > 0 && <StatChip icon={<Minus className="h-3 w-3" />} label="removed" value={removed} variant="remove" />}
-                    <Button size="sm" variant="ghost" className="h-7 gap-1.5 px-2 text-xs" onClick={handleDiscardChanges}>
-                      <RotateCcw className="h-3 w-3" /> Discard
-                    </Button>
+                {showPermissions && (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground cursor-pointer select-none">
+                      <Checkbox
+                        checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                        onCheckedChange={toggleSelectAll}
+                        className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                      />
+                      Select All
+                    </label>
+                    {hasChanges && (
+                      <>
+                        {added   > 0 && <StatChip icon={<Plus  className="h-3 w-3" />} label="added"   value={added}   variant="add"    />}
+                        {removed > 0 && <StatChip icon={<Minus className="h-3 w-3" />} label="removed" value={removed} variant="remove" />}
+                        <Button size="sm" variant="ghost" className="h-7 gap-1.5 px-2 text-xs" onClick={handleDiscardChanges}>
+                          <RotateCcw className="h-3 w-3" /> Discard
+                        </Button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -816,6 +1027,7 @@ export default function PermissionManager() {
                   permissions={permissions}
                   permChecked={permChecked}
                   togglePerm={togglePerm}
+                  setRowPermissions={setRowPermissions}
                   permissionMap={permissionMap}
                   permissionDetails={permDetails}
                   handleSave={handleSave}

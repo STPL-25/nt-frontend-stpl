@@ -36,8 +36,16 @@ const SECTION_META: Record<string, { title: string; description: string; icon: L
 
 const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
+// A valid GSTIN embeds the holder's PAN as characters 3-12 (5 letters + 4
+// digits + 1 letter), so once the GSTIN passes GSTIN_PATTERN the PAN can be
+// read off directly without waiting on the lookup response.
+const derivePanFromGstin = (gstin: unknown) => {
+  const gst = String(gstin ?? "").trim().toUpperCase();
+  return GSTIN_PATTERN.test(gst) ? gst.slice(2, 12) : "";
+};
+
 type GstAddressPatch = Partial<Record<
-  "door_no" | "street" | "area" | "taluk" | "city" | "state" | "pincode",
+  "door_no" | "street" | "area" | "taluk" | "city" | "state" | "state_code" | "pincode",
   string
 >>;
 
@@ -229,6 +237,16 @@ const buildGstAddressPatch = (payload: unknown): GstAddressPatch => {
       address?.AddrStcd,
       address?.state_name
     ),
+    // stcd/AddrStcd is the numeric GST state code (e.g. "33") — used above
+    // only as a last-resort fallback for the state NAME when nothing better
+    // is present, and captured here properly as its own field so it can be
+    // saved to kyc_address_info.state_code.
+    state_code: firstText(
+      address?.stcd,
+      address?.AddrStcd,
+      address?.state_code,
+      address?.stateCode
+    ),
     pincode: firstText(
       address?.pncd,
       address?.AddrPncd,
@@ -300,6 +318,14 @@ export default function KycEntryForm() {
     }
 
     lastFetchedGstRef.current = gst;
+
+    // PAN is embedded in the GSTIN itself (characters 3-12), so it can be
+    // filled in immediately, independent of whether the GST lookup below
+    // succeeds — no need to wait on (or fail alongside) that network call.
+    const panFromGstin = derivePanFromGstin(gst);
+    if (panFromGstin) {
+      setBasicInfo((prev) => ({ ...prev, pan_no: panFromGstin }));
+    }
 
     try {
       const response = await fetchGstDetails(apiGetGSTNDetails, { gst });

@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import { useAppState } from "./globalState/hooks/useAppState";
 import { useEffect } from "react";
 import Signup from "./ApplicationPages/SignupPage";
+import SupplierKycPage from "./ApplicationPages/SupplierKycPage";
 import SupplierPortal from "./Application/SupplierPortal/SupplierPortal";
 import StoreInchargeApprovalPage from "./Application/Store/StoreInchargeApprovalPage";
 import { useInactivityLogout } from "./hooks/useInactivityLogout";
@@ -85,6 +86,7 @@ const router = createBrowserRouter([
   { path: "/", element: <RootRoute /> },
   { path: "/signup", element: <Signup /> },
    { path: "/Supplier", element: <SupplierPortal /> },
+  { path: "/supplier_kyc", element: <SupplierKycPage /> },
   //  { path: "/store-incharge-approval", element: <StoreInchargeApprovalPage /> },
 ]);
 

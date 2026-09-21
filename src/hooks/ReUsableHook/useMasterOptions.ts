@@ -10,7 +10,10 @@ interface MasterOptionsResponse {
   [key: string]: OptionType[];
 }
 
-export const useMasterOptions = (masterFields: string[]) => {
+// endpointUrl defaults to the staff-protected master-options endpoint;
+// pass apiPublicKycMasterOptions (or similar) to hit a public equivalent
+// instead — see SupplierKYCEntry's masterOptionsUrl prop.
+export const useMasterOptions = (masterFields: string[], endpointUrl: string = getAllRequiredMasterForOptions) => {
   const [options, setOptions] = useState<MasterOptionsResponse>({});
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +26,7 @@ export const useMasterOptions = (masterFields: string[]) => {
       setError(null);
 
       try {
-        const response = await axios.post(getAllRequiredMasterForOptions, { masterFields: masterFields }, { withCredentials: true });
+        const response = await axios.post(endpointUrl, { masterFields: masterFields }, { withCredentials: true });
           setOptions(response?.data?.data);
       } catch (err) {
         setError('Failed to fetch master options');
@@ -34,7 +37,7 @@ export const useMasterOptions = (masterFields: string[]) => {
     };
 
     fetchOptions();
-  }, [masterFields.join(',')]); // Dependency on array content
+  }, [masterFields.join(','), endpointUrl]); // Dependency on array content + which endpoint
 
   return { options, loading, error };
 };
