@@ -18,6 +18,7 @@ import useFetch from "@/hooks/useFetchHook";
 import usePost from "@/hooks/usePostHook";
 import useUpdate from "@/hooks/useUpdateHook";
 import useDelete from "@/hooks/useDeleteHook";
+import { getErrorMessage } from "@/lib/errors";
 import {
   apiGetTermsConditions,
   apiCreateTermsConditions,
@@ -172,8 +173,8 @@ const TermsConditionsMaster: React.FC = () => {
       toast.success("Terms & conditions deleted");
       setPendingDelete(null);
       setRefreshKey((k) => k + 1);
-    } catch {
-      toast.error("Failed to delete terms & conditions");
+    } catch (err: any) {
+      toast.error(getErrorMessage(err, "Failed to delete terms & conditions"));
     }
   };
 

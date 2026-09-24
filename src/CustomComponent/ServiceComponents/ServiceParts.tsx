@@ -178,9 +178,15 @@ export function Fact({ label, children, className }: {
   );
 }
 
-export interface HeroMetric { label: string; value: React.ReactNode; hint?: string; accent?: boolean }
+export interface HeroMetric {
+  label: string; value: React.ReactNode; hint?: string; accent?: boolean;
+  /** Overrides the value's color (e.g. red for money owed, green for money already paid) — takes priority over `accent`. */
+  valueClassName?: string;
+}
 
-const HERO_COLS: Record<number, string> = { 1: '@md:grid-cols-1', 2: '@md:grid-cols-2', 3: '@md:grid-cols-3', 4: '@md:grid-cols-4' };
+const HERO_COLS: Record<number, string> = {
+  1: '@md:grid-cols-1', 2: '@md:grid-cols-2', 3: '@md:grid-cols-3', 4: '@md:grid-cols-4', 5: '@md:grid-cols-3', 6: '@md:grid-cols-3',
+};
 
 export function DetailHero({ icon: Icon, eyebrow, title, subtitle, badges, metrics }: {
   icon: LucideIcon; eyebrow?: string; title: string; subtitle?: React.ReactNode;
@@ -203,7 +209,7 @@ export function DetailHero({ icon: Icon, eyebrow, title, subtitle, badges, metri
       </div>
 
       {metrics && metrics.length > 0 && (
-        <dl className={cn('grid grid-cols-2 gap-px border-t bg-border', HERO_COLS[Math.min(metrics.length, 4)])}>
+        <dl className={cn('grid grid-cols-2 gap-px border-t bg-border', HERO_COLS[Math.min(metrics.length, 6)])}>
           {metrics.map((m, i) => (
             <div
               key={m.label}
@@ -213,7 +219,7 @@ export function DetailHero({ icon: Icon, eyebrow, title, subtitle, badges, metri
               )}
             >
               <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{m.label}</dt>
-              <dd className={cn('mt-0.5 break-words text-lg font-bold tabular-nums @md:text-xl', m.accent && 'text-primary')}>
+              <dd className={cn('mt-0.5 break-words text-lg font-bold tabular-nums @md:text-xl', m.valueClassName ?? (m.accent && 'text-primary'))}>
                 {m.value}
               </dd>
               {m.hint && <p className="mt-0.5 text-xs text-muted-foreground">{m.hint}</p>}

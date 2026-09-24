@@ -27,8 +27,10 @@ interface Props {
  * hard to get wrong.
  */
 export const SupplierSplitEditor: React.FC<Props> = ({ rows, onChange, total, error }) => {
-  const { options } = useMasterOptions(['VendorMaster']);
-  const vendorOptions: { label: string; value: string | number }[] = options?.VendorMaster ?? [];
+  // Restricted to Service Vendor KYC-approved vendors — VendorMaster stays
+  // unrestricted for its other consumers (Payment, VendorBill, Vendor-Driven PR).
+  const { options } = useMasterOptions(['ServiceKycVendorMaster']);
+  const vendorOptions: { label: string; value: string | number }[] = options?.ServiceKycVendorMaster ?? [];
 
   const multi = rows.length > 1;
   const amountOf = (r: SupplierRowValue) => Number(r.share_amount) || 0;

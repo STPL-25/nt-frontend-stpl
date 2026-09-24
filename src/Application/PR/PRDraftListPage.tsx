@@ -50,6 +50,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/errors';
 import {
   prGetDrafts,
   prDeleteDraft,
@@ -199,8 +200,8 @@ function PrivateDraftsTab() {
       await axios.delete(prDeleteDraft(deleteTarget));
       toast.success('Draft deleted');
       setDrafts((prev) => prev.filter((d) => d.draftId !== deleteTarget));
-    } catch {
-      toast.error('Failed to delete draft');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to delete draft'));
     } finally {
       setDeleteTarget(null);
     }
@@ -480,8 +481,8 @@ function SharedDraftsTab() {
       await axios.delete(`${prDeleteDeptDraft(deleteTarget)}?scopeKey=${scopeKey}`);
       toast.success('Draft deleted');
       setDrafts((prev) => prev.filter((d) => d.draftId !== deleteTarget));
-    } catch {
-      toast.error('Failed to delete draft');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to delete draft'));
     } finally {
       setDeleteTarget(null);
     }
@@ -538,8 +539,8 @@ function SharedDraftsTab() {
       if (failed > 0) toast.error(`${failed} failed`);
       setDrafts([]);
       setSelectedIds(new Set());
-    } catch {
-      toast.error('Submit all failed');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Submit all failed'));
     } finally {
       setSubmittingAll(false);
     }

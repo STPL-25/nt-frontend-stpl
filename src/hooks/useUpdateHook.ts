@@ -60,7 +60,7 @@ const useUpdate = <T = any>(): UseUpdateReturn<T> => {
       if (canceled) return null;
 
       const errorMessage =
-        err?.response?.data?.message || err?.message || "An error occurred";
+        err?.response?.data?.error || err?.response?.data?.message || err?.message || "An error occurred";
       setError(String(errorMessage));
       throw err;
     } finally {
@@ -98,7 +98,7 @@ const useUpdate = <T = any>(): UseUpdateReturn<T> => {
       if (canceled) return null;
 
       const errorMessage =
-        err?.response?.data?.message || err?.message || "An error occurred";
+        err?.response?.data?.error || err?.response?.data?.message || err?.message || "An error occurred";
       setError(String(errorMessage));
       throw err;
     } finally {

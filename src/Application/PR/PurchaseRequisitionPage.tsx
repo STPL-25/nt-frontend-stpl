@@ -32,6 +32,7 @@ import useFetch from '@/hooks/useFetchHook';
 
 import { SOCKET_JOIN_PR_SCOPE, SOCKET_LEAVE_PR_SCOPE } from '@/Services/Socket';
 import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/errors';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import type { FieldType } from '@/FieldDatas/fieldType/fieldType';
@@ -597,8 +598,8 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
         if (res.data?.draftId) setDraftId(res.data.draftId);
         toast.success('Draft saved — continue editing or submit later');
       }
-    } catch {
-      toast.error('Failed to save draft. Please try again.');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to save draft. Please try again.'));
     } finally {
       setSavingDraft(false);
     }
@@ -619,8 +620,8 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
       toast.success(
         deptDraftId ? 'Shared draft updated — visible to your team' : 'Shared draft saved — your team can see it in real time'
       );
-    } catch {
-      toast.error('Failed to save shared draft. Please try again.');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to save shared draft. Please try again.'));
     } finally {
       setSavingDraft(false);
     }

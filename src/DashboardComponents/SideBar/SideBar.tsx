@@ -21,11 +21,16 @@ const getIcon = (name: string | null): IconComponent => {
   return Icon ? (Icon as IconComponent) : (LucideIcons.File as unknown as IconComponent);
 };
 
+// TEMP-DISABLED (loan/statutory): the Loan Payments screens stay out of the menu while loans are switched
+// off. Menu-only — nothing in the database or in users' screen permissions changes. Empty the set to bring them back.
+const HIDDEN_SCREEN_COMPS = new Set(['loanvoucherpage', 'loanvoucherapprovalscreen']);
+
 const buildGroupedMenu = (screens: Screen[]): MenuGroup[] => {
   const groups: MenuGroup[] = [];
   const groupIndex = new Map<string | number, number>();
 
   screens.forEach((s) => {
+    if (HIDDEN_SCREEN_COMPS.has(s.screen_comp?.toLowerCase() ?? '')) return;
     const groupId = s.group_id ?? "ungrouped";
     const groupName = s.group_name?.trim() || "Other";
     const item: MenuItem = {

@@ -65,6 +65,10 @@ export interface LoanVoucherSummary {
   rate_pct: number; status: VoucherStatus; created_at: string; paid_on?: string | null;
 }
 
+export interface LoanBeneficiary {
+  ac_holder_name?: string; ac_number?: number | string; ifsc?: string; bank_name?: string; bank_branch_name?: string;
+}
+
 export interface LoanDetail {
   agreement_sno: number;
   billed_through: string;
@@ -72,6 +76,8 @@ export interface LoanDetail {
   rates: LoanRate[];
   txns: LoanTxn[];
   vouchers: LoanVoucherSummary[];
+  /** The vendor's active/primary bank account (KYC) — null if none is on file yet. */
+  beneficiary: LoanBeneficiary | null;
 }
 
 export type VoucherStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'PAID' | 'REJECTED';

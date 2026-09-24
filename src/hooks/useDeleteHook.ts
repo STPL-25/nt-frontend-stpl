@@ -45,6 +45,7 @@ const useDelete = <T = any>(): UseDeleteReturn<T> => {
         console.log("Request cancelled");
       } else {
         const errorMessage =
+          err.response?.data?.error ||
           err.response?.data?.message ||
           err.message ||
           "An error occurred";

@@ -18,6 +18,7 @@ import React, {
 } from "react";
 import { isEqual } from "lodash";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/errors";
 import {
   Shield,
   Wifi,
@@ -658,10 +659,10 @@ export default function PermissionManager() {
         setPermRefreshKey((k) => k + 1);
         toast.success("Saved — permissions pushed to user instantly via WebSocket.");
       } else {
-        toast.error("Failed to save permissions.");
+        toast.error(res?.error || "Failed to save permissions.");
       }
-    } catch {
-      toast.error("Error saving permissions.");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Error saving permissions."));
     } finally {
       setSaving(false);
     }
@@ -695,10 +696,10 @@ export default function PermissionManager() {
         setPermRefreshKey((k) => k + 1);
         toast.success("Permissions revoked for this user.");
       } else {
-        toast.error("Failed to delete permissions.");
+        toast.error(res?.error || "Failed to delete permissions.");
       }
-    } catch {
-      toast.error("Error deleting permissions.");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Error deleting permissions."));
     } finally {
       setDeleting(false);
     }

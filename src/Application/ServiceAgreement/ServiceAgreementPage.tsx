@@ -11,7 +11,7 @@ import {
 import {
   FileText, Building2, RefreshCw, Send, Repeat, Wallet, CalendarClock, Bell, ClipboardList,
   Pencil, Loader2, Briefcase, ScrollText, Check, FilePlus2, AlertCircle, SearchX, Layers,
-  Landmark, History, RotateCcw,
+  /* Landmark, */ History, RotateCcw,   // TEMP-DISABLED (loan/statutory): Landmark is only used by the commented-out Statutory type card / tab
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { EmptyState, PageHeader } from '@/CustomComponent/PageComponents';
@@ -82,7 +82,8 @@ function resolveNameField(fieldName: string): string {
 const AGREEMENT_TYPES: { value: AgreementType; label: string; description: string; Icon: React.ElementType }[] = [
   { value: 'FIXED_RECURRING', label: 'Fixed', description: 'Same amount every cycle, auto-generated on a schedule', Icon: Repeat },
   { value: 'VARIABLE_RECURRING', label: 'Unfixed', description: 'Amount varies by billing cycle — entered per cycle in Service PO', Icon: Wallet },
-  { value: 'STATUTORY', label: 'Statutory', description: 'Loans, repo and cash credit — no POs; interest is worked out on the outstanding principal and paid by Bank Payment Voucher', Icon: Landmark },
+  // TEMP-DISABLED (loan/statutory): restore this entry (and the Landmark import) to offer loans / repo / cash credit again.
+  // { value: 'STATUTORY', label: 'Statutory', description: 'Loans, repo and cash credit — no POs; interest is worked out on the outstanding principal and paid by Bank Payment Voucher', Icon: Landmark },
 ];
 
 // A loan is priced by its own facility terms and billed through Bank Payment Vouchers, so the
@@ -623,7 +624,12 @@ const ServiceAgreementPage: React.FC = () => {
   const { data: agreementsRes, loading: loadingAgreements } = useFetch<{ success: boolean; data: AgreementRow[] }>(
     getServiceAgreements, '', null, refreshKey
   );
-  const agreements = useMemo(() => agreementsRes?.data ?? [], [agreementsRes]);
+  // TEMP-DISABLED (loan/statutory): Statutory agreements are left out so the counts and status chips match the tabs
+  // that are shown — drop the filter to list them again.
+  const agreements = useMemo(
+    () => (agreementsRes?.data ?? []).filter((a) => a.service_type_code !== 'STATUTORY'),
+    [agreementsRes],
+  );
 
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = { ALL: agreements.length };
@@ -821,7 +827,9 @@ const ServiceAgreementPage: React.FC = () => {
       <PageHeader
         icon={FileText}
         title="Service Agreements"
-        description="Fixed and Unfixed agreements raise a PO each cycle; Statutory (loan / repo / cash credit) agreements are billed through Bank Payment Vouchers under Loan Payments"
+        // TEMP-DISABLED (loan/statutory): original text also said "Statutory (loan / repo / cash credit) agreements are billed
+        // through Bank Payment Vouchers under Loan Payments".
+        description="Fixed and Unfixed agreements raise a PO each cycle"
       />
 
       <div className="mx-auto w-full max-w-6xl space-y-5 px-3 py-4 sm:px-6 sm:py-6">
@@ -841,7 +849,8 @@ const ServiceAgreementPage: React.FC = () => {
             <TabsContent value="create" className="mt-5">
               <form onSubmit={handleSubmit} noValidate className="space-y-4">
                 <Panel icon={Repeat} title="Agreement type" description="Decides how each cycle's amount is set">
-                  <div role="radiogroup" aria-label="Agreement type" className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  {/* TEMP-DISABLED (loan/statutory): two type cards for now — use md:grid-cols-3 again once Statutory is back. */}
+                  <div role="radiogroup" aria-label="Agreement type" className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {AGREEMENT_TYPES.map(({ value, label, description, Icon }) => {
                       const active = agreementType === value;
                       return (
@@ -937,11 +946,15 @@ const ServiceAgreementPage: React.FC = () => {
                 <TabsList className="w-full sm:w-fit">
                   <TabsTrigger value="fixed" className="sm:px-4"><Repeat size={14} /> Fixed ({rowsByTab.fixed.length})</TabsTrigger>
                   <TabsTrigger value="variable" className="sm:px-4"><Wallet size={14} /> Unfixed ({rowsByTab.variable.length})</TabsTrigger>
+                  {/* TEMP-DISABLED (loan/statutory)
                   <TabsTrigger value="statutory" className="sm:px-4"><Landmark size={14} /> Statutory ({rowsByTab.statutory.length})</TabsTrigger>
+                  */}
                 </TabsList>
                 <TabsContent value="fixed" className="mt-4">{renderRows(rowsByTab.fixed)}</TabsContent>
                 <TabsContent value="variable" className="mt-4">{renderRows(rowsByTab.variable)}</TabsContent>
+                {/* TEMP-DISABLED (loan/statutory)
                 <TabsContent value="statutory" className="mt-4">{renderRows(rowsByTab.statutory)}</TabsContent>
+                */}
               </Tabs>
             </Panel>
           </TabsContent>

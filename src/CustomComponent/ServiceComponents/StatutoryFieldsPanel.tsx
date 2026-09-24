@@ -38,8 +38,10 @@ const BASIS_OPTIONS = [
  * outstanding principal and paid through a Bank Payment Voucher for each interest date.
  */
 export const StatutoryFieldsPanel: React.FC<Props> = ({ value, onChange, errors, lender, onLenderChange, lenderError }) => {
-  const { options } = useMasterOptions(['VendorMaster']);
-  const vendorOptions: { label: string; value: string | number }[] = options?.VendorMaster ?? [];
+  // Restricted to Service Vendor KYC-approved vendors — VendorMaster stays
+  // unrestricted for its other consumers (Payment, VendorBill, Vendor-Driven PR).
+  const { options } = useMasterOptions(['ServiceKycVendorMaster']);
+  const vendorOptions: { label: string; value: string | number }[] = options?.ServiceKycVendorMaster ?? [];
 
   const set = (patch: Partial<StatutoryForm>) => onChange({ ...value, ...patch });
   const facility = value.facility_type ? FACILITY_META[value.facility_type] : null;

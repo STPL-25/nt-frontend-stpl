@@ -273,8 +273,8 @@ export default function SupplierKYCEntry({
         toast.success("KYC submitted successfully! Our team will review and contact you.");
         handleReset();
       }
-    } catch (error: any) {
-      toast.error(error?.message || "An error occurred while submitting KYC");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "An error occurred while submitting KYC"));
     }
   };
 

@@ -278,3 +278,13 @@ export const getBankPaymentVoucher          = baseUrl + "/api/loan_voucher/getBa
 export const getBankPaymentVouchersForApproval = baseUrl + "/api/loan_voucher/getBankPaymentVouchersForApproval";
 export const approveBankPaymentVoucher      = baseUrl + "/api/loan_voucher/approveBankPaymentVoucher";
 export const markBankPaymentVoucherPaid     = baseUrl + "/api/loan_voucher/markBankPaymentVoucherPaid";
+
+// Service Vendor KYC — separate KYC intake + approval for service vendors
+// (electricians, AMC contractors, Statutory lenders, ...). On final approval,
+// auto-provisions a kyc_basic_info row (vendor_category='SERVICE') so it can
+// be picked on a Service Agreement.
+export const createServiceVendorKyc            = baseUrl + "/api/service_vendor_kyc/createServiceVendorKyc";
+export const approveServiceVendorKyc           = baseUrl + "/api/service_vendor_kyc/approveServiceVendorKyc";
+export const getServiceVendorKycs              = baseUrl + "/api/service_vendor_kyc/getServiceVendorKycs";
+export const getApprovedServiceVendorKycs      = baseUrl + "/api/service_vendor_kyc/getApprovedServiceVendorKycs";
+export const getServiceVendorKycsForApproval   = baseUrl + "/api/service_vendor_kyc/getServiceVendorKycsForApproval";

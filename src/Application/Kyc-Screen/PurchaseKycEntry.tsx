@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -269,9 +270,9 @@ export default function SupplierKYCForm() {
         setAdditionalAddresses([]);
         setValidationErrors([]);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("KYC submission error:", error);
-      toast.error(error?.message || "An error occurred while submitting KYC" );
+      toast.error(getErrorMessage(error, "An error occurred while submitting KYC"));
     }
   };
 

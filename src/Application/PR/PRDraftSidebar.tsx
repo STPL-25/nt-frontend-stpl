@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/errors';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -233,8 +234,8 @@ const PRDraftSidebar: React.FC<PRDraftSidebarProps> = ({
         next.delete(deleteTarget);
         return next;
       });
-    } catch {
-      toast.error('Failed to delete draft');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to delete draft'));
     } finally {
       setDeleteTarget(null);
     }
@@ -300,8 +301,8 @@ const PRDraftSidebar: React.FC<PRDraftSidebarProps> = ({
       if (failed > 0) toast.error(`${failed} draft(s) failed to submit`);
       setDrafts([]);
       setSelectedIds(new Set());
-    } catch {
-      toast.error('Submit all failed');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Submit all failed'));
     } finally {
       setSubmittingAll(false);
     }

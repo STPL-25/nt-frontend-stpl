@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/errors';
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
 } from '@/components/ui/card';
@@ -323,8 +324,8 @@ const StorePOGeneratePage: React.FC = () => {
       await axios.post(storePOSaveDraft, buildPayload(), { withCredentials: true });
       toast.success('PO draft saved');
       fetchDrafts();
-    } catch {
-      toast.error('Failed to save draft');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to save draft'));
     } finally {
       setSavingDraft(false);
     }
@@ -351,7 +352,7 @@ const StorePOGeneratePage: React.FC = () => {
         toast.warning('PO draft saved. DB submission pending (SP not yet deployed).');
         fetchDrafts();
       } else {
-        toast.error('Failed to generate PO');
+        toast.error(msg || 'Failed to generate PO');
       }
     } finally {
       setSubmitting(false);

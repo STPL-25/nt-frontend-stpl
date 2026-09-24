@@ -47,6 +47,11 @@ export const LoanDetailView: React.FC<Props> = ({ loan, canAct, refreshKey, onBa
   const bench = loan.benchmark_name ?? 'Repo';
   const expired = loan.agreement_status !== 'A';
   const vouchers = detail?.vouchers ?? [];
+  // Every REPAYMENT movement (manual prepayments + the principal portion of paid/approved
+  // vouchers) sums to what has actually come back against this loan so far.
+  const principalPaid = (detail?.txns ?? [])
+    .filter((t) => t.txn_type === 'REPAYMENT')
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
   return (
     <div className="@container space-y-4">
@@ -69,10 +74,12 @@ export const LoanDetailView: React.FC<Props> = ({ loan, canAct, refreshKey, onBa
           </>
         )}
         metrics={[
-          { label: 'Principal outstanding', value: formatINR(loan.principal_outstanding), accent: true, hint: `of ${formatINR(loan.disbursed_amount)} disbursed` },
-          { label: 'Current rate', value: `${Number(loan.current_rate_pct)}%`, hint: floating ? `${bench} + ${Number(loan.spread_pct ?? 0)}% spread` : 'fixed' },
-          { label: 'Interest accrued', value: formatINR(loan.accrued_interest), hint: `since ${formatDate(loan.billed_through)}` },
-          { label: 'Next interest date', value: loan.next_due_date ? formatDate(loan.next_due_date) : '—', hint: `${ordinalDay(loan.interest_payment_day)} of every month` },
+          { label: 'Loan sanctioned', value: formatINR(loan.sanctioned_amount), hint: loan.facility_type === 'CASH_CREDIT' && loan.drawing_power ? `limit ${formatINR(loan.drawing_power)}` : undefined },
+          { label: 'Loan availed', value: formatINR(loan.disbursed_amount), valueClassName: 'text-red-600 dark:text-red-400', hint: `on ${formatDate(loan.disbursement_date)}` },
+          { label: 'Principal paid', value: formatINR(principalPaid), valueClassName: 'text-emerald-600 dark:text-emerald-400', hint: 'repaid so far' },
+          { label: 'Current outstanding', value: formatINR(loan.principal_outstanding), accent: true, hint: `of ${formatINR(loan.disbursed_amount)} disbursed` },
+          { label: 'Interest %', value: `${Number(loan.current_rate_pct)}%`, hint: floating ? `${bench} + ${Number(loan.spread_pct ?? 0)}% spread` : 'fixed' },
+          { label: 'Interest amount', value: formatINR(loan.accrued_interest), hint: `accrued since ${formatDate(loan.billed_through)}` },
         ]}
       />
 
@@ -85,7 +92,11 @@ export const LoanDetailView: React.FC<Props> = ({ loan, canAct, refreshKey, onBa
         </TabsList>
 
         <TabsContent value="voucher">
-          <VoucherCalculator loan={loan} canAct={canAct} refreshKey={refreshKey} onCreated={() => { setTab('vouchers'); onChanged(); }} />
+          <VoucherCalculator
+            loan={loan} canAct={canAct} refreshKey={refreshKey}
+            beneficiary={detail?.beneficiary ?? null} principalPaid={principalPaid}
+            onCreated={() => { setTab('vouchers'); onChanged(); }}
+          />
         </TabsContent>
 
         <TabsContent value="rates">
@@ -102,14 +113,16 @@ export const LoanDetailView: React.FC<Props> = ({ loan, canAct, refreshKey, onBa
               <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">No vouchers raised for this loan yet.</p>
             ) : (
               <>
-                <div className="hidden overflow-hidden rounded-lg border md:block">
-                  <table className="w-full text-sm">
+                <div className="hidden overflow-x-auto rounded-lg border md:block">
+                  <table className="w-full min-w-[64rem] text-sm">
                     <thead className="bg-muted/40 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
                       <tr>
                         <th className="px-3 py-2 font-medium">Voucher</th>
                         <th className="px-3 py-2 font-medium">Interest period</th>
+                        <th className="px-3 py-2 text-right font-medium">Loan sanctioned</th>
+                        <th className="px-3 py-2 text-right font-medium">Loan availed</th>
                         <th className="px-3 py-2 text-right font-medium">Interest</th>
-                        <th className="px-3 py-2 text-right font-medium">Principal</th>
+                        <th className="px-3 py-2 text-right font-medium">Principal paid</th>
                         <th className="px-3 py-2 text-right font-medium">Total</th>
                         <th className="px-3 py-2 font-medium">Status</th>
                         <th className="w-20" />
@@ -122,8 +135,10 @@ export const LoanDetailView: React.FC<Props> = ({ loan, canAct, refreshKey, onBa
                           <tr key={v.voucher_sno}>
                             <td className="px-3 py-2 font-semibold">{v.voucher_no}</td>
                             <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">{formatDate(v.period_from)} → {formatDate(v.period_to)} · {v.days}d</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{formatINR(loan.sanctioned_amount)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-red-600 dark:text-red-400">{formatINR(loan.disbursed_amount)}</td>
                             <td className="px-3 py-2 text-right tabular-nums">{formatINR(v.interest_amount)}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">{v.principal_repayment > 0 ? formatINR(v.principal_repayment) : '—'}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{v.principal_repayment > 0 ? formatINR(v.principal_repayment) : '—'}</td>
                             <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatINR(v.total_payable)}</td>
                             <td className="px-3 py-2"><StatusPill tone={st.tone}>{st.label}</StatusPill></td>
                             <td className="px-2 py-1 text-right"><Button size="sm" variant="ghost" onClick={() => onOpenVoucher(v.voucher_sno)}>View</Button></td>
@@ -145,10 +160,12 @@ export const LoanDetailView: React.FC<Props> = ({ loan, canAct, refreshKey, onBa
                           </div>
                           <StatusPill tone={st.tone}>{st.label}</StatusPill>
                         </div>
-                        <dl className="mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-xs">
+                        <dl className="mt-3 grid grid-cols-2 gap-2 border-t pt-3 text-xs">
+                          <div><dt className="text-muted-foreground">Loan sanctioned</dt><dd className="mt-0.5 font-semibold tabular-nums">{formatINR(loan.sanctioned_amount)}</dd></div>
+                          <div><dt className="text-muted-foreground">Loan availed</dt><dd className="mt-0.5 font-semibold tabular-nums text-red-600 dark:text-red-400">{formatINR(loan.disbursed_amount)}</dd></div>
                           <div><dt className="text-muted-foreground">Interest</dt><dd className="mt-0.5 font-semibold tabular-nums">{formatINR(v.interest_amount)}</dd></div>
-                          <div><dt className="text-muted-foreground">Principal</dt><dd className="mt-0.5 font-semibold tabular-nums">{v.principal_repayment > 0 ? formatINR(v.principal_repayment) : '—'}</dd></div>
-                          <div><dt className="text-muted-foreground">Total</dt><dd className="mt-0.5 font-bold tabular-nums">{formatINR(v.total_payable)}</dd></div>
+                          <div><dt className="text-muted-foreground">Principal paid</dt><dd className="mt-0.5 font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{v.principal_repayment > 0 ? formatINR(v.principal_repayment) : '—'}</dd></div>
+                          <div className="col-span-2"><dt className="text-muted-foreground">Total</dt><dd className="mt-0.5 font-bold tabular-nums">{formatINR(v.total_payable)}</dd></div>
                         </dl>
                         <Button size="sm" variant="outline" className="mt-3 w-full" onClick={() => onOpenVoucher(v.voucher_sno)}>View voucher</Button>
                       </li>

@@ -21,6 +21,7 @@ import {
   TableHeader, TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { getErrorMessage } from "@/lib/errors";
 import { downloadExcelTemplate, parseExcelFile } from "@/utils/excelUtils";
 
 /* ── Types ────────────────────────────────────────────────── */
@@ -232,7 +233,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
       setShowAddModal(false);
     } catch (error) {
       console.log(error)
-      toast.error("Failed to add item");
+      toast.error(getErrorMessage(error, "Failed to add item"));
     }
   };
 
@@ -262,7 +263,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
       }
       setShowEditModal(false);
       setEditingItem(null);
-    } catch { toast.error("Failed to update item"); }
+    } catch (error) { toast.error(getErrorMessage(error, "Failed to update item")); }
   };
 
   const handleDeleteConfirm = async () => {
@@ -286,7 +287,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
       }
       setShowDeleteModal(false);
       setItemToDelete(null);
-    } catch { toast.error("Failed to delete item"); }
+    } catch (error) { toast.error(getErrorMessage(error, "Failed to delete item")); }
   };
 
   /* ── CSV export ── */
@@ -370,8 +371,8 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
         setTableData((p) => [...p, ...importPreviewRows.map((r, i) => ({ ...r, id: Date.now() + i }))]);
         toast.success(`${importPreviewRows.length} records imported successfully`);
       }
-    } catch {
-      toast.error("Import failed. Please try again.");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Import failed. Please try again."));
     } finally {
       setIsSavingImport(false);
       setShowImportPreview(false);

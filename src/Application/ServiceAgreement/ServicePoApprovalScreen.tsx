@@ -9,10 +9,36 @@ import {
   socket, SOCKET_JOIN_SERVICE_PO_APPROVAL, SOCKET_LEAVE_SERVICE_PO_APPROVAL,
   SOCKET_SERVICE_PO_APPROVAL_UPDATED,
 } from '@/Services/Socket';
+import { buildPOApprovalPdf } from '@/utils/generatePOApprovalPdf';
 
 interface APIResponse {
   success: boolean;
   data: any[];
+}
+
+// sp_nt_ApproveServicePoCycle only fills po_details on the cycle's FINAL
+// approval stage (one entry per PO raised — usually one, or one per supplier
+// on a split cycle, see sql/88) — everything else about the shape matches
+// sp_nt_ApproveSupplierQuotation's po_header/vendor/po_items, so the regular
+// Purchase Order PDF renderer is reused unchanged rather than building a
+// second one just for Service PO.
+async function downloadServicePoPdfs(poDetailsRaw: unknown): Promise<void> {
+  let entries: any[] = [];
+  try {
+    entries = typeof poDetailsRaw === 'string' ? JSON.parse(poDetailsRaw) : (poDetailsRaw as any[]) ?? [];
+  } catch {
+    entries = [];
+  }
+  if (!Array.isArray(entries) || entries.length === 0) return;
+
+  for (const entry of entries) {
+    try {
+      const { doc, fileName } = await buildPOApprovalPdf({}, {}, entry);
+      doc.save(fileName);
+    } catch (error) {
+      console.error('Unable to generate the Service PO PDF:', error);
+    }
+  }
 }
 
 const ServicePoApprovalScreen: React.FC = () => {
@@ -73,7 +99,7 @@ const ServicePoApprovalScreen: React.FC = () => {
     if (!selectedCycle) return;
 
     try {
-      await postData(approveServicePoCycle, {
+      const result: any = await postData(approveServicePoCycle, {
         cycle_sno: selectedCycle.cycle_sno,
         ecno: userData[0]?.ecno,
         action: actionType,
@@ -86,6 +112,10 @@ const ServicePoApprovalScreen: React.FC = () => {
           } catch { return []; }
         })(),
       });
+
+      if (actionType === 'approve') {
+        await downloadServicePoPdfs(result?.data?.[0]?.po_details);
+      }
 
       setCycleList((prev) => prev.filter((c) => c.cycle_sno !== selectedCycle.cycle_sno));
       setSelectedCycle(null);

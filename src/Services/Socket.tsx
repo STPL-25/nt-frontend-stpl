@@ -86,6 +86,11 @@ export const SOCKET_JOIN_LOAN_VOUCHER_APPROVAL    = "join-loan-voucher-approval"
 export const SOCKET_LEAVE_LOAN_VOUCHER_APPROVAL   = "leave-loan-voucher-approval";
 export const SOCKET_LOAN_VOUCHER_APPROVAL_UPDATED = "loan_voucher:approval:updated";
 
+// ── Service Vendor KYC room + real-time events ────────────────────────────────
+export const SOCKET_JOIN_SERVICE_VENDOR_KYC_APPROVAL    = "join-service-vendor-kyc-approval";
+export const SOCKET_LEAVE_SERVICE_VENDOR_KYC_APPROVAL   = "leave-service-vendor-kyc-approval";
+export const SOCKET_SERVICE_VENDOR_KYC_APPROVAL_UPDATED = "service_vendor_kyc:approval:updated";
+
 // ── PR draft real-time events ─────────────────────────────────────────────────
 export const SOCKET_PR_DRAFT_NEW = "pr:draft:new";
 export const SOCKET_PR_DRAFT_UPDATED = "pr:draft:updated";

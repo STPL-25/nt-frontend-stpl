@@ -42,6 +42,8 @@ export const StoreInchargeApprovalPage = lazy(() => import("../Application/Store
  export const ServicePoApprovalScreen = lazy(() => import("../Application/ServiceAgreement/ServicePoApprovalScreen"));
  export const LoanVoucherPage = lazy(() => import("../Application/LoanVoucher/LoanVoucherPage"));
  export const LoanVoucherApprovalScreen = lazy(() => import("../Application/LoanVoucher/LoanVoucherApprovalScreen"));
+ export const ServiceVendorKycPage = lazy(() => import("../Application/ServiceVendorKyc/ServiceVendorKycPage"));
+ export const ServiceVendorKycApprovalScreen = lazy(() => import("../Application/ServiceVendorKyc/ServiceVendorKycApprovalScreen"));
 // Interface for the component map
 export interface SectionComponentsMap {
   [key: string]: LazyExoticComponent<ComponentType<any>>;
@@ -88,4 +90,6 @@ export const sectionComponents: SectionComponentsMap = {
   ServicePoApprovalScreen,
   LoanVoucherPage,
   LoanVoucherApprovalScreen,
+  ServiceVendorKycPage,
+  ServiceVendorKycApprovalScreen,
 };

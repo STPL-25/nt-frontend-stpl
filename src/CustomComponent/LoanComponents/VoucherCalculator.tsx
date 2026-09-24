@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { AlertCircle, CalendarCheck2, Calculator, Clock, Loader2, RotateCcw, Send } from 'lucide-react';
+import { AlertCircle, Banknote, CalendarCheck2, Calculator, Clock, Loader2, RotateCcw, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
-import { Callout, Panel } from '@/CustomComponent/ServiceComponents/ServiceParts';
+import { Callout, Fact, FactGrid, Panel } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import { dateOnly, formatDate, formatINR } from '@/CustomComponent/ServiceComponents/serviceUtils';
 import { NextInterestPanel, SegmentsTable, VoucherFigures } from '@/CustomComponent/LoanComponents/InterestBreakdown';
-import { addDaysIso, type LoanAccount, type VoucherPreview } from '@/CustomComponent/LoanComponents/loanUtils';
+import { addDaysIso, type LoanAccount, type LoanBeneficiary, type VoucherPreview } from '@/CustomComponent/LoanComponents/loanUtils';
 import { createBankPaymentVoucher, previewLoanInterest } from '@/Services/Api';
 
 interface Props {
@@ -15,7 +15,21 @@ interface Props {
   canAct: boolean;
   /** Bumped by the parent whenever rates / principal / vouchers change, so the figures re-read. */
   refreshKey: number;
+  /** The vendor's KYC bank account this voucher will actually pay into — shown next to where the transaction is raised, not at the top of the screen. */
+  beneficiary: LoanBeneficiary | null;
+  /** Sum of REPAYMENT movements to date (manual + voucher), for the "Principal paid" stat. */
+  principalPaid: number;
   onCreated: () => void;
+}
+
+/** One stat in the snapshot row above the calculator — `valueClassName` colors just the figure (red for money owed, green for money already paid). */
+function SnapshotStat({ label, value, valueClassName }: { label: string; value: React.ReactNode; valueClassName?: string }) {
+  return (
+    <div className="min-w-0 rounded-lg border bg-card p-3">
+      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className={`mt-0.5 truncate text-base font-bold tabular-nums ${valueClassName ?? 'text-foreground'}`}>{value}</dd>
+    </div>
+  );
 }
 
 /**
@@ -23,7 +37,7 @@ interface Props {
  * rate change and principal movement — and raises the Bank Payment Voucher for it. The figures come
  * from the server (the same calculation that is frozen into the voucher), so this never disagrees with it.
  */
-export const VoucherCalculator: React.FC<Props> = ({ loan, canAct, refreshKey, onCreated }) => {
+export const VoucherCalculator: React.FC<Props> = ({ loan, canAct, refreshKey, beneficiary, principalPaid, onCreated }) => {
   const [paymentDate, setPaymentDate] = useState('');
   const [repay, setRepay] = useState('');
   const [remarks, setRemarks] = useState('');
@@ -102,6 +116,15 @@ export const VoucherCalculator: React.FC<Props> = ({ loan, canAct, refreshKey, o
 
   return (
     <div className="space-y-4">
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <SnapshotStat label="Loan sanctioned" value={formatINR(loan.sanctioned_amount)} />
+        <SnapshotStat label="Loan availed" value={formatINR(loan.disbursed_amount)} valueClassName="text-red-600 dark:text-red-400" />
+        <SnapshotStat label="Principal paid" value={formatINR(principalPaid)} valueClassName="text-emerald-600 dark:text-emerald-400" />
+        <SnapshotStat label="Current outstanding" value={formatINR(loan.principal_outstanding)} />
+        <SnapshotStat label="Interest %" value={`${Number(loan.current_rate_pct)}%`} />
+        <SnapshotStat label="Interest amount" value={formatINR(loan.accrued_interest)} />
+      </dl>
+
       {expired && (
         <Callout tone="warning" icon={AlertCircle}>
           This loan agreement has expired. Renew it under <b>Service Agreements</b> to raise further interest vouchers.
@@ -173,6 +196,21 @@ export const VoucherCalculator: React.FC<Props> = ({ loan, canAct, refreshKey, o
                   principalOnPayment={preview.principal_on_payment} interest={preview.interest_amount} days={preview.days}
                   repayment={repayNum} total={preview.total_payable} principalAfter={preview.principal_after}
                 />
+                <div className="mt-4 rounded-lg border bg-card p-3">
+                  <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Banknote className="h-3.5 w-3.5" /> Pays into (KYC)
+                  </p>
+                  {beneficiary ? (
+                    <FactGrid className="gap-y-2.5">
+                      <Fact label="Account holder">{beneficiary.ac_holder_name ?? '—'}</Fact>
+                      <Fact label="Account no.">{beneficiary.ac_number ?? '—'}</Fact>
+                      <Fact label="IFSC">{beneficiary.ifsc ?? '—'}</Fact>
+                      <Fact label="Bank">{beneficiary.bank_name}{beneficiary.bank_branch_name ? `, ${beneficiary.bank_branch_name}` : ''}</Fact>
+                    </FactGrid>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No active bank account on file for this vendor's KYC yet — the voucher can still be raised, but add one before paying it.</p>
+                  )}
+                </div>
                 {canAct ? (
                   <Button className="mt-4 h-11 w-full" onClick={create} disabled={!canCreate || creating}>
                     {creating ? <><Loader2 className="h-4 w-4 animate-spin" /> Raising…</> : <><Send className="h-4 w-4" /> Raise voucher · {formatINR(preview.total_payable)}</>}

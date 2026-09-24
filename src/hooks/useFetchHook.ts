@@ -55,7 +55,7 @@ const useFetch = <T = any>(
       } catch (err: any) {
         if (controller.signal.aborted) return; // request cancelled — ignore
         const message =
-          err?.response?.data?.message || err?.message || "An error occurred";
+          err?.response?.data?.error || err?.response?.data?.message || err?.message || "An error occurred";
         setError(message);
       } finally {
         setLoading(false);

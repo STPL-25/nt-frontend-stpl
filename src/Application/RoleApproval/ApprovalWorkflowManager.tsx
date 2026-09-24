@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
+import { getErrorMessage } from "@/lib/errors";
 import {
   Card,
   CardContent,
@@ -663,8 +664,8 @@ export default function ApprovalFlowDynamic() {
         });
         setEditTypes(Object.values(groups));
         setMode("edit");
-      } catch {
-        toast.error("Failed to load workflow details");
+      } catch (error) {
+        toast.error(getErrorMessage(error, "Failed to load workflow details"));
         setMode("idle");
         setSelectedRow(null);
         setSelectedId("");
@@ -764,8 +765,8 @@ export default function ApprovalFlowDynamic() {
       setListRefreshKey((k) => k + 1);
       setCreateWorkflow(emptyWorkflow());
       setCreateTypes([emptyType()]);
-    } catch {
-      toast.error("Failed to save workflow");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to save workflow"));
     } finally {
       setCreateSaving(false);
     }
@@ -833,8 +834,8 @@ export default function ApprovalFlowDynamic() {
         ? { ...prev, workflow_name: editWorkflow.workflow_name, description: editWorkflow.description, is_active: editWorkflow.is_active ? "Y" : "N" }
         : prev
       );
-    } catch {
-      toast.error("Failed to update workflow");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to update workflow"));
     } finally {
       setEditSaving(false);
     }

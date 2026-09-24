@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/errors";
 import { PageHeader } from "@/CustomComponent/PageComponents";
 import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
 import { Button } from "@/components/ui/button";
@@ -194,8 +195,8 @@ const ProductStockLevelMaster: React.FC = () => {
       toast.success("Stock level configuration deleted");
       setPendingDelete(null);
       setRefreshKey((k) => k + 1);
-    } catch {
-      toast.error("Failed to delete stock level configuration");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to delete stock level configuration"));
     }
   };
 

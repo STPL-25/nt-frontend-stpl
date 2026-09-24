@@ -4,9 +4,9 @@ import { toast } from 'sonner';
 import { ArrowDownToLine, ArrowUpFromLine, Info, Landmark, Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
-import { Callout, Panel, StatusPill } from '@/CustomComponent/ServiceComponents/ServiceParts';
+import { Callout, Panel } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import { dateOnly, formatDate, formatINR } from '@/CustomComponent/ServiceComponents/serviceUtils';
-import { addDaysIso, type LoanAccount, type LoanDetail } from '@/CustomComponent/LoanComponents/loanUtils';
+import { type LoanAccount, type LoanDetail } from '@/CustomComponent/LoanComponents/loanUtils';
 import { addLoanPrincipalTxn, deleteLoanPrincipalTxn } from '@/Services/Api';
 
 interface Props {
@@ -41,9 +41,6 @@ export const LoanPrincipalPanel: React.FC<Props> = ({ loan, detail, canAct, onCh
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [removing, setRemoving] = useState(false);
 
-  const earliest = detail
-    ? [dateOnly(loan.disbursement_date), dateOnly(detail.locked_through)].sort().pop() as string
-    : undefined;
   const canAdd = canAct && loan.agreement_status === 'A';
 
   const add = async () => {
@@ -81,58 +78,49 @@ export const LoanPrincipalPanel: React.FC<Props> = ({ loan, detail, canAct, onCh
   return (
     <div className="space-y-4">
       <Panel icon={Landmark} title="Principal ledger" description={`Outstanding today ${formatINR(loan.principal_outstanding)} · ${isCC ? 'limit' : 'sanctioned'} ${formatINR(limit)}`}>
-        <div className="overflow-hidden rounded-lg border">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[32rem] text-sm">
-              <thead className="bg-muted/40 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Effective</th>
-                  <th className="px-3 py-2 font-medium">Movement</th>
-                  <th className="px-3 py-2 text-right font-medium">Amount</th>
-                  <th className="px-3 py-2 text-right font-medium">Principal after</th>
-                  <th className="px-3 py-2 font-medium">Note</th>
-                  <th className="w-12" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {txns.map((t, i) => (
-                  <tr key={t.txn_sno ?? `o${i}`}>
-                    <td className="whitespace-nowrap px-3 py-2 font-medium">{formatDate(t.txn_date)}</td>
-                    <td className="px-3 py-2">
-                      <StatusPill tone={t.txn_type === 'DRAWDOWN' ? 'info' : 'success'}>
-                        {t.source === 'OPENING' ? 'Disbursed' : t.txn_type === 'DRAWDOWN' ? 'Drawdown' : 'Repayment'}
-                      </StatusPill>
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{t.txn_type === 'REPAYMENT' ? '−' : '+'} {formatINR(t.amount)}</td>
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatINR(t.principal_after)}</td>
-                    <td className="max-w-[14rem] truncate px-3 py-2 text-xs text-muted-foreground" title={t.remarks ?? ''}>
-                      {t.remarks ?? '—'}{t.source === 'VOUCHER' ? ' (voucher)' : t.created_by ? ` · ${t.created_by}` : ''}
-                    </td>
-                    <td className="px-2 py-1 text-right">
-                      {canAdd && t.can_delete === 1 && t.txn_sno != null && (
-                        confirmId === t.txn_sno ? (
-                          <span className="inline-flex items-center gap-1">
-                            <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" disabled={removing} onClick={() => remove(t.txn_sno as number)}>
-                              {removing ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Remove'}
-                            </Button>
-                            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setConfirmId(null)}>No</Button>
-                          </span>
-                        ) : (
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label="Remove this movement" onClick={() => setConfirmId(t.txn_sno as number)}>
-                            <Trash2 className="h-4 w-4" />
+        {txns.length === 0 ? (
+          <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Nothing has been drawn on this facility yet.</p>
+        ) : (
+          <div className="space-y-2.5">
+            {txns.map((t, i) => {
+              const isDrawdown = t.txn_type === 'DRAWDOWN';
+              return (
+                <div key={t.txn_sno ?? `o${i}`} className="rounded-xl border bg-card p-3.5 shadow-xs">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{formatDate(t.txn_date)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {t.source === 'OPENING' ? 'Disbursed' : t.source === 'VOUCHER' ? 'Voucher repayment' : isDrawdown ? 'Drawdown' : 'Repayment'}
+                        {t.remarks ? ` — ${t.remarks}` : ''}{t.created_by ? ` · ${t.created_by}` : ''}
+                      </p>
+                    </div>
+                    {canAdd && t.can_delete === 1 && t.txn_sno != null && (
+                      confirmId === t.txn_sno ? (
+                        <span className="inline-flex shrink-0 items-center gap-1">
+                          <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" disabled={removing} onClick={() => remove(t.txn_sno as number)}>
+                            {removing ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Remove'}
                           </Button>
-                        )
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {txns.length === 0 && (
-                  <tr><td colSpan={6} className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing has been drawn on this facility yet.</td></tr>
-                )}
-              </tbody>
-            </table>
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setConfirmId(null)}>No</Button>
+                        </span>
+                      ) : (
+                        <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive" aria-label="Remove this movement" onClick={() => setConfirmId(t.txn_sno as number)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )
+                    )}
+                  </div>
+                  {/* Every statement always carries this same context, so nobody has to scroll back to the header to make sense of a row. */}
+                  <dl className="mt-3 grid grid-cols-2 gap-2 border-t pt-3 text-xs sm:grid-cols-4">
+                    <div><dt className="text-muted-foreground">Loan sanctioned</dt><dd className="mt-0.5 font-semibold tabular-nums">{formatINR(limit)}</dd></div>
+                    <div><dt className="text-muted-foreground">Loan availed</dt><dd className="mt-0.5 font-semibold tabular-nums text-red-600 dark:text-red-400">{isDrawdown ? formatINR(t.amount) : '—'}</dd></div>
+                    <div><dt className="text-muted-foreground">Principal paid</dt><dd className="mt-0.5 font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{!isDrawdown ? formatINR(t.amount) : '—'}</dd></div>
+                    <div><dt className="text-muted-foreground">Interest</dt><dd className="mt-0.5 font-semibold tabular-nums">{Number(loan.current_rate_pct)}%</dd></div>
+                  </dl>
+                </div>
+              );
+            })}
           </div>
-        </div>
+        )}
       </Panel>
 
       {canAdd && (
@@ -144,7 +132,7 @@ export const LoanPrincipalPanel: React.FC<Props> = ({ loan, detail, canAct, onCh
             />
             <CustomInputField
               field="txn_date" label="Effective from" require type="date"
-              value={date} onChange={(v: string) => setDate(v)} min={earliest ? addDaysIso(earliest, 0) : undefined} max={dateOnly(loan.period_end_date)} className="h-10"
+              value={date} onChange={(v: string) => setDate(v)} max={dateOnly(loan.period_end_date)} className="h-10"
             />
             <CustomInputField
               field="txn_amount" label="Amount" require type="number"
