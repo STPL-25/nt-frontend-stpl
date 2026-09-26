@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Route, PackageSearch, Search } from "lucide-react";
+import { Route, PackageSearch, Search, X } from "lucide-react";
 import { PageHeader, LoadingState, EmptyState } from "@/CustomComponent/PageComponents";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { StatusBadge } from "@/utils/statusUtils";
 import { toast } from "sonner";
 import useFetch from "@/hooks/useFetchHook";
@@ -16,6 +16,7 @@ import {
 import {
   socket, SOCKET_JOIN_PR_TRACK, SOCKET_LEAVE_PR_TRACK, SOCKET_PR_TRACK_UPDATED,
 } from "@/Services/Socket";
+import { consumePendingPrTracking, onPrTrackingRequested } from "@/lib/prTrackLink";
 import PRTimelineStepper, { PRTrackingTimelineData } from "./PRTimelineStepper";
 
 // Same shape as ServiceAgreementPage.tsx's CascadeOption — master rows carry
@@ -74,14 +75,25 @@ function PRRow({ row, onOpen }: { row: PRTrackRow; onOpen: (pr_no: string) => vo
 }
 
 const PRTrackingPage: React.FC = () => {
-  const [selectedPrNo, setSelectedPrNo] = useState<string | null>(null);
+  // A notification can send the user here with a PR to open (see lib/prTrackLink): either it was
+  // parked before this screen mounted, or it is announced while the screen is already open.
+  const [selectedPrNo, setSelectedPrNo] = useState<string | null>(() => consumePendingPrTracking());
   const [timelineRefreshKey, setTimelineRefreshKey] = useState(0);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => onPrTrackingRequested(setSelectedPrNo), []);
 
   // ── My Requests ────────────────────────────────────────────────────────
   const { data: mineData, loading: mineLoading } = useFetch<{ success: boolean; data: PRTrackRow[] }>(
     prTrackingGetMine
   );
-  const myRows = mineData?.data ?? [];
+  const allMyRows = mineData?.data ?? [];
+  const q = search.trim().toLowerCase();
+  const myRows = q
+    ? allMyRows.filter((r) =>
+        [r.pr_no, r.purpose, r.current_stage, r.current_approver_name, r.pr_status === "P" ? "pending" : ""]
+          .some((v) => v && String(v).toLowerCase().includes(q)))
+    : allMyRows;
 
   // ── Team / Org View gate ──────────────────────────────────────────────
   const { data: canViewOrgData } = useFetch<{ success: boolean; data: { allowed: boolean } }>(
@@ -171,10 +183,33 @@ const PRTrackingPage: React.FC = () => {
           <TabsContent value="mine" className="mt-4">
             <Card className="shadow-md">
               <CardContent className="pt-6">
+                {allMyRows.length > 0 && (
+                  <div className="relative mb-4">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search by PR number, purpose, stage or approver…"
+                      aria-label="Search my requests"
+                      className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-9 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    {search && (
+                      <button
+                        onClick={() => setSearch("")}
+                        aria-label="Clear search"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
                 {mineLoading ? (
                   <LoadingState message="Loading your requests…" />
-                ) : myRows.length === 0 ? (
+                ) : allMyRows.length === 0 ? (
                   <EmptyState icon={PackageSearch} message="No purchase requisitions yet" />
+                ) : myRows.length === 0 ? (
+                  <EmptyState icon={PackageSearch} message="No requests match your search" />
                 ) : (
                   <div className="space-y-2">
                     {myRows.map((row) => (
@@ -277,11 +312,14 @@ const PRTrackingPage: React.FC = () => {
       </div>
 
       <Sheet open={!!selectedPrNo} onOpenChange={(open) => !open && setSelectedPrNo(null)}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-          <SheetHeader>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+          <SheetHeader className="pr-12">
             <SheetTitle>{selectedPrNo}</SheetTitle>
+            <SheetDescription>
+              Who has approved it (with their comments), who it is with now, and what comes next — through PO, gate entry and GRN.
+            </SheetDescription>
           </SheetHeader>
-          <div className="mt-4">
+          <div className="px-4 pb-6">
             {timelineLoading ? (
               <LoadingState message="Loading timeline…" />
             ) : timelineData?.data ? (

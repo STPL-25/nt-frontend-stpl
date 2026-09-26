@@ -40,6 +40,11 @@ export const apiGetKycPendingApprovals = baseUrl + "/api/kyc/get_pending_approva
 export const apiKycApproveAction = baseUrl + "/api/kyc/approve_kyc";
 export const apiGetGSTNDetails = baseUrl + "/api/kyc/Get_GSTN_Details";
 export const apiGetKycOrgMappings = (kycId: number | string) => baseUrl + `/api/kyc/get_kyc_org_mappings/${kycId}`;
+// Supplier Status — every supplier with its approval status (approved / pending / rejected),
+// and one supplier's full approval trail. `source` is "KYC" or "SERVICE_KYC".
+export const apiGetSupplierStatusList = baseUrl + "/api/kyc/supplier_status";
+export const apiGetSupplierStatusTimeline = (source: string, id: number | string) =>
+  `${baseUrl}/api/kyc/supplier_status/${source}/${id}`;
 
 // Public Supplier KYC — anonymous self-service submission at /supplier_kyc,
 // no staff session required (see backend-stpl/src/Kyc/routes/PublicKyc.routes.js)
@@ -70,6 +75,8 @@ export const apiNonStaffList   = baseUrl + "/api/nonstaff/list";
 export const apiGetNotifications = baseUrl + "/api/notifications";
 export const apiMarkNotificationRead = (id: string) => `${baseUrl}/api/notifications/${id}/read`;
 export const apiMarkAllNotificationsRead = baseUrl + "/api/notifications/read-all";
+export const apiRemoveNotification = (id: string) => `${baseUrl}/api/notifications/${id}`;
+export const apiClearReadNotifications = baseUrl + "/api/notifications/read";
 
 // Master Items (legacy)
 export const apiGetMasterItems = baseUrl + "/api/MasterItems";

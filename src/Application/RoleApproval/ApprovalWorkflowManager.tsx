@@ -59,6 +59,7 @@ import {
   WorkflowMasterRow,
   StageOrderItem,
 } from "./types/ApprovalWorkflowManagerTypes";
+import { buildWorkflowLabels, planTypeRowSync } from "./workflowUtils";
 import { usePermissions } from "@/globalState/hooks/usePermissions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -123,6 +124,7 @@ const emptyType = (): WorkflowTypeExtended => ({
   is_active: true,
   stages: [emptyStage()],
   _typeIds: [],
+  _rows: [],
 });
 
 const emptyWorkflow = (): WorkflowFormData => ({
@@ -261,10 +263,21 @@ const WorkflowTypeCard: React.FC<{
     removable = true,
   }) => {
     const [stagesOpen, setStagesOpen] = useState(true);
-    const { workflowTypeFields } = useApprovalFlowHierarchy(
+    const { workflowTypeFields: rawTypeFields } = useApprovalFlowHierarchy(
       type.com_snos.map(Number),
       type.div_snos.map(Number),
       type.brn_snos.map(Number)
+    );
+    // The type's saved selections are strings (see handleSelectById) but the master
+    // options carry raw numeric ids, and the multi-select matches with ===. Without
+    // this, a saved department shows no chip or tick, and clicking it adds a second
+    // copy instead of deselecting it — so departments couldn't be removed on edit.
+    const workflowTypeFields = useMemo(
+      () =>
+        rawTypeFields.map((f) =>
+          f.options ? { ...f, options: f.options.map((o) => ({ ...o, value: String(o.value) })) } : f
+        ),
+      [rawTypeFields]
     );
 
     const handleTypeField = useCallback(
@@ -451,7 +464,10 @@ export default function ApprovalFlowDynamic() {
   const { data: listData, loading: listLoading } = useFetch<{ data: WorkflowMasterRow[] }>(
     apiGetWorkflows, "", null, listRefreshKey
   );
-  const workflows: WorkflowMasterRow[] = Array.isArray(listData?.data) ? listData!.data : [];
+  const workflows: WorkflowMasterRow[] = useMemo(
+    () => (Array.isArray(listData?.data) ? listData!.data : []),
+    [listData]
+  );
   // ── Panel / selection state ───────────────────────────────────────────────
   const [mode, setMode] = useState<PanelMode>("idle");
   const [selectedId, setSelectedId] = useState<string>("");       // drives the select dropdown
@@ -514,12 +530,15 @@ export default function ApprovalFlowDynamic() {
   }, []);
 
   // ── Dropdown options ──────────────────────────────────────────────────────
+  // Short "PR · TCS · TCS-Coimbatore" labels (just "KYC" for KYC) instead of the
+  // full "<name> (<code>)" — the full name and code stay in the details card.
+  const workflowLabels = useMemo(() => buildWorkflowLabels(workflows), [workflows]);
   const workflowOptions = useMemo(
     () => workflows.map((wf) => ({
-      label: `${wf.workflow_name} (${wf.workflow_code})`,
+      label: workflowLabels.get(wf.workflow_id) ?? wf.workflow_name,
       value: String(wf.workflow_id),
     })),
-    [workflows]
+    [workflows, workflowLabels]
   );
 
   // ── Branch parent lookup ──────────────────────────────────────────────────
@@ -639,6 +658,7 @@ export default function ApprovalFlowDynamic() {
               is_active: row.is_active === "Y",
               stages,
               _typeIds: [],
+              _rows: [],
             };
           }
           const g = groups[groupKey];
@@ -652,6 +672,7 @@ export default function ApprovalFlowDynamic() {
           }
           if (row.workflow_types_id != null) {
             g._typeIds.push(row.workflow_types_id);
+            g._rows.push({ id: row.workflow_types_id, dept_sno: dept, brn_sno: brn });
           }
         }
 
@@ -777,7 +798,58 @@ export default function ApprovalFlowDynamic() {
   const handleUpdateSubmit = useCallback(async () => {
     if (!selectedRow) return;
     if (!editWorkflow.workflow_name) { toast.error("Workflow name is required"); return; }
+
+    const dp = buildDeptParent();
+    const deptLabel = (dept: string) =>
+      allDepartments.find((d) => String(d.value) === String(dept))?.label ?? `#${dept}`;
+    const typeLabel = (t: WorkflowTypeExtended, i: number) => t.workflow_types_name || `Type ${i + 1}`;
+
+    // A type card is one workflow_types row per department. Work out every change
+    // up front — added departments, removed departments, new cards — and reject a
+    // bad edit before the first write, so nothing is ever half-saved.
+    const plans = editTypes
+      .map((type, index) => ({ type, index, sync: planTypeRowSync(type._rows, type.dept_snos, type.brn_snos) }))
+      // a card added with "Add Type" that was never filled in is just ignored
+      .filter(({ type }) => type._rows.length > 0 || type.workflow_types_name || type.brn_snos.length || type.dept_snos.length);
+
+    const claimedBy = new Map<string, number>();
+    for (const { type, index } of plans) {
+      for (const dept of new Set(type.dept_snos.map(String))) {
+        const other = claimedBy.get(dept);
+        if (other !== undefined) {
+          toast.error(`${deptLabel(dept)} is selected in both "${typeLabel(editTypes[other], other)}" and "${typeLabel(type, index)}" — a department can only be in one type`);
+          return;
+        }
+        claimedBy.set(dept, index);
+      }
+    }
+
+    for (const { type, index, sync } of plans) {
+      const isNew = type._rows.length === 0;
+      if (isNew && (!type.workflow_types_name?.trim() || !type.brn_snos.length || !type.dept_snos.length)) {
+        toast.error(`"${typeLabel(type, index)}" needs a name, at least one branch and one department`);
+        return;
+      }
+      const stray = sync.addDepts.find(
+        (dept) => !dp[dept] || !type.brn_snos.map(String).includes(dp[dept].brn_sno)
+      );
+      if (stray) {
+        toast.error(`${deptLabel(stray)} doesn't belong to the branch(es) selected on "${typeLabel(type, index)}"`);
+        return;
+      }
+      if (sync.keep.length + sync.addDepts.length === 0) {
+        toast.error(`"${typeLabel(type, index)}" must keep at least one branch and department — use the delete button to remove the whole type`);
+        return;
+      }
+    }
+    if (!canRemove && plans.some(({ sync }) => sync.remove.length > 0)) {
+      toast.error("You don't have permission to remove departments from a workflow type");
+      return;
+    }
+
     setEditSaving(true);
+    let added = 0;
+    let removed = 0;
     try {
       await updateData(apiUpdateWorkflow, null, {
         workflow_id: selectedRow.workflow_id,
@@ -785,62 +857,90 @@ export default function ApprovalFlowDynamic() {
         description: editWorkflow.description,
         is_active: editWorkflow.is_active ? "Y" : "N",
       });
-      const dp = buildDeptParent();
-      for (const type of editTypes) {
-        if (type._typeIds.length > 0) {
-          for (const typeId of type._typeIds) {
-            await updateData(apiUpdateWorkflowType, null, {
-              workflow_types_id: typeId,
-              workflow_types_name: type.workflow_types_name,
-              workflow_types_description: type.workflow_types_description,
-              is_active: type.is_active ? "Y" : "N",
-            });
-            await updateData(apiUpdateWorkflowStage, null, {
-              workflow_types_id: typeId,
-              stage_order_json: JSON.stringify(type.stages),
-            });
-          }
-        } else {
-          if (!type.workflow_types_name || !type.brn_snos.length || !type.dept_snos.length) continue;
-          // One row per selected department, using that department's own real
-          // com/div/brn — same rule as create (no branch × department cross-join).
-          const validDepts = type.dept_snos.filter(
-            (dept) => dp[String(dept)] && type.brn_snos.map(String).includes(dp[String(dept)].brn_sno)
-          );
-          for (const dept of validDepts) {
-            const res = await postData(apiSaveWorkflowType, {
-              workflow_id: selectedRow.workflow_id,
-              workflow_types_name: type.workflow_types_name,
-              workflow_types_description: type.workflow_types_description,
-              com_sno: dp[String(dept)].com_sno,
-              div_sno: dp[String(dept)].div_sno,
-              brn_sno: dp[String(dept)].brn_sno,
-              dept_sno: dept,
-              is_active: type.is_active ? "Y" : "N",
-            });
-            const newTypeId = res?.data?.[0]?.workflow_types_id;
-            if (newTypeId) {
-              await postData(apiSaveWorkflowStage, {
-                workflow_types_id: newTypeId,
-                stage_order_json: JSON.stringify(type.stages),
-              });
-            }
-          }
+
+      for (const { type, sync } of plans) {
+        // rows that stay: re-save name / description / active flag / stages
+        for (const row of sync.keep) {
+          await updateData(apiUpdateWorkflowType, null, {
+            workflow_types_id: row.id,
+            workflow_types_name: type.workflow_types_name,
+            workflow_types_description: type.workflow_types_description,
+            is_active: type.is_active ? "Y" : "N",
+          });
+          await updateData(apiUpdateWorkflowStage, null, {
+            workflow_types_id: row.id,
+            stage_order_json: JSON.stringify(type.stages),
+          });
+        }
+
+        // newly selected departments: one row each, scoped to that department's own
+        // com/div/brn (same rule as create — no branch × department cross-join).
+        // Added before anything is removed so a failure midway never loses coverage.
+        for (const dept of sync.addDepts) {
+          const res = await postData(apiSaveWorkflowType, {
+            workflow_id: selectedRow.workflow_id,
+            workflow_types_name: type.workflow_types_name,
+            workflow_types_description: type.workflow_types_description,
+            com_sno: dp[dept].com_sno,
+            div_sno: dp[dept].div_sno,
+            brn_sno: dp[dept].brn_sno,
+            dept_sno: dept,
+            is_active: type.is_active ? "Y" : "N",
+          });
+          const newTypeId = res?.data?.[0]?.workflow_types_id;
+          if (!newTypeId) throw new Error(`Could not add ${deptLabel(dept)} to "${type.workflow_types_name}"`);
+          await postData(apiSaveWorkflowStage, {
+            workflow_types_id: newTypeId,
+            stage_order_json: JSON.stringify(type.stages),
+          });
+          added++;
+        }
+
+        // departments deselected on the card: retire their rows (soft delete)
+        for (const row of sync.remove) {
+          await deleteData(apiDeleteWorkflowType, {
+            workflow_types_id: row.id,
+            workflow_id: selectedRow.workflow_id,
+          });
+          removed++;
         }
       }
-      toast.success("Workflow updated successfully!");
+
+      const changes = [
+        added ? `${added} department${added > 1 ? "s" : ""} added` : "",
+        removed ? `${removed} removed` : "",
+      ].filter(Boolean);
+      toast.success(changes.length ? `Workflow updated — ${changes.join(", ")}` : "Workflow updated successfully!");
       setListRefreshKey((k) => k + 1);
-      setSelectedRow((prev) => prev
-        ? { ...prev, workflow_name: editWorkflow.workflow_name, description: editWorkflow.description, is_active: editWorkflow.is_active ? "Y" : "N" }
-        : prev
-      );
+
+      if (!editWorkflow.is_active) {
+        // an inactive workflow drops out of the list and the detail API, so there
+        // is nothing left to reload — go back to the picker
+        handleReset();
+      } else {
+        // Reload from the database so the cards carry the ids of the rows just
+        // created — otherwise a second Save would add the same departments again.
+        await handleSelectById(String(selectedRow.workflow_id));
+        setSelectedRow((prev) => prev
+          ? { ...prev, workflow_name: editWorkflow.workflow_name, description: editWorkflow.description, is_active: "Y" }
+          : prev
+        );
+      }
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to update workflow"));
+      if (added + removed > 0) {
+        // some departments were already added/removed before the failure — reload so
+        // the cards show what is really saved instead of offering to re-add them
+        setListRefreshKey((k) => k + 1);
+        await handleSelectById(String(selectedRow.workflow_id));
+      }
     } finally {
       setEditSaving(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRow, editWorkflow, editTypes, buildDeptParent]);
+  }, [
+    selectedRow, editWorkflow, editTypes, buildDeptParent, allDepartments, canRemove,
+    updateData, postData, deleteData, handleReset, handleSelectById,
+  ]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
   // Soft delete: the row's is_active flips to 'N' and it stops appearing, but
@@ -927,6 +1027,10 @@ export default function ApprovalFlowDynamic() {
                   <Layers className="h-3.5 w-3.5" />
                   {selectedRow.is_active === "Y" ? "Active" : "Inactive"}
                 </Badge>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Name</p>
+                  <p className="text-xs font-medium text-foreground break-words">{selectedRow.workflow_name}</p>
+                </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-0.5">Entity Type</p>
                   <p className="text-xs font-medium text-foreground">{selectedRow.entity_type}</p>
@@ -1065,7 +1169,7 @@ export default function ApprovalFlowDynamic() {
                           Workflow Configuration
                           {selectedRow && (
                             <span className="ml-2 font-normal text-muted-foreground">
-                              — {selectedRow.workflow_name}
+                              — {workflowLabels.get(selectedRow.workflow_id) ?? selectedRow.workflow_name}
                             </span>
                           )}
                         </>}

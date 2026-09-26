@@ -31,6 +31,9 @@ const POApprovalScreen: React.FC = () => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const { userData } = useAppState();
+  // Non-staff sessions carry login_id instead of ecno (see project-nonstaff-dashboard-merge);
+  // approver_ecno in the workflow stages holds whichever of the two the approver has.
+  const userEcno: string | undefined = userData[0]?.ecno ?? userData[0]?.login_id;
   const fieldDatas = usePoApprovalSideCardDatas();
   const { postData, loading } = usePost();
   const { postData: postSendPOEmail } = usePost();
@@ -38,7 +41,7 @@ const POApprovalScreen: React.FC = () => {
   const { data, loading: fetchLoading, error } = useFetch<APIResponse>(
     getPoRecords,
     '',
-    { ecno: userData[0]?.ecno },
+    { ecno: userEcno },
     refreshKey
   );
 
@@ -58,7 +61,7 @@ const POApprovalScreen: React.FC = () => {
     socket.emit(SOCKET_JOIN_PO_APPROVAL);
 
     const onApprovalUpdated = (data: { sq_no?: string; po_no?: string; approved_by: string }) => {
-      if (data.approved_by === userData[0]?.ecno) return;
+      if (data.approved_by === userEcno) return;
       setRefreshKey(k => k + 1);
       const ref = data.sq_no ?? data.po_no ?? '';
       setToast({ message: `Quotation ${ref} was actioned — refreshing list…`, type: 'success' });
@@ -70,7 +73,7 @@ const POApprovalScreen: React.FC = () => {
       socket.emit(SOCKET_LEAVE_PO_APPROVAL);
       socket.off(SOCKET_PO_APPROVAL_UPDATED, onApprovalUpdated);
     };
-  }, [userData]);
+  }, [userEcno]);
 
   const handlePRSelect = (pr: any) => {
     setSelectedPR(pr);
@@ -140,12 +143,12 @@ const POApprovalScreen: React.FC = () => {
     if (!selectedQuotation) return;
 
     const approval_stages: any[] = parseJSON(selectedQuotation.stage_order_json, []);
-    const currentStage = approval_stages.find(s => s.approver_ecno === userData[0]?.ecno);
+    const currentStage = approval_stages.find(s => s.approver_ecno === userEcno);
 
     const payload: any = {
       sq_basic_sno: selectedQuotation.sq_basic_sno,
       quotation_ref_no: selectedQuotation.quotation_ref_no,
-      ecno: userData[0]?.ecno,
+      ecno: userEcno,
       action: actionType,
       comments: comments.trim(),
       approval_stages,
@@ -176,7 +179,7 @@ const POApprovalScreen: React.FC = () => {
           approvalData?.result === 'FINAL_APPROVED' ||
           approvalData?.next_approver === 'FINAL_STAGE' ||
           (approval_stages.length > 0 &&
-            approval_stages[approval_stages.length - 1]?.approver_ecno === userData[0]?.ecno);
+            approval_stages[approval_stages.length - 1]?.approver_ecno === userEcno);
         if (isFinalStage) {
           sendFinalPOToSupplier(approvalData, selectedQuotation);
         }

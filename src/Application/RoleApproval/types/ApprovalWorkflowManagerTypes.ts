@@ -34,9 +34,18 @@ export interface WorkflowType {
   stages: StageOrderItem[];
 }
 
+// One saved workflow_types row behind an edit-mode type card. dept_sno is "" for
+// legacy branch-only rows that were never scoped to a department.
+export interface WorkflowTypeRow {
+  id: number;
+  dept_sno: string;
+  brn_sno: string;
+}
+
 // WorkflowType extended with DB row IDs for edit mode
 export interface WorkflowTypeExtended extends WorkflowType {
   _typeIds: number[]; // DB workflow_types_id values; empty for newly added types
+  _rows: WorkflowTypeRow[]; // same rows with their dept/branch, so edits can be diffed against the DB
 }
 
 // Shape returned by GET /getWorkflows
@@ -47,4 +56,7 @@ export interface WorkflowMasterRow {
   entity_type: string;
   description: string;
   is_active: string; // "Y" | "N"
+  // '|'-delimited scope of the workflow's active types (sql/93); absent on an older DB
+  division_short?: string;
+  branch_names?: string;
 }

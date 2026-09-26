@@ -33,6 +33,7 @@ export const StoreInchargeApprovalPage = lazy(() => import("../Application/Store
  export const VendorBillPage = lazy(() => import("../Application/VendorBill/VendorBillPage"));
  export const InvoiceAllocationPage = lazy(() => import("../Application/Invoice/InvoicePage"));
  export const PRTrackingPage = lazy(() => import("../Application/PRTracking/PRTrackingPage"));
+ export const SupplierStatusPage = lazy(() => import("../Application/SupplierStatus/SupplierStatusPage"));
  export const DebitNoteForm = lazy(() => import("../Application/GRN/GRN/DebitNoteForm"));
  export const NonStaffUserManagement = lazy(() => import("../Application/NonStaffPortal/NonStaffUserManagement"));
  export const ServiceAgreementPage = lazy(() => import("../Application/ServiceAgreement/ServiceAgreementPage"));
@@ -82,6 +83,7 @@ export const sectionComponents: SectionComponentsMap = {
   VendorBillPage,
   InvoiceAllocationPage,
   PRTrackingPage,
+  SupplierStatusPage,
   NonStaffUserManagement,
   ServiceAgreementPage,
   ServiceAgreementApprovalScreen,
