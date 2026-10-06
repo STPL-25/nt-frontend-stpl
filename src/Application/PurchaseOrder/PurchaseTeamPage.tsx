@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
-  RefreshCw, ClipboardCheck, Scissors, Menu,
+  ClipboardCheck, Scissors,
 } from 'lucide-react';
-import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
+import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
+import { DetailEmptyState, DetailHero, StatusPill } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import {
   purchaseTeamGetApprovedPRs,
   purchaseTeamGetVendors,
@@ -384,6 +385,7 @@ const PurchaseTeamPage: React.FC = () => {
     if (!form.valid_upto) { toast.error('Valid upto date required'); return; }
     if (items.length === 0) { toast.error('Select at least one item for this quotation'); return; }
     if (items.some(it => it.unit_price <= 0)) { toast.error('Enter unit price for all selected items'); return; }
+    if (Number(form.freight_charges) < 0 || Number(form.other_charges) < 0) { toast.error('Freight / other charges cannot be negative'); return; }
 
     const prBasicSno = selectedPR?.pr_basic_sno ?? poGroups[0]?.sourcePRs[0];
     if (!prBasicSno) return;
@@ -579,60 +581,53 @@ const PurchaseTeamPage: React.FC = () => {
     ['1', 'true', 'y'].includes(String(selectedPR?.isQuotationSubmitted ?? '').toLowerCase());
   const isStep2Unlocked = quotationAlreadySubmitted || (!!confirmedData && !editingConfirm);
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
   // ═══════════════════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
     <>
-    <TwoPaneLayout
-      icon={ClipboardCheck}
-      title="Purchase Team"
-      description="Confirm PO details, split PRs, assign suppliers, manage quotations"
-      sidebarOpen={sidebarOpen}
-      onSidebarOpenChange={setSidebarOpen}
-      sidebar={
+    <SidebarDetailLayout
+      sidebarTitle="Purchase Team"
+      sidebarCount={prList.length}
+      sidebarCountLabel="PR"
+      sidebarCountQualifier="approved"
+      listItems={(closeSheet) => (
         <PRListSidebar
           prList={prList}
           loading={loadingPR}
           selectedPR={selectedPR}
-          onSelectPR={(pr) => { handleSelectPR(pr); setSidebarOpen(false); }}
+          onSelectPR={(pr) => { handleSelectPR(pr); closeSheet(); }}
+          onRefresh={() => { setPrRefreshKey(k => k + 1); setVendorRefreshKey(k => k + 1); }}
           splitInfo={splitInfo}
         />
-      }
-      headerChildren={
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="lg:hidden bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <Menu size={16} className="mr-1" /> PR List
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
-            onClick={() => { setPrRefreshKey(k => k + 1); setVendorRefreshKey(k => k + 1); }}
-            disabled={loadingPR}
-          >
-            <RefreshCw size={16} className={loadingPR ? 'animate-spin mr-1' : 'mr-1'} />
-            Refresh
-          </Button>
-        </div>
-      }
-    >
-      {!selectedPR ? (
-        <EmptyState
-          message="Select a Purchase Requisition"
-          description="Choose a PR from the left panel to get started"
+      )}
+      hasSelection={!!selectedPR}
+      emptyContent={
+        <DetailEmptyState
           icon={ClipboardCheck}
+          title="Select a purchase requisition"
+          description="Choose a PR from the list to confirm PO details, assign suppliers and manage quotations."
         />
-      ) : (
-            <div className="px-6 py-4 space-y-4">
+      }
+      mobileListLabel="PR list"
+      mobileSelectionTitle={selectedPR ? getPRDisplayNo(selectedPR) : undefined}
+      detailContent={selectedPR ? (
+            <div className="@container px-3 py-4 space-y-4 sm:px-5 lg:px-6">
+
+              <DetailHero
+                icon={ClipboardCheck}
+                eyebrow="Purchase team"
+                title={getPRDisplayNo(selectedPR)}
+                subtitle={selectedPR.purpose || selectedPR.com_name}
+                badges={
+                  <>
+                    <StatusPill tone="success">Approved</StatusPill>
+                    {selectedPR.dept_name && <StatusPill tone="neutral">{selectedPR.dept_name}</StatusPill>}
+                    {isStep2Unlocked && <StatusPill tone="info">Step 2 · Supplier &amp; quotation</StatusPill>}
+                  </>
+                }
+              />
 
               {/* ── Step indicator ───────────────────────────────────────── */}
               <div className="flex items-center gap-3 text-xs">
@@ -729,8 +724,8 @@ const PurchaseTeamPage: React.FC = () => {
               )}
 
             </div>
-          )}
-      </TwoPaneLayout>
+      ) : null}
+    />
 
       {/* Dialogs rendered outside layout so they aren't clipped */}
       <QuotationDialog
@@ -738,6 +733,8 @@ const PurchaseTeamPage: React.FC = () => {
         onOpenChange={setShowQuotationDialog}
         quotationItems={quotationItems}
         defaultQuotationRefNo={defaultQuotationRefNo}
+        vendor={selectedVendor}
+        comSno={confirmedData?.billing_com_sno ?? selectedPR?.com_sno}
         onSubmit={handleSubmitQuotation}
       />
 
@@ -755,6 +752,12 @@ const PurchaseTeamPage: React.FC = () => {
         selectedPR={selectedPR}
         selectedQuotation={selectedQuotation}
         onCreatePO={handleCreatePO}
+        poScope={{
+          com_sno: confirmedData?.billing_com_sno ?? selectedPR?.com_sno,
+          div_sno: confirmedData?.billing_div_sno ?? selectedPR?.div_sno,
+          brn_sno: confirmedData?.billing_brn_sno ?? selectedPR?.brn_sno,
+          dept_sno: selectedPR?.dept_sno,
+        }}
       />
     </>
   );

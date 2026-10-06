@@ -325,12 +325,12 @@ const CompareDialog: React.FC<CompareDialogProps> = ({
   };
 
   const getFieldValue = (q: Quotation, field: string) => {
-    if (field === 'total_amount') return getQuotationTotal(q.items);
+    if (field === 'total_amount') return getQuotationTotal(q.items, q);
     if (field === 'valid_upto' || field === 'quotation_date') return formatDate((q as any)[field]);
     return (q as any)[field] ?? '—';
   };
 
-  const allTotals = quotations.map(q => getQuotationTotal(q.items));
+  const allTotals = quotations.map(q => getQuotationTotal(q.items, q));
   const minTotal = Math.min(...allTotals);
 
   const anyFile = quotations.some(q => !!q.sq_quotation_file);

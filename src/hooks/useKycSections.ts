@@ -94,6 +94,32 @@ export function useKycSections(
       return u;
     });
 
+  // Patches by id (rather than index) so an in-flight async lookup (e.g. pincode
+  // lookup) can't clobber the wrong row if addresses are added/removed meanwhile.
+  const patchAddressById = (addressId: string, values: Record<string, unknown>) =>
+    setAddresses((prev) =>
+      prev.map((address) => (address.id === addressId ? { ...address, ...values } : address))
+    );
+
+  // GST lookup result: principal place -> primary row, each additional place of
+  // business -> its own row. Rows added by an earlier lookup (id prefix
+  // `address_gst_`) are replaced so re-fetching a GSTIN never duplicates them;
+  // rows the user added by hand are left alone.
+  const applyGstAddresses = (
+    primaryPatch: Record<string, unknown>,
+    additionalPatches: Record<string, unknown>[]
+  ) =>
+    setAddresses((prev) => {
+      const kept = prev.filter((a) => !a.id.startsWith("address_gst_"));
+      const primaryIndex = Math.max(kept.findIndex((a) => a.isPrimary), 0);
+      const next = kept.map((a, i) => (i === primaryIndex ? { ...a, ...primaryPatch } : a));
+      const stamp = Date.now();
+      additionalPatches.forEach((patch, i) =>
+        next.push({ id: `address_gst_${stamp}_${i}`, isPrimary: false, ...initialAddressInfo, ...patch })
+      );
+      return next;
+    });
+
   const setPrimaryAddress = (index: number) => {
     setAddresses((prev) => prev.map((a, i) => ({ ...a, isPrimary: i === index })));
     toast.success("Primary address updated");
@@ -216,6 +242,8 @@ export function useKycSections(
     removeAddress,
     changeAddress,
     patchAddress,
+    patchAddressById,
+    applyGstAddresses,
     setPrimaryAddress,
     // bank
     addBank,

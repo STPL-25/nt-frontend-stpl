@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import {
   FileText, Repeat, Wallet, Loader2, RefreshCw, ReceiptText, PencilLine, Hourglass, BadgeCheck,
-  XCircle, SearchX, ClipboardList, Calculator, Percent, AlertCircle, Landmark, Users,
+  XCircle, SearchX, ClipboardList, Calculator, Percent, AlertCircle, Landmark, Users, Upload,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { EmptyState, PageHeader } from '@/CustomComponent/PageComponents';
@@ -22,11 +22,13 @@ import {
   type AgreementType,
 } from '@/CustomComponent/ServiceComponents/serviceUtils';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
+import { FilePicker, InvoiceList, PoInvoiceDialog, type InvoiceTargetPo } from '@/CustomComponent/ServiceComponents/ServiceUploads';
 import axios from 'axios';
 import { getServicePoCycles, submitServicePoEntry } from '@/Services/Api';
 import { toast } from 'sonner';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import useFetch from '@/hooks/useFetchHook';
+import { useServiceLive } from '@/hooks/useServiceLive';
 import { cn } from '@/lib/utils';
 
 // Every recurring PO cycle (Fixed, Unfixed and Statutory) lands here instead
@@ -39,9 +41,14 @@ import { cn } from '@/lib/utils';
 
 type CycleStatus = 'PENDING_ENTRY' | 'PENDING_APPROVAL' | 'GENERATED' | 'REJECTED';
 
+interface CycleInvoice {
+  invoice_sno: number; po_basic_sno: number; po_no?: string | null; invoice_no: string; invoice_date: string;
+  invoice_amount: number; invoice_doc_url: string;
+}
+
 interface CycleSupplier {
   vendor_sno: number; vendor_name?: string | null; share_pct: number; rate_amount: number; net_cost: number;
-  po_basic_sno?: number | null; po_no?: string | null;
+  po_basic_sno?: number | null; po_no?: string | null; invoices?: CycleInvoice[];
 }
 
 interface CycleRow {
@@ -59,7 +66,18 @@ interface CycleRow {
   ceiling_amount?: number;
   status: CycleStatus;
   po_basic_sno?: number; po_no?: string; po_date?: string;
+  /** Supplier invoices uploaded against this cycle's PO(s). */
+  invoices?: CycleInvoice[];
 }
+
+/** The POs an invoice can be raised against — one per supplier on a split cycle. */
+const cycleInvoiceTargets = (c: CycleRow): InvoiceTargetPo[] => {
+  const fromSplit = (c.vendors ?? [])
+    .filter((v) => v.po_basic_sno)
+    .map((v) => ({ po_basic_sno: v.po_basic_sno as number, po_no: v.po_no, vendor_name: v.vendor_name, amount: v.net_cost }));
+  if (fromSplit.length) return fromSplit;
+  return c.po_basic_sno ? [{ po_basic_sno: c.po_basic_sno, po_no: c.po_no, vendor_name: c.vendor_name, amount: c.net_cost }] : [];
+};
 
 type PoTab = 'fixed' | 'variable' | 'statutory';
 const TAB_FOR_TYPE: Record<AgreementType, PoTab> = { FIXED_RECURRING: 'fixed', VARIABLE_RECURRING: 'variable', STATUTORY: 'statutory' };
@@ -88,6 +106,10 @@ const EntryDialog: React.FC<{ cycle: CycleRow; onClose: () => void; onSaved: () 
   const [discount, setDiscount] = useState('0');
   const [gst, setGst] = useState('0');
   const [remarks, setRemarks] = useState('');
+  const [invoiceNo, setInvoiceNo] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
+  const [invoiceAmount, setInvoiceAmount] = useState('');
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -110,13 +132,26 @@ const EntryDialog: React.FC<{ cycle: CycleRow; onClose: () => void; onSaved: () 
   const handleSubmit = async () => {
     if (!rate || Number(rate) <= 0) { setError('Rate is required'); return; }
     if (overCeiling) { setError(`Net amount exceeds the agreement's ceiling of ₹${Number(cycle.ceiling_amount).toLocaleString('en-IN')}`); return; }
+    if (!invoiceNo.trim()) { setError('Supplier invoice number is required'); return; }
+    if (!invoiceDate) { setError('Supplier invoice date is required'); return; }
+    if (invoiceDate > new Date().toISOString().slice(0, 10)) { setError('Invoice date cannot be in the future'); return; }
+    if (!(Number(invoiceAmount) > 0)) { setError('Invoice amount must be greater than zero'); return; }
+    if (!invoiceFile) { setError('Upload the supplier invoice file'); return; }
+    if (invoiceFile.size > 10 * 1024 * 1024) { setError('Invoice file is larger than 10 MB'); return; }
     setSubmitting(true);
     setError(null);
     try {
-      await axios.post(submitServicePoEntry, {
-        cycle_sno: cycle.cycle_sno, rate_amount: Number(rate), discount_pct: Number(discount) || 0,
-        gst_pct: Number(gst) || 0, remarks: remarks.trim() || undefined,
-      });
+      const fd = new FormData();
+      fd.append('cycle_sno', String(cycle.cycle_sno));
+      fd.append('rate_amount', String(Number(rate)));
+      fd.append('discount_pct', String(Number(discount) || 0));
+      fd.append('gst_pct', String(Number(gst) || 0));
+      if (remarks.trim()) fd.append('remarks', remarks.trim());
+      fd.append('invoice_no', invoiceNo.trim());
+      fd.append('invoice_date', invoiceDate);
+      fd.append('invoice_amount', String(Number(invoiceAmount)));
+      fd.append('invoice_document', invoiceFile);
+      await axios.post(submitServicePoEntry, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       toast.success(`Entry submitted for ${cycle.agreement_no} — sent for approval`);
       onSaved();
     } catch (err: any) {
@@ -180,6 +215,17 @@ const EntryDialog: React.FC<{ cycle: CycleRow; onClose: () => void; onSaved: () 
             </Panel>
           )}
 
+          <Panel icon={ReceiptText} title="Supplier invoice" description="Upload the invoice along with the rate">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-3">
+                <CustomInputField field="invoice_no" label="Invoice no" require value={invoiceNo} onChange={setInvoiceNo} className="h-10" />
+                <CustomInputField field="invoice_date" label="Invoice date" require type="date" value={invoiceDate} onChange={setInvoiceDate} className="h-10" />
+                <CustomInputField field="invoice_amount" label="Invoice amount" require type="number" value={invoiceAmount} onChange={setInvoiceAmount} placeholder={netCost > 0 ? netCost.toFixed(2) : '0.00'} className="h-10" />
+              </div>
+              <FilePicker file={invoiceFile} onChange={setInvoiceFile} />
+            </div>
+          </Panel>
+
           <Panel icon={FileText} title="Remarks" description="Optional">
             <CustomInputField field="remarks" label="" type="textarea" value={remarks} onChange={setRemarks} rows={2} placeholder="Anything the approver should know about this cycle…" className="resize-none" />
           </Panel>
@@ -209,9 +255,13 @@ const ServicePoPage: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((k) => k + 1);
   const [enteringCycle, setEnteringCycle] = useState<CycleRow | null>(null);
+  const [invoicingCycle, setInvoicingCycle] = useState<CycleRow | null>(null);
   const [activeTab, setActiveTab] = useState<PoTab>('fixed');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [search, setSearch] = useState('');
+
+  // Real time: new cycles, approvals, rejections and invoice uploads by anyone show up without a manual reload.
+  useServiceLive('po', refresh);
 
   const { data, loading } = useFetch<{ success: boolean; data: CycleRow[] }>(getServicePoCycles, '', null, refreshKey);
   const cycles = useMemo(() => data?.data ?? [], [data]);
@@ -273,6 +323,19 @@ const ServicePoPage: React.FC = () => {
       );
     }
 
+    // Approved cycles carry the supplier's invoice(s): list what is uploaded, and let editors add one per PO.
+    const invoiceCell = (c: CycleRow) =>
+      c.status !== 'GENERATED' ? (c.invoices?.length ? <InvoiceList invoices={c.invoices} /> : <span className="text-xs text-muted-foreground">—</span>) : (
+        <div className="space-y-1">
+          <InvoiceList invoices={c.invoices} showPo={cycleInvoiceTargets(c).length > 1} />
+          {canEnter && cycleInvoiceTargets(c).length > 0 && (
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setInvoicingCycle(c)}>
+              <Upload size={12} /> {c.invoices?.length ? 'Add invoice' : 'Upload invoice'}
+            </Button>
+          )}
+        </div>
+      );
+
     const entryButton = (c: CycleRow, className?: string) =>
       showEntryAction && canEnter && c.status === 'PENDING_ENTRY' ? (
         <Button size="sm" className={className} onClick={() => setEnteringCycle(c)}>
@@ -293,6 +356,7 @@ const ServicePoPage: React.FC = () => {
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>PO No</TableHead>
+                <TableHead>Supplier invoice</TableHead>
                 {showEntryAction && <TableHead className="w-36" />}
               </TableRow>
             </TableHeader>
@@ -320,6 +384,7 @@ const ServicePoPage: React.FC = () => {
                         </span>
                       )}
                     </TableCell>
+                    <TableCell>{invoiceCell(c)}</TableCell>
                     {showEntryAction && <TableCell className="text-right">{entryButton(c)}</TableCell>}
                   </TableRow>
                 );
@@ -364,6 +429,12 @@ const ServicePoPage: React.FC = () => {
                     </div>
                   )}
                 </dl>
+                {(c.status === 'GENERATED' || (c.invoices?.length ?? 0) > 0) && (
+                  <div className="mt-3 border-t pt-3">
+                    <p className="mb-1 text-xs text-muted-foreground">Supplier invoice</p>
+                    {invoiceCell(c)}
+                  </div>
+                )}
                 {entryButton(c, 'mt-3 w-full')}
               </li>
             );
@@ -471,6 +542,15 @@ const ServicePoPage: React.FC = () => {
           </Tabs>
         </Panel>
       </div>
+
+      {invoicingCycle && (
+        <PoInvoiceDialog
+          agreementNo={invoicingCycle.agreement_no}
+          pos={cycleInvoiceTargets(invoicingCycle)}
+          onClose={() => setInvoicingCycle(null)}
+          onSaved={() => { setInvoicingCycle(null); refresh(); }}
+        />
+      )}
 
       {enteringCycle && (
         <EntryDialog cycle={enteringCycle} onClose={() => setEnteringCycle(null)} onSaved={() => { setEnteringCycle(null); refresh(); }} />

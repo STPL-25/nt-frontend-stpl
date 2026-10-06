@@ -18,6 +18,12 @@ export function getAuthFileUrl(url: string | null | undefined): string {
   // Only protect our own FTP-served assets
   if (!url.includes('/dwl/')) return url;
 
+  // Upload time bakes the server's SERVER_URL into the stored link, so a file
+  // uploaded against http://localhost:8001 (or an internal IP) is a dead link
+  // anywhere else. Re-point it at the API origin this page actually talks to
+  // (blank VITE_API_URL = same origin).
+  url = `${(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')}${url.slice(url.indexOf('/dwl/'))}`;
+
   const stored = localStorage.getItem('userToken');
   if (!stored) return url;
 

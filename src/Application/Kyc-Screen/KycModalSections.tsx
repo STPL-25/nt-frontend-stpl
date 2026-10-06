@@ -10,6 +10,7 @@ import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputF
 import { PrimaryItemCard } from "@/CustomComponent/PageComponents/PrimaryItemCard";
 import type { AddressWithPrimary, BankDetailWithPrimary, ContactDetailWithPrimary } from "@/hooks/useKycSections";
 import { IFSC_DERIVED_BANK_FIELDS } from "./ifscUtils";
+import { ActiveNote } from "./cashfreeVerify";
 
 // ─── Address ──────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,8 @@ interface AddressSectionProps {
   onRemove: (i: number) => void;
   onChange: (i: number, field: string, value: string) => void;
   onSetPrimary: (i: number) => void;
+  /** address.id whose pincode lookup is in flight, if any */
+  fetchingPincodeId?: string | null;
 }
 
 export function AddressModalContent({
@@ -29,6 +32,7 @@ export function AddressModalContent({
   onRemove,
   onChange,
   onSetPrimary,
+  fetchingPincodeId = null,
 }: AddressSectionProps) {
   return (
     <div className="space-y-6">
@@ -46,18 +50,26 @@ export function AddressModalContent({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {addressFields
               .filter((f) => f.input)
-              .map((f) => (
-                <CustomInputField
-                  key={`${f.field}-${address.id}`}
-                  field={`${f.field}-${address.id}`}
-                  label={f.label}
-                  require={f.require && address.isPrimary}
-                  value={address[f.field] || ""}
-                  onChange={(value) => onChange(index, f.field, value)}
-                  placeholder={f.placeholder}
-                  type={f.type}
-                />
-              ))}
+              .map((f) => {
+                const isFetchingThisPincode = f.field === "pincode" && fetchingPincodeId === address.id;
+                return (
+                  <div key={`${f.field}-${address.id}`} className="relative">
+                    <CustomInputField
+                      field={`${f.field}-${address.id}`}
+                      label={f.label}
+                      require={f.require && address.isPrimary}
+                      value={address[f.field] || ""}
+                      onChange={(value) => onChange(index, f.field, value)}
+                      placeholder={f.placeholder}
+                      type={f.type}
+                      disabled={isFetchingThisPincode}
+                    />
+                    {isFetchingThisPincode && (
+                      <Loader2 className="absolute right-2 top-9 h-4 w-4 animate-spin text-muted-foreground" />
+                    )}
+                  </div>
+                );
+              })}
           </div>
         </PrimaryItemCard>
       ))}
@@ -86,6 +98,51 @@ interface BankSectionProps {
   onChequeChange: (i: number, file: File | null) => void;
   /** bank.id of the account whose IFSC lookup is in flight, if any */
   fetchingIfscId?: string | null;
+  /** bank.id -> account confirmed active by the bank verification */
+  activeBankIds?: Record<string, boolean>;
+  /**
+   * Optional "pay via the supplier's website" mode (public supplier KYC only).
+   * Omit `onPayModeChange` and the section behaves exactly as before.
+   */
+  payViaPortal?: boolean;
+  onPayModeChange?: (viaPortal: boolean) => void;
+  portal?: PortalPayment;
+  onPortalChange?: (field: keyof PortalPayment, value: string) => void;
+}
+
+export interface PortalPayment {
+  payment_portal_name: string;
+  payment_portal_url: string;
+  payment_instructions: string;
+}
+
+export const EMPTY_PORTAL: PortalPayment = { payment_portal_name: "", payment_portal_url: "", payment_instructions: "" };
+
+/** Bank account vs. "we are paid on our own website" — a required choice at the top of the Bank section. */
+function PayModeChooser({ viaPortal, onChange }: { viaPortal: boolean; onChange: (v: boolean) => void }) {
+  const opts = [
+    { value: false, title: "Bank transfer", hint: "We receive payment in our bank account" },
+    { value: true, title: "Our website / portal", hint: "Payment is made on our own website — no bank account details" },
+  ];
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="How should we pay you?">
+      {opts.map((o) => (
+        <button
+          key={String(o.value)}
+          type="button"
+          role="radio"
+          aria-checked={viaPortal === o.value}
+          onClick={() => onChange(o.value)}
+          className={`text-left rounded-lg border p-3 transition-colors ${
+            viaPortal === o.value ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:border-primary/50"
+          }`}
+        >
+          <p className="text-sm font-medium">{o.title}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{o.hint}</p>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function BankModalContent({
@@ -97,9 +154,41 @@ export function BankModalContent({
   onSetPrimary,
   onChequeChange,
   fetchingIfscId = null,
+  activeBankIds = {},
+  payViaPortal = false,
+  onPayModeChange,
+  portal = EMPTY_PORTAL,
+  onPortalChange,
 }: BankSectionProps) {
+  const chooser = onPayModeChange ? <PayModeChooser viaPortal={payViaPortal} onChange={onPayModeChange} /> : null;
+
+  if (payViaPortal && onPortalChange) {
+    return (
+      <div className="space-y-6">
+        {chooser}
+        <div className="rounded-lg border p-4 space-y-4">
+          <p className="text-xs text-muted-foreground">
+            No bank account or cancelled cheque is needed. Tell us where we make the payment.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <CustomInputField field="payment_portal_name" label="Portal / Website Name" require
+              value={portal.payment_portal_name} onChange={(v) => onPortalChange("payment_portal_name", v)}
+              placeholder="e.g. Acme Corp Vendor Payments" type="text" />
+            <CustomInputField field="payment_portal_url" label="Portal URL" require
+              value={portal.payment_portal_url} onChange={(v) => onPortalChange("payment_portal_url", v)}
+              placeholder="https://pay.example.com" type="text" />
+          </div>
+          <CustomInputField field="payment_instructions" label="Payment Instructions (optional)"
+            value={portal.payment_instructions} onChange={(v) => onPortalChange("payment_instructions", v)}
+            placeholder="e.g. Pay with the invoice number as reference" type="text" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {chooser}
       {bankDetails.map((bank, index) => (
         <PrimaryItemCard
           key={bank.id}
@@ -134,6 +223,7 @@ export function BankModalContent({
                     {isFetchingThisIfsc && (
                       <Loader2 className="absolute right-2 top-9 h-4 w-4 animate-spin text-muted-foreground" />
                     )}
+                    {f.field === "ac_number" && activeBankIds[bank.id] && <ActiveNote label="Account" />}
                   </div>
                 );
               })}
@@ -151,12 +241,6 @@ export function BankModalContent({
               value={bank.cancelChequeFile ?? null}
               onChange={(file: File | null) => onChequeChange(index, file)}
             />
-            {bank.cancelChequeFile instanceof File && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                {bank.cancelChequeFile.name}
-              </p>
-            )}
           </div>
         </PrimaryItemCard>
       ))}

@@ -105,7 +105,7 @@ function KycDetailPanel({ kyc, handleAction }: { kyc: any; handleAction: (a: str
               <FactGrid>
                 <Fact label="Mobile">{kyc.mobile_number ?? '—'}</Fact>
                 <Fact label="Email">{kyc.email ?? '—'}</Fact>
-                <Fact label="Category">{kyc.supplier_cat_code ?? '—'}</Fact>
+                <Fact label="Supplier Type">{({ PRODUCT: 'Product Supplier', SERVICE: 'Service Supplier', BOTH: 'Product & Service Supplier' } as Record<string, string>)[kyc.supplier_cat_code] ?? kyc.supplier_cat_code ?? '—'}</Fact>
                 <Fact label="MSME No.">{kyc.msme_no ?? '—'}</Fact>
                 <Fact label="Legal name">{kyc.legal_name ?? '—'}</Fact>
                 <Fact label="Trade name">{kyc.trade_name ?? '—'}</Fact>

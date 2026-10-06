@@ -1,13 +1,16 @@
 import { useMemo } from 'react';
-import { CalendarClock, ChevronRight, Landmark, Layers, ReceiptText, Repeat, Users, Wallet, Calculator } from 'lucide-react';
+import { CalendarClock, ChevronRight, ExternalLink, FileText, Landmark, Layers, ReceiptText, Repeat, StickyNote, Users, Wallet, Calculator } from 'lucide-react';
+import { getAuthFileUrl } from '@/Services/authUrl';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { useAppState } from '@/imports';
 import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
 import {
-  AmountBreakdown, ApprovalDecisionDialog, ApprovalStepper, Callout, DecisionButtons, DetailEmptyState,
+  AmountBreakdown, ApprovalActivity, ApprovalDecisionDialog, ApprovalStepper, Callout, DecisionButtons, DetailEmptyState,
   DetailHero, Fact, FactGrid, Panel, SelectableCard, StatusPill, StickyActionBar, SupplierSplitTable, SupplierSummary, TypeBadge,
 } from '@/CustomComponent/ServiceComponents/ServiceParts';
-import { CYCLE_STATUS, facilityLabel, formatDate, formatINR, parseStages, statusMeta } from '@/CustomComponent/ServiceComponents/serviceUtils';
+import {
+  CYCLE_STATUS, approvalRoutes, facilityLabel, formatDate, formatINR, parseStages, statusMeta, type ApprovalAction,
+} from '@/CustomComponent/ServiceComponents/serviceUtils';
 
 // ─── SP response mapping (sp_nt_GetServicePoCyclesForApproval) ────────────
 // cycle_sno | agreement_sno | agreement_no | service_name |
@@ -36,7 +39,9 @@ interface ServicePoApprovalScreenLayoutProps {
   setComments: (comments: string) => void;
   handleSubmit: () => void;
   loading: boolean;
-  actionType: 'approve' | 'reject';
+  actionType: ApprovalAction;
+  sendBackTarget: string;
+  setSendBackTarget: (ecno: string) => void;
   toast?: { message: string; type: 'success' | 'error' } | null;
 }
 
@@ -118,6 +123,10 @@ function CycleDetailPanel({ cycle, handleAction }: { cycle: any; handleAction: (
   const isCurrentApprover = cycle.current_approver_id && userEcno && String(cycle.current_approver_id).trim() === String(userEcno).trim();
   const canAct = canEdit('ServicePoApprovalScreen') && !!isCurrentApprover;
   const stages = useMemo(() => parseStages(cycle), [cycle]);
+  const routes = useMemo(() => approvalRoutes(stages, userEcno), [stages, userEcno]);
+  const onForward = canAct && routes.canForward ? () => handleAction('forward') : undefined;
+  const onSendBack = canAct && routes.canSendBack ? () => handleAction('send_back') : undefined;
+  const invoices: any[] = cycle.invoices ?? [];
   const status = statusMeta(CYCLE_STATUS, cycle.status);
   const isFixed = cycle.service_type_code === 'FIXED_RECURRING';
   const isStatutory = cycle.service_type_code === 'STATUTORY';
@@ -178,7 +187,45 @@ function CycleDetailPanel({ cycle, handleAction }: { cycle: any; handleAction: (
               </FactGrid>
             </Panel>
 
+            {(cycle.remarks || invoices.length > 0) && (
+              <Panel icon={StickyNote} title="Entry remarks & invoice" description="Uploaded with the rate for this cycle">
+                <div className="space-y-4">
+                  {cycle.remarks && (
+                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{cycle.remarks}</p>
+                  )}
+                  {invoices.map((inv) => (
+                    <div key={inv.invoice_sno} className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold">Invoice {inv.invoice_no}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDate(inv.invoice_date)} · {formatINR(inv.invoice_amount)}
+                            {inv.uploaded_by && <> · uploaded by {inv.uploaded_by}</>}
+                          </p>
+                        </div>
+                        {inv.invoice_doc_url && (
+                          <a
+                            href={getAuthFileUrl(inv.invoice_doc_url)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border bg-card px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/5"
+                          >
+                            <FileText className="h-3.5 w-3.5" />View invoice<ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </div>
+                      {inv.remarks && inv.remarks !== cycle.remarks && (
+                        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{inv.remarks}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            )}
+
             <ApprovalStepper stages={stages} currentApproverId={cycle.current_approver_id} currentUserEcno={userEcno} />
+
+            <ApprovalActivity history={cycle.history} />
           </div>
 
           {/* Actions — a card beside the content when the pane is wide, a sticky bar below it otherwise */}
@@ -192,6 +239,8 @@ function CycleDetailPanel({ cycle, handleAction }: { cycle: any; handleAction: (
                     rejectLabel="Reject PO"
                     onApprove={() => handleAction('approve')}
                     onReject={() => handleAction('reject')}
+                    onForward={onForward}
+                    onSendBack={onSendBack}
                   />
                 ) : (
                   <p className="rounded-lg bg-muted/60 px-3 py-2.5 text-center text-xs text-muted-foreground">
@@ -219,11 +268,13 @@ function CycleDetailPanel({ cycle, handleAction }: { cycle: any; handleAction: (
       <StickyActionBar>
         {canAct ? (
           <DecisionButtons
-            className="@md:justify-end @md:[&>button]:min-w-44 @md:[&>button]:flex-none"
+            className="flex-wrap @md:justify-end @md:[&>button]:min-w-40 @md:[&>button]:flex-none"
             approveLabel="Approve"
             rejectLabel="Reject"
             onApprove={() => handleAction('approve')}
             onReject={() => handleAction('reject')}
+            onForward={onForward}
+            onSendBack={onSendBack}
           />
         ) : (
           <p className="py-1 text-center text-xs text-muted-foreground">View only — you are not the current approver</p>
@@ -238,8 +289,11 @@ function CycleDetailPanel({ cycle, handleAction }: { cycle: any; handleAction: (
 export default function ServicePoApprovalScreenLayout({
   approvalName, cycleList, selectedCycle, handleCycleSelect, handleAction,
   showApprovalDialog, setShowApprovalDialog, comments, setComments,
-  handleSubmit, loading, actionType, toast,
+  handleSubmit, loading, actionType, sendBackTarget, setSendBackTarget, toast,
 }: ServicePoApprovalScreenLayoutProps) {
+  const { userData } = useAppState();
+  const userEcno = userData[0]?.ecno ?? userData[0]?.login_id;
+  const routes = useMemo(() => approvalRoutes(parseStages(selectedCycle), userEcno), [selectedCycle, userEcno]);
   return (
     <>
       <SidebarDetailLayout
@@ -289,6 +343,10 @@ export default function ServicePoApprovalScreenLayout({
         onSubmit={handleSubmit}
         loading={loading}
         entityName="Service PO"
+        forwardTo={routes.forwardTo}
+        sendBackOptions={routes.sendBackOptions}
+        sendBackTarget={sendBackTarget}
+        setSendBackTarget={setSendBackTarget}
         approveNote={selectedCycle?.vendors?.length > 1
           ? `If this is the final stage, ${selectedCycle.vendors.length} POs are raised immediately — one for each supplier.`
           : 'If this is the final stage, the PO is raised immediately.'}

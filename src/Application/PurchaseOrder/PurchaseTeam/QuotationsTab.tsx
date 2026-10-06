@@ -150,7 +150,7 @@ const QuotationCard: React.FC<{
   onSelect?: (q: Quotation) => void;
   onCreatePO?: (q: Quotation) => void;
 }> = ({ q, viewQuotItemFields, onSelect, onCreatePO }) => {
-  const total = getQuotationTotal(q.items);
+  const total = getQuotationTotal(q.items, q);
   const isSelected = q.is_selected === 'Y';
   const [fileOpen, setFileOpen] = useState(false);
   const [itemsOpen, setItemsOpen] = useState(true);
@@ -237,6 +237,34 @@ const QuotationCard: React.FC<{
                 <div className="min-w-0">
                   <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Payment Terms</dt>
                   <dd className="text-xs font-medium text-foreground truncate">{q.payment_terms}</dd>
+                </div>
+              )}
+              {Number(q.freight_charges) > 0 && (
+                <div className="min-w-0">
+                  <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Freight (Extra)</dt>
+                  <dd className="text-xs font-medium text-foreground truncate">{formatINR(Number(q.freight_charges))}</dd>
+                </div>
+              )}
+              {Number(q.other_charges) > 0 && (
+                <div className="min-w-0">
+                  <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Other Charges (Extra)</dt>
+                  <dd className="text-xs font-medium text-foreground truncate">{formatINR(Number(q.other_charges))}</dd>
+                </div>
+              )}
+              {q.is_msme && (
+                <div className="min-w-0">
+                  <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">MSME</dt>
+                  <dd className="text-xs font-medium text-foreground truncate">
+                    {q.is_msme === 'Y' ? `Yes${q.msme_type ? ` — ${q.msme_type}` : ''}` : 'No'}
+                  </dd>
+                </div>
+              )}
+              {q.is_intrastate !== null && q.is_intrastate !== undefined && (
+                <div className="min-w-0">
+                  <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Supply</dt>
+                  <dd className="text-xs font-medium text-foreground truncate">
+                    {q.is_intrastate ? 'Intrastate (CGST+SGST)' : 'Interstate (IGST)'}
+                  </dd>
                 </div>
               )}
               {q.advance_payment_required && (

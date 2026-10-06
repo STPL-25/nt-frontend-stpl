@@ -41,8 +41,10 @@ const masterItems: MasterItemType[] = [
   { icon: <FolderOpen className="w-5 h-5" />, name: "Product Sub Category", category: "inventory", color: "bg-amber-500", id: "ProductSubCategoryMaster" },
   { icon: <Package className="w-5 h-5" />, name: "Product", category: "inventory", color: "bg-indigo-500", id: "ProductMaster" },
    { icon: <Hash className="w-5 h-5" />, name: "UOM", category: "inventory", color: "bg-green-600", id: "UomMaster" },
+  { icon: <Hash className="w-5 h-5" />, name: "UOM Class", category: "inventory", color: "bg-green-700", id: "UomClassMaster" },
   { icon: <Truck className="w-5 h-5" />, name: "Transporter Master", category: "logistics", color: "bg-red-600", id: "TransportMaster" },
   { icon: <Landmark className="w-5 h-5" />, name: "Bank Account Type", category: "compliance", color: "bg-cyan-600", id: "BankAccountTypeMaster" },
+  { icon: <IndianRupee className="w-5 h-5" />, name: "Payment Terms", category: "finance", color: "bg-teal-600", id: "PaymentTermsMaster" },
   { icon: <Warehouse className="w-5 h-5" />, name: "Warehouse Location", category: "inventory", color: "bg-orange-600", id: "WarehouseLocationMaster" },
   { icon: <UserCog className="w-5 h-5" />, name: "Designation Master", category: "administration", color: "bg-fuchsia-600", id: "DesignationMaster" },
   { icon: <FileText className="w-5 h-5" />, name: "Terms & Conditions", category: "compliance", color: "bg-sky-600", id: "TermsConditionsMaster", staffOnly: true },
@@ -168,26 +170,32 @@ const useBranchMasterFields = (formData?: any): FieldType[] => {
   );
 };
 
-// Fixed taxonomy already in live use across every existing uom_master row —
-// enforcing it as a dropdown (rather than free text) stops a typo'd class
-// (e.g. "Wieght") from silently orphaning a unit out of its class's
-// same-class conversion-unit picker on Product Master (see
-// useProductFieldsMaster's conversionUnitOptions below).
-const UOM_CLASS_OPTIONS = [
-  { label: "Mass / Weight", value: "MASS" },
-  { label: "Volume", value: "VOLUME" },
-  { label: "Length", value: "LENGTH" },
-  { label: "Area", value: "AREA" },
-  { label: "Quantity / Count", value: "QUANTITY" },
-];
+const useUomClassFieldsMaster = (formData?: any): FieldType[] => {
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "uom_class_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "uom_class_code", label: "Code (e.g. MASS)", require: true, view: true, type: "text", input: true },
+      { field: "uom_class_name", label: "Class Name", require: true, view: true, type: "text", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    []
+  );
+};
 
 const useUomMasterFields = (formData?: any): FieldType[] => {
+  // Classes come from the UOM Class master (value = class code, which is what
+  // uom_master.uom_class stores). Picking from a list rather than typing stops
+  // a typo'd class (e.g. "Wieght") from orphaning a unit out of its class's
+  // same-class conversion-unit picker on Product Master (see
+  // useProductFieldsMaster's conversionUnitOptions below).
+  const { options } = useMasterOptions(['UomClassMaster']);
+  const uomClassOptions = options?.UomClassMaster;
   return useMemo<FieldType[]>(
     () => [
       { field: "uom_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "uom_code", label: "Code", require: true, view: true, type: "text", input: true },
       { field: "uom_name", label: "Name", require: true, view: true, type: "text", input: true },
-      { field: "uom_class", label: "UOM Class", require: true, view: true, type: "select", options: UOM_CLASS_OPTIONS, input: true },
+      { field: "uom_class", label: "UOM Class", require: true, view: true, type: "select", options: uomClassOptions || [], input: true },
       { field: "uom_base_uom_flag", label: "UOM Base", require: true, view: true, type: "text", input: true },
       // Leave blank for a packaging unit whose count varies per product
       // (e.g. Box) — that product then supplies its own conversion via
@@ -195,7 +203,7 @@ const useUomMasterFields = (formData?: any): FieldType[] => {
       { field: "uom_con_factor", label: "UOM Conversion Factor (blank if it varies by product, e.g. Box)", require: false, view: true, type: "text", input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
-    []
+    [uomClassOptions]
   );
 };
 
@@ -295,7 +303,19 @@ const useBankAccountTypeFieldsMaster = (formData?: any): FieldType[] => {
   );
 };
 
-const usePaymentModeFieldsMaster = (formData?: any): FieldType[] => {
+const usePaymentTermsFieldsMaster = (formData?: any): FieldType[] => {
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "payment_terms_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "payment_terms_code", label: "Code", require: true, view: true, type: "text", input: true },
+      { field: "payment_terms_name", label: "Payment Terms", require: true, view: true, type: "text", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    []
+  );
+};
+
+const usePaymentModeFieldsMaster =(formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
       { field: "payment_mode_sno", label: "S.No", require: false, view: false, type: "text", input: false },
@@ -483,14 +503,11 @@ const useProductFieldsMaster = (): FieldType[] => {
     && selectedUom.uom_base_uom_flag === 'N'
     && (selectedUom.uom_con_factor === null || selectedUom.uom_con_factor === undefined);
 
-  // Restrict the conversion-unit picker to units sharing the selected UOM's
-  // class (e.g. Tin → MASS → KG/G/LB/OZ/TON only, never Liters), so "1 Tin =
-  // 20 ___" can only be answered with a weight unit.
+  // The "In Unit" picker offers every unit (no class restriction), so
+  // "1 Tin = 20 ___" can be answered with any unit.
   const conversionUnitOptions = useMemo(
-    () => (selectedUom
-      ? (options?.UomMaster ?? []).filter((u: any) => u.uom_class === selectedUom.uom_class)
-      : []),
-    [options?.UomMaster, selectedUom]
+    () => options?.UomMaster ?? [],
+    [options?.UomMaster]
   );
 
   return useMemo<FieldType[]>(
@@ -625,6 +642,7 @@ export {
   useDivisionMasterFields,
   useBranchMasterFields,
   useUomMasterFields,
+  useUomClassFieldsMaster,
   useTransportMasterFields,
   useAcYearFields,
   useGSTMasterFields,
@@ -632,6 +650,7 @@ export {
   usePrefixFieldsMaster,
   usePriorityFieldsMaster,
   useBankAccountTypeFieldsMaster,
+  usePaymentTermsFieldsMaster,
   useWarehouseLocationFieldsMaster,
   useDesignationMasterFields,
   useScreensFieldsMaster,

@@ -119,6 +119,36 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
 
   const formHeaders = useMemo(() => headers.filter((h) => h.input !== false), [headers]);
 
+  // Select/multi-select columns (e.g. com_sno, cat_sno) store the option's raw
+  // id — resolve it to the matching option's label for display so cells show
+  // "Acme Corp" instead of "14". Non-select fields, and values that don't
+  // match any option (e.g. already-resolved name fields like com_name), pass
+  // through unchanged.
+  const getDisplayValue = (row: RowData, h: HeaderDef) => {
+    const raw = row[h.field];
+    if (raw === null || raw === undefined || raw === "") return null;
+    if (!h.options || h.options.length === 0) return raw;
+
+    if (Array.isArray(raw)) {
+      const labels = raw.map(
+        (v) => h.options!.find((o) => String(o.value) === String(v))?.label ?? v
+      );
+      return labels.join(", ");
+    }
+
+    const match = h.options.find((o) => String(o.value) === String(raw));
+    return match ? match.label : raw;
+  };
+
+  // Every master's field list starts with its real primary key
+  // (uom_sno, cat_sno, transport_sno, ...) marked view:false/input:false —
+  // there is no generic `id`/`Sno` column on the underlying tables.
+  const pkField = headers[0]?.field;
+  const getRowId = useCallback(
+    (row: RowData | null | undefined) => (row && pkField ? row[pkField] : undefined),
+    [pkField]
+  );
+
   const handleFieldChange = useCallback((field: string, value: any) => {
     setFormState((prev) => {
       const next = { ...prev, [field]: value };
@@ -223,9 +253,11 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
           toast.error(resp?.error || "Save did not complete. Please try again.");
           return;
         }
-        if (resp?.data && Array.isArray(resp.data)) setTableData(resp.data);
+        // The create SP returns the actual inserted row(s) — append, don't
+        // replace the table (resp.data is never the full master list).
+        if (resp?.data && Array.isArray(resp.data)) setTableData((p) => [...p, ...resp.data]);
         else if (resp?.data) setTableData((p) => [...p, resp.data]);
-        toast.success(resp?.data?.[0]?.Message || resp?.message || "Item added");
+        toast.success(resp?.message || "Item added");
       } else {
         setTableData((p) => [...p, { ...fd, id: Date.now() }]);
         toast.success("Item added");
@@ -244,20 +276,24 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
       toast.error(`Fill in the required fields: ${missing.join(", ")}`);
       return;
     }
+    const editingId = getRowId(editingItem);
     try {
       if (master) {
-        const resp = await updateData(apiUpdateCommonMaster(master), null, { ...editingItem, ...fd });
+        const resp = await updateData(apiUpdateCommonMaster(master, editingId), null, { ...editingItem, ...fd });
         if (!responseHasEntity(resp)) {
           toast.error(resp?.error || "Update did not complete. Please try again.");
           return;
         }
+        // The update SP returns the current full row — use it as the source
+        // of truth rather than re-merging the form's own (possibly partial) fd.
+        const updatedRow = Array.isArray(resp?.data) ? resp.data[0] : resp?.data;
         setTableData((prev) =>
-          prev.map((it) => (it.id ?? it.Sno) === (editingItem.id ?? editingItem.Sno) ? { ...it, ...fd } : it)
+          prev.map((it) => getRowId(it) === editingId ? { ...it, ...(updatedRow ?? fd) } : it)
         );
         toast.success(resp?.message || "Item updated");
       } else {
         setTableData((prev) =>
-          prev.map((it) => (it.id ?? it.Sno) === (editingItem.id ?? editingItem.Sno) ? { ...it, ...fd } : it)
+          prev.map((it) => getRowId(it) === editingId ? { ...it, ...fd } : it)
         );
         toast.success("Item updated");
       }
@@ -268,21 +304,14 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
 
   const handleDeleteConfirm = async () => {
     if (!itemToDelete) return;
+    const deletingId = getRowId(itemToDelete);
     try {
       if (master) {
-        const resp = await deleteData(apiDeleteCommonMaster(master), itemToDelete);
-        if (resp?.data && Array.isArray(resp.data)) {
-          setTableData(resp.data);
-        } else {
-          setTableData((prev) =>
-            prev.filter((it) => (it.id ?? it.Sno) !== (itemToDelete.id ?? itemToDelete.Sno))
-          );
-        }
+        const resp = await deleteData(apiDeleteCommonMaster(master, deletingId), itemToDelete);
+        setTableData((prev) => prev.filter((it) => getRowId(it) !== deletingId));
         toast.success(resp?.message || "Item deleted");
       } else {
-        setTableData((prev) =>
-          prev.filter((it) => (it.id ?? it.Sno) !== (itemToDelete.id ?? itemToDelete.Sno))
-        );
+        setTableData((prev) => prev.filter((it) => getRowId(it) !== deletingId));
         toast.success("Item deleted");
       }
       setShowDeleteModal(false);
@@ -360,12 +389,12 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
     setIsSavingImport(true);
     try {
       if (master) {
-        // Send all rows as a single array — SP handles bulk insert
-        console.log(importPreviewRows)
+        // Send all rows as a single array — SP bulk-inserts and returns the
+        // real inserted rows (one per input row).
         const resp = await postData(apiPostCommonMaster(master), importPreviewRows);
-        if (resp?.data && Array.isArray(resp.data)) setTableData(resp.data);
-        const results: any[] = Array.isArray(resp?.data) ? resp.data : [];
-        const successCount = results.filter((r: any) => r?.Status === "Success").length || importPreviewRows.length;
+        const insertedRows: any[] = Array.isArray(resp?.data) ? resp.data : (resp?.data ? [resp.data] : []);
+        setTableData((p) => [...p, ...insertedRows]);
+        const successCount = insertedRows.length;
         toast.success(`${successCount} record${successCount !== 1 ? "s" : ""} imported successfully`);
       } else {
         setTableData((p) => [...p, ...importPreviewRows.map((r, i) => ({ ...r, id: Date.now() + i }))]);
@@ -557,7 +586,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
               <TableBody>
                 {paginatedData.map((row, idx) => (
                   <TableRow
-                    key={row.id ?? row.Sno ?? idx}
+                    key={getRowId(row) ?? idx}
                     className={cn(
                       striped && idx % 2 !== 0 && "bg-muted/20",
                       hoverable && "hover:bg-muted/40 transition-colors"
@@ -568,7 +597,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
                     </TableCell>
                     {viewHeaders.map((h) => (
                       <TableCell key={h.field} className="text-sm text-foreground py-2.5 whitespace-nowrap">
-                        {row[h.field] ?? <span className="text-muted-foreground/50">—</span>}
+                        {getDisplayValue(row, h) ?? <span className="text-muted-foreground/50">—</span>}
                       </TableCell>
                     ))}
                     <TableCell className="text-right py-2.5">
@@ -757,7 +786,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
                     <TableCell className="text-center text-xs text-muted-foreground">{idx + 1}</TableCell>
                     {formHeaders.map((h) => (
                       <TableCell key={h.field} className="text-sm whitespace-nowrap">
-                        {row[h.field] ?? <span className="text-muted-foreground/50">—</span>}
+                        {getDisplayValue(row, h) ?? <span className="text-muted-foreground/50">—</span>}
                       </TableCell>
                     ))}
                   </TableRow>

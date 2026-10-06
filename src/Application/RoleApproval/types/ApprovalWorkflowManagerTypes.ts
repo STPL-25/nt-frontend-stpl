@@ -1,3 +1,5 @@
+import type { StageCondition } from "../approvalConditions";
+
 export interface WorkflowFormData {
   workflow_name: string;
   workflow_code: string; // auto-generated on save, not shown in form
@@ -18,6 +20,10 @@ export interface StageOrderItem {
   can_forward: string;        // "Y" | "N"
   can_backward: string;       // "Y" | "N"
   can_edit_data: string;      // "Y" | "N"
+  // Conditional routing + alternates (sql/99). Only PR-type workflows use them; every
+  // other entity leaves them unset and behaves exactly as before.
+  condition?: StageCondition | null;
+  alternates?: string[];
 }
 
 // UI model — com_snos/div_snos are cascade helpers, not persisted.

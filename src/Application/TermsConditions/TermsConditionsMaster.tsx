@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/CustomComponent/PageComponents";
 import { CustomInputField } from "@/CustomComponent/InputComponents/CustomInputField";
@@ -12,7 +12,8 @@ import {
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
-import { FileText, Plus, Pencil, Trash2, Star, Loader2, X, ListPlus } from "lucide-react";
+import { FileText, Plus, Pencil, Trash2, Star, Loader2, X, ListPlus, ArrowLeft } from "lucide-react";
+import { useAppState } from "@/globalState/hooks/useAppState";
 import { useApprovalFlowHierarchy } from "@/FieldDatas/ApprovalWorkFlow";
 import useFetch from "@/hooks/useFetchHook";
 import usePost from "@/hooks/usePostHook";
@@ -42,15 +43,17 @@ interface FormState {
   tc_sno?: number;
   tc_title: string;
   points: string[];
-  com_sno: string;
-  div_sno: string;
-  brn_sno: string;
-  dept_sno: string;
+  // Edit keeps the saved single scope (immutable); create picks many.
+  com_snos: string[];
+  div_snos: string[];
+  brn_snos: string[];
+  dept_snos: string[];
   is_default: boolean;
+  scopeLabel?: string;
 }
 
 const emptyForm = (): FormState => ({
-  tc_title: "", points: [], com_sno: "", div_sno: "", brn_sno: "", dept_sno: "", is_default: false,
+  tc_title: "", points: [], com_snos: [], div_snos: [], brn_snos: [], dept_snos: [], is_default: false,
 });
 
 // tc_text is stored as a single "1. ...\n2. ..." blob (no schema change) —
@@ -65,6 +68,8 @@ const textToPoints = (text: string): string[] =>
     .filter(Boolean);
 
 const TermsConditionsMaster: React.FC = () => {
+  const { setCurrentScreen, setSelectedMaster } = useAppState() as any;
+  const goBackToMasters = () => { setCurrentScreen("main"); setSelectedMaster?.(null); };
   const [refreshKey, setRefreshKey] = useState(0);
   const { data: listResponse, loading: listLoading } = useFetch<{ success: boolean; data: TermsConditionsRow[] }>(
     apiGetTermsConditions, "", null, refreshKey
@@ -81,15 +86,42 @@ const TermsConditionsMaster: React.FC = () => {
   const { deleteData, loading: deleting } = useDelete();
   const saving = creating || updating;
 
+  const isEdit = form.tc_sno != null;
+
   const {
-    companyOptions, divisionOptions, branchOptions, departmentOptions,
+    companyOptions: rawCompanyOptions, divisionOptions: rawDivisionOptions,
+    branchOptions: rawBranchOptions, departmentOptions: rawDepartmentOptions, allDepartments,
   } = useApprovalFlowHierarchy(
-    form.com_sno ? [Number(form.com_sno)] : [],
-    form.div_sno ? [Number(form.div_sno)] : [],
-    form.brn_sno ? [Number(form.brn_sno)] : []
+    form.com_snos.map(Number), form.div_snos.map(Number), form.brn_snos.map(Number)
   );
 
-  const isEdit = form.tc_sno != null;
+  // The multi-select matches option values with ===, and the hierarchy/master
+  // options carry raw ids while form state holds strings — normalise to strings.
+  const toStr = (opts: { label: string; value: string | number }[]) =>
+    opts.map((o) => ({ ...o, value: String(o.value) }));
+  const companyOptions = useMemo(() => toStr(rawCompanyOptions), [rawCompanyOptions]);
+  const divisionOptions = useMemo(() => toStr(rawDivisionOptions), [rawDivisionOptions]);
+  const branchOptions = useMemo(() => toStr(rawBranchOptions), [rawBranchOptions]);
+  const departmentOptions = useMemo(() => toStr(rawDepartmentOptions), [rawDepartmentOptions]);
+
+  // Drop selections that fell out of the cascade (e.g. a company was
+  // deselected, so its divisions/branches/departments are no longer valid).
+  useEffect(() => {
+    if (isEdit) return;
+    const keep = (sel: string[], opts: { value: string }[]) => {
+      const ok = new Set(opts.map((o) => o.value));
+      const next = sel.filter((v) => ok.has(v));
+      return next.length === sel.length ? sel : next;
+    };
+    setForm((f) => {
+      const div_snos = keep(f.div_snos, divisionOptions);
+      const brn_snos = keep(f.brn_snos, branchOptions);
+      const dept_snos = keep(f.dept_snos, departmentOptions);
+      if (div_snos === f.div_snos && brn_snos === f.brn_snos && dept_snos === f.dept_snos) return f;
+      return { ...f, div_snos, brn_snos, dept_snos };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [divisionOptions, branchOptions, departmentOptions]);
 
   const openCreate = () => { setForm(emptyForm()); setPointDraft(""); setDialogOpen(true); };
   const openEdit = (row: TermsConditionsRow) => {
@@ -97,11 +129,12 @@ const TermsConditionsMaster: React.FC = () => {
       tc_sno: row.tc_sno,
       tc_title: row.tc_title,
       points: textToPoints(row.tc_text),
-      com_sno: String(row.com_sno),
-      div_sno: String(row.div_sno),
-      brn_sno: String(row.brn_sno),
-      dept_sno: String(row.dept_sno),
+      com_snos: [String(row.com_sno)],
+      div_snos: [String(row.div_sno)],
+      brn_snos: [String(row.brn_sno)],
+      dept_snos: [String(row.dept_sno)],
       is_default: row.is_default === "Y",
+      scopeLabel: scopeLabel(row),
     });
     setPointDraft("");
     setDialogOpen(true);
@@ -118,15 +151,6 @@ const TermsConditionsMaster: React.FC = () => {
     setForm((f) => ({ ...f, points: f.points.filter((_, i) => i !== index) }));
   };
 
-  const handleScopeChange = (field: "com_sno" | "div_sno" | "brn_sno" | "dept_sno", value: string) => {
-    setForm((f) => {
-      if (field === "com_sno") return { ...f, com_sno: value, div_sno: "", brn_sno: "", dept_sno: "" };
-      if (field === "div_sno") return { ...f, div_sno: value, brn_sno: "", dept_sno: "" };
-      if (field === "brn_sno") return { ...f, brn_sno: value, dept_sno: "" };
-      return { ...f, dept_sno: value };
-    });
-  };
-
   const handleSave = async () => {
     // A point still sitting in the draft box (typed but not yet added) is
     // included too — clicking Save shouldn't silently drop it.
@@ -136,28 +160,40 @@ const TermsConditionsMaster: React.FC = () => {
       toast.error("Title and at least one point are required.");
       return;
     }
-    if (!form.com_sno || !form.div_sno || !form.brn_sno || !form.dept_sno) {
-      toast.error("Company, Division, Branch and Department are all required.");
-      return;
-    }
-
-    const payload = {
+    const base = {
       tc_title: form.tc_title.trim(),
       tc_text: pointsToText(finalPoints),
-      com_sno: Number(form.com_sno),
-      div_sno: Number(form.div_sno),
-      brn_sno: Number(form.brn_sno),
-      dept_sno: Number(form.dept_sno),
       is_default: form.is_default ? "Y" : "N",
     };
 
     try {
       if (isEdit) {
-        await updateData(apiUpdateTermsConditions, null, { tc_sno: form.tc_sno, ...payload });
+        await updateData(apiUpdateTermsConditions, null, { tc_sno: form.tc_sno, ...base });
         toast.success("Terms & conditions updated");
       } else {
-        await postData(apiCreateTermsConditions, payload);
-        toast.success("Terms & conditions saved");
+        if (!form.com_snos.length || !form.div_snos.length || !form.brn_snos.length || !form.dept_snos.length) {
+          toast.error("Select at least one Company, Division, Branch and Department.");
+          return;
+        }
+        // One scope per selected department, using that department's own real
+        // company/division/branch chain (never a cross-join guess), and only
+        // if that chain lies inside what was ticked above.
+        const coms = new Set(form.com_snos), divs = new Set(form.div_snos), brns = new Set(form.brn_snos);
+        const seen = new Set<string>();
+        const scopes: { com_sno: number; div_sno: number; brn_sno: number; dept_sno: number }[] = [];
+        for (const d of allDepartments) {
+          const dept = String(d.value);
+          if (!form.dept_snos.includes(dept) || seen.has(dept)) continue;
+          if (!coms.has(String(d.com_sno)) || !divs.has(String(d.div_sno)) || !brns.has(String(d.brn_sno))) continue;
+          seen.add(dept);
+          scopes.push({ com_sno: Number(d.com_sno), div_sno: Number(d.div_sno), brn_sno: Number(d.brn_sno), dept_sno: Number(dept) });
+        }
+        if (scopes.length === 0) {
+          toast.error("None of the selected departments belong to the selected company / division / branch.");
+          return;
+        }
+        await postData(apiCreateTermsConditions, { ...base, scopes });
+        toast.success(scopes.length > 1 ? `Terms & conditions saved for ${scopes.length} departments` : "Terms & conditions saved");
       }
       setDialogOpen(false);
       setRefreshKey((k) => k + 1);
@@ -190,7 +226,10 @@ const TermsConditionsMaster: React.FC = () => {
       />
 
       <div className="flex-1 lg:overflow-y-auto p-5 space-y-4">
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground -ml-1" onClick={goBackToMasters}>
+            <ArrowLeft className="h-4 w-4" /> Back to Masters
+          </Button>
           <Button onClick={openCreate} className="bg-primary hover:bg-primary/90">
             <Plus size={16} className="mr-1" /> Add Terms & Conditions
           </Button>
@@ -254,7 +293,7 @@ const TermsConditionsMaster: React.FC = () => {
 
       {/* ── Create/Edit dialog ── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{isEdit ? "Edit Terms & Conditions" : "Add Terms & Conditions"}</DialogTitle>
           </DialogHeader>
@@ -266,36 +305,37 @@ const TermsConditionsMaster: React.FC = () => {
               value={form.tc_title} onChange={(v) => setForm((f) => ({ ...f, tc_title: v }))}
             />
 
-            <div className="grid grid-cols-2 gap-4">
-              <CustomInputField
-                field="com_sno" label="Company" type="select" require
-                options={companyOptions} disabled={isEdit}
-                placeholder="Select company"
-                value={form.com_sno} onChange={(v) => handleScopeChange("com_sno", v)}
-              />
-              <CustomInputField
-                field="div_sno" label="Division" type="select" require
-                options={divisionOptions} disabled={isEdit || !form.com_sno}
-                placeholder="Select division"
-                value={form.div_sno} onChange={(v) => handleScopeChange("div_sno", v)}
-              />
-              <CustomInputField
-                field="brn_sno" label="Branch" type="select" require
-                options={branchOptions} disabled={isEdit || !form.div_sno}
-                placeholder="Select branch"
-                value={form.brn_sno} onChange={(v) => handleScopeChange("brn_sno", v)}
-              />
-              <CustomInputField
-                field="dept_sno" label="Department" type="select" require
-                options={departmentOptions} disabled={isEdit || !form.brn_sno}
-                placeholder="Select department"
-                value={form.dept_sno} onChange={(v) => handleScopeChange("dept_sno", v)}
-              />
-            </div>
-            {isEdit && (
-              <p className="text-xs text-muted-foreground -mt-2">
-                Scope can't be changed after creation — add a new entry instead.
-              </p>
+            {isEdit ? (
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Scope</p>
+                <p className="text-sm text-muted-foreground">{form.scopeLabel}</p>
+                <p className="text-xs text-muted-foreground">
+                  Scope can't be changed after creation — add a new entry instead.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <CustomInputField
+                  field="com_snos" label="Company" type="multi-select" require
+                  options={companyOptions} placeholder="Select companies"
+                  value={form.com_snos} onChange={(v: string[]) => setForm((f) => ({ ...f, com_snos: v ?? [] }))}
+                />
+                <CustomInputField
+                  field="div_snos" label="Division" type="multi-select" require
+                  options={divisionOptions} disabled={!form.com_snos.length} placeholder="Select divisions"
+                  value={form.div_snos} onChange={(v: string[]) => setForm((f) => ({ ...f, div_snos: v ?? [] }))}
+                />
+                <CustomInputField
+                  field="brn_snos" label="Branch" type="multi-select" require
+                  options={branchOptions} disabled={!form.div_snos.length} placeholder="Select branches"
+                  value={form.brn_snos} onChange={(v: string[]) => setForm((f) => ({ ...f, brn_snos: v ?? [] }))}
+                />
+                <CustomInputField
+                  field="dept_snos" label="Department" type="multi-select" require
+                  options={departmentOptions} disabled={!form.brn_snos.length} placeholder="Select departments"
+                  value={form.dept_snos} onChange={(v: string[]) => setForm((f) => ({ ...f, dept_snos: v ?? [] }))}
+                />
+              </div>
             )}
 
             <div className="space-y-2">

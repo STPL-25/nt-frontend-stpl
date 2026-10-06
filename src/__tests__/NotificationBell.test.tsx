@@ -108,6 +108,24 @@ describe("NotificationBell drawer", () => {
     expect(screen.getByText("No notifications yet")).toBeTruthy();
   });
 
+  it("marks unread notifications viewed just by opening the drawer — no click", async () => {
+    await openDrawer();
+    expect(itemFor("PR Submitted").getAttribute("data-read")).toBe("false");
+
+    await waitFor(() => expect(itemFor("PR Submitted").getAttribute("data-read")).toBe("true"), { timeout: 3000 });
+    expect(itemFor("Stock received at store").getAttribute("data-read")).toBe("true");
+    expect(vi.mocked(axios.patch)).toHaveBeenCalledWith(expect.stringContaining("/api/notifications/read-all"));
+    // the bell badge clears too
+    expect(screen.getByTestId("notification-bell").textContent).toBe("");
+  });
+
+  it("keeps them unread when the save fails", async () => {
+    vi.mocked(axios.patch).mockRejectedValue(new Error("down"));
+    await openDrawer();
+    await waitFor(() => expect(vi.mocked(axios.patch)).toHaveBeenCalled(), { timeout: 3000 });
+    await waitFor(() => expect(itemFor("PR Submitted").getAttribute("data-read")).toBe("false"));
+  });
+
   it("marks a notification viewed when it is clicked", async () => {
     await openDrawer();
     fireEvent.click(itemFor("PR Submitted"));
@@ -207,5 +225,28 @@ describe("NotificationBell drawer", () => {
       id: "n9", type: "warning", title: "Live one", message: "hello", read: false, createdAt: now(),
     }));
     expect(h.toast).toHaveBeenCalledWith("Live one", expect.objectContaining({ description: "hello" }));
+  });
+
+  it("shows an overdue Service PO alert in red with how many days it is late", async () => {
+    await openDrawer();
+    act(() => h.socketHandlers["notification:new"]({
+      id: "n10", type: "error", title: "Service PO overdue — 3 days late", message: "rent (AGR-1)", read: false, createdAt: now(),
+      data: { severity: "overdue", days_late: 3 },
+    }));
+    const item = itemFor("Service PO overdue — 3 days late");
+    expect(item.className).toContain("border-l-red-500");
+    expect(within(item).getByTestId("overdue-badge").textContent).toBe("3 days late");
+    // a normal reminder gets no red treatment
+    expect(itemFor("PR Submitted").className).not.toContain("border-l-red-500");
+  });
+
+  it("opens the approval screen a notification belongs to when it is clicked", async () => {
+    await openDrawer();
+    act(() => h.socketHandlers["notification:new"]({
+      id: "n11", type: "approval", title: "Approval pending", message: "PR PR2627 is waiting for your approval.",
+      read: false, createdAt: now(), data: { screen: "PRApprovalScreen" },
+    }));
+    fireEvent.click(itemFor("Approval pending"));
+    expect(h.openScreen).toHaveBeenCalledWith("PRApprovalScreen");
   });
 });

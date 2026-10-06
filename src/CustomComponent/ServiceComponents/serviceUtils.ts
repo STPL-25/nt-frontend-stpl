@@ -32,6 +32,40 @@ export function parseStages(row: any): any[] {
   }
 }
 
+export type ApprovalAction = 'approve' | 'reject' | 'forward' | 'send_back';
+
+export interface ApprovalRoute { ecno: string; stage?: string }
+
+/**
+ * What the signed-in approver can do besides approve / reject, from the workflow's stage list.
+ * Forward goes to the next stage's approver; send back goes to any EARLIER stage's approver.
+ * Each needs the stage's can_forward / can_backward flag (Approval Workflows screen).
+ */
+export function approvalRoutes(stages: any[], userEcno?: string | null): {
+  canForward: boolean; forwardTo: ApprovalRoute | null; canSendBack: boolean; sendBackOptions: ApprovalRoute[];
+} {
+  const none = { canForward: false, forwardTo: null, canSendBack: false, sendBackOptions: [] as ApprovalRoute[] };
+  const me = String(userEcno ?? '').trim();
+  const idx = me ? stages.findIndex((s) => String(s?.approver_ecno ?? '').trim() === me) : -1;
+  if (idx < 0) return none;
+  const cur = stages[idx];
+  const next = stages[idx + 1];
+  const earlier: ApprovalRoute[] = stages
+    .slice(0, idx)
+    .filter((s) => s?.approver_ecno)
+    .map((s) => ({ ecno: String(s.approver_ecno).trim(), stage: s.stage }));
+  return {
+    canForward: cur?.can_forward === 'Y' && !!next?.approver_ecno,
+    forwardTo: next?.approver_ecno ? { ecno: String(next.approver_ecno).trim(), stage: next.stage } : null,
+    canSendBack: cur?.can_backward === 'Y' && earlier.length > 0,
+    sendBackOptions: earlier,
+  };
+}
+
+export const ACTION_DONE_LABEL: Record<ApprovalAction, string> = {
+  approve: 'approved', reject: 'rejected', forward: 'forwarded', send_back: 'sent back',
+};
+
 // ─── Tones & status maps ───────────────────────────────────────────────────
 
 export type Tone = 'neutral' | 'primary' | 'info' | 'success' | 'warning' | 'danger' | 'violet';

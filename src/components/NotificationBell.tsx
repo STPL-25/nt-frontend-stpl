@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   Bell, BellOff, Check, CheckCheck, Trash2, X, Info, AlertTriangle, CheckCircle, XCircle,
-  FileText, ShieldCheck, Route,
+  FileText, ShieldCheck, Route, ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,21 +54,30 @@ interface ItemProps {
   onView: (id: string) => void;
   onRemove: (id: string) => void;
   onTrack: (prNo: string) => void;
+  /** Open the screen this notification is about (data.screen). */
+  onOpen: (screen: string) => void;
 }
 
-const NotificationItem: React.FC<ItemProps> = ({ n, onView, onRemove, onTrack }) => {
+const NotificationItem: React.FC<ItemProps> = ({ n, onView, onRemove, onTrack, onOpen }) => {
+  const screenComp = typeof n.data?.screen === "string" ? n.data.screen : null;
   const cfg = TYPE_CONFIG[n.type] ?? TYPE_CONFIG.info;
   const prNo = extractPrNo(n);
+  // Service PO past its PO date and still not raised: shown in red with how many days late.
+  const overdue = n.data?.severity === "overdue";
+  const daysLate = typeof n.data?.days_late === "number" ? n.data.days_late : null;
 
   return (
     <li
       data-testid="notification-item"
       data-read={String(n.read)}
-      // Opening (clicking) an unread message is what marks it viewed — no separate step needed.
-      onClick={() => { if (!n.read) onView(n.id); }}
+      // Clicking an unread message marks it viewed straight away (opening the drawer does it after a
+      // moment anyway). A notification that belongs to a screen also takes the user there.
+      onClick={() => { if (!n.read) onView(n.id); if (screenComp) onOpen(screenComp); }}
       className={cn(
         "flex gap-3 border-b px-4 py-3 transition-colors",
         n.read ? "bg-background" : "cursor-pointer bg-primary/5 hover:bg-primary/10",
+        screenComp && "cursor-pointer",
+        overdue && "border-l-4 border-l-red-500 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/40",
         n.isNew && "ring-1 ring-inset ring-primary/40"
       )}
     >
@@ -81,7 +90,13 @@ const NotificationItem: React.FC<ItemProps> = ({ n, onView, onRemove, onTrack })
 
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
-          <p className={cn("text-sm leading-snug", n.read ? "font-medium" : "font-semibold text-foreground")}>
+          <p
+            className={cn(
+              "text-sm leading-snug",
+              n.read ? "font-medium" : "font-semibold text-foreground",
+              overdue && "font-semibold text-red-600 dark:text-red-400"
+            )}
+          >
             {n.title}
           </p>
           {!n.read && (
@@ -90,9 +105,23 @@ const NotificationItem: React.FC<ItemProps> = ({ n, onView, onRemove, onTrack })
         </div>
 
         {n.message && (
-          <p className="mt-0.5 whitespace-pre-line break-words text-xs leading-relaxed text-muted-foreground">
+          <p
+            className={cn(
+              "mt-0.5 whitespace-pre-line break-words text-xs leading-relaxed",
+              overdue ? "text-red-600/90 dark:text-red-300" : "text-muted-foreground"
+            )}
+          >
             {n.message}
           </p>
+        )}
+
+        {overdue && daysLate !== null && (
+          <span
+            data-testid="overdue-badge"
+            className="mt-1.5 inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white"
+          >
+            {daysLate} {daysLate === 1 ? "day" : "days"} late
+          </span>
         )}
 
         <p className="mt-1 text-[11px] text-muted-foreground/80" title={formatDateTime(n.createdAt) ?? undefined}>
@@ -101,6 +130,17 @@ const NotificationItem: React.FC<ItemProps> = ({ n, onView, onRemove, onTrack })
         </p>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          {screenComp && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 px-2 text-[11px]"
+              onClick={() => onOpen(screenComp)}
+              data-testid="open-screen"
+            >
+              <ExternalLink className="h-3 w-3" /> Open
+            </Button>
+          )}
           {prNo && (
             <Button
               variant="outline"
@@ -160,6 +200,9 @@ const NotificationBell: React.FC = () => {
   const notifsRef = useRef<AppNotification[]>([]);
   useEffect(() => { notifsRef.current = notifs; }, [notifs]);
 
+  const viewTried = useRef<Set<string>>(new Set());
+  useEffect(() => { if (!open) viewTried.current.clear(); }, [open]);
+
   const unread = notifs.filter((n) => !n.read).length;
   const viewed = notifs.length - unread;
 
@@ -194,6 +237,26 @@ const NotificationBell: React.FC = () => {
     }
   }, []);
 
+  // Seeing is viewing: whatever is unread while the drawer is open counts as viewed after a short
+  // dwell — no click needed. They keep the "New" highlight until the drawer closes so the user can still
+  // tell which ones just arrived. A failed save puts them back so the badge stays truthful.
+  useEffect(() => {
+    if (!open || loading) return;
+    const unreadIds = notifs.filter((n) => !n.read && !viewTried.current.has(n.id)).map((n) => n.id);
+    if (unreadIds.length === 0) return;
+    const t = setTimeout(async () => {
+      const ids = new Set(unreadIds);
+      unreadIds.forEach((id) => viewTried.current.add(id)); // one attempt per opening — no retry loop if the save keeps failing
+      setNotifs((prev) => prev.map((n) => (ids.has(n.id) ? { ...n, read: true, isNew: true } : n)));
+      try {
+        await axios.patch(apiMarkAllNotificationsRead);
+      } catch {
+        setNotifs((prev) => prev.map((n) => (ids.has(n.id) ? { ...n, read: false } : n)));
+      }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [open, loading, notifs]);
+
   // Auto-cancel the "really clear everything?" confirmation.
   useEffect(() => {
     if (!confirmClear) return;
@@ -210,7 +273,8 @@ const NotificationBell: React.FC = () => {
       );
       // With the drawer open the new item appears in front of the user; otherwise pop a toast.
       if (!openRef.current) {
-        toast(notif.title, { description: notif.message, icon: TYPE_CONFIG[notif.type]?.icon });
+        const show = notif.data?.severity === "overdue" ? toast.error : toast;
+        show(notif.title, { description: notif.message, icon: TYPE_CONFIG[notif.type]?.icon });
       }
     };
     socket.on(SOCKET_NOTIFICATION_NEW, handler);
@@ -280,6 +344,14 @@ const NotificationBell: React.FC = () => {
       handleOpenChange(false);
     } else {
       toast.info("PR Tracking isn't enabled for your account — ask an administrator to grant it.");
+    }
+  };
+
+  const openNotificationScreen = (screen: string) => {
+    if (openScreen(screen)) {
+      handleOpenChange(false);
+    } else {
+      toast.info("That screen isn't enabled for your account — ask an administrator to grant it.");
     }
   };
 
@@ -389,7 +461,7 @@ const NotificationBell: React.FC = () => {
                   </h4>
                   <ul>
                     {group.items.map((n) => (
-                      <NotificationItem key={n.id} n={n} onView={markOne} onRemove={removeOne} onTrack={trackPr} />
+                      <NotificationItem key={n.id} n={n} onView={markOne} onRemove={removeOne} onTrack={trackPr} onOpen={openNotificationScreen} />
                     ))}
                   </ul>
                 </section>

@@ -14,6 +14,7 @@ import useFetch from '@/hooks/useFetchHook';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
+import { getAuthFileUrl } from "@/Services/authUrl";
 import { getPendingServiceGrnPOs, getServiceGrns, createServiceGrn } from '@/Services/Api';
 
 // Minimal Unfixed-agreement receipt record — PO reference + invoice number +
@@ -223,7 +224,7 @@ const ServiceGrnPage: React.FC = () => {
                       <TableCell>{g.invoice_no}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">{dateOnly(g.received_date)}</TableCell>
                       <TableCell>
-                        <a href={g.invoice_doc_url} target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline text-xs">View</a>
+                        <a href={getAuthFileUrl(g.invoice_doc_url)} target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline text-xs">View</a>
                       </TableCell>
                     </TableRow>
                   ))}

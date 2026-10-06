@@ -21,11 +21,23 @@ import { usePermissions } from "@/globalState/hooks/usePermissions";
 import { useKycSections } from "@/hooks/useKycSections";
 import { SectionActionCard, FormSection } from "@/CustomComponent/PageComponents";
 import {
-  AddressModalContent, BankModalContent,
+  AddressModalContent, BankModalContent, EMPTY_PORTAL, type PortalPayment,
   ContactModalContent, DocumentModalContent,
 } from "./KycModalSections";
 import type { OrgMapping } from "./types/KycEntryType";
 import { IFSC_PATTERN, buildIfscBankPatch, getErrorMessage } from "./ifscUtils";
+import {
+  PAN_PATTERN, UDYAM_PATTERN, ACCOUNT_PATTERN, cashfreeUrls, verifyPan, verifyMsme, verifyBank,
+  buildBankVerifyPatch, MsmeVerifiedCard, type MsmeDetails,
+  verifyIfsc, checkDuplicate, useVerifyBusy, VerifyLock, FieldActiveNote,
+} from "./cashfreeVerify";
+import { PINCODE_PATTERN, buildPincodeAddressPatch } from "./pincodeUtils";
+import {
+  GSTIN_PATTERN, unwrapGstRecord, buildGstSubmissionFields, getGstLegalName, buildGstAddressPatch,
+  buildGstAdditionalAddressPatches, completeGstAddressState, matchBusinessTypeValue, isGstActive,
+  clearGstSubmissionFields, derivePanFromGstin, fetchGstStateMaster,
+  type GstSubmissionFields,
+} from "./gstUtils";
 
 const SECTION_META: Record<string, { title: string; description: string; icon: LucideIcon }> = {
   address:   { title: "Address Details",      description: "Business locations and registered addresses",                   icon: MapPin },
@@ -34,232 +46,8 @@ const SECTION_META: Record<string, { title: string; description: string; icon: L
   documents: { title: "Documents",            description: "Upload certificates and required documents",                    icon: Upload },
 };
 
-const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
-
-// A valid GSTIN embeds the holder's PAN as characters 3-12 (5 letters + 4
-// digits + 1 letter), so once the GSTIN passes GSTIN_PATTERN the PAN can be
-// read off directly without waiting on the lookup response.
-const derivePanFromGstin = (gstin: unknown) => {
-  const gst = String(gstin ?? "").trim().toUpperCase();
-  return GSTIN_PATTERN.test(gst) ? gst.slice(2, 12) : "";
-};
-
-type GstAddressPatch = Partial<Record<
-  "door_no" | "street" | "area" | "taluk" | "city" | "state" | "state_code" | "pincode",
-  string
->>;
-
-type UnknownRecord = Record<string, unknown>;
-
-type GstSubmissionFields = {
-  legal_name: string;
-  trade_name: string;
-  txp_type: string;
-  gst_status: string;
-  gst_blk_status: string;
-  date_of_reg: string;
-};
-
-type GstDisplayRow = {
-  label: string;
-  value: string;
-};
-
-const GST_BACKEND_FIELD_KEYS: (keyof GstSubmissionFields)[] = [
-  "legal_name",
-  "trade_name",
-  "txp_type",
-  "gst_status",
-  "gst_blk_status",
-  "date_of_reg",
-];
-
 const toText = (value: unknown) =>
   value === null || value === undefined ? "" : String(value).trim();
-
-const firstText = (...values: unknown[]) =>
-  values.map(toText).find(Boolean) || "";
-
-const joinText = (...values: unknown[]) =>
-  values.map(toText).filter(Boolean).join(", ");
-
-const asRecord = (value: unknown): UnknownRecord | null =>
-  typeof value === "object" && value !== null ? (value as UnknownRecord) : null;
-
-const getRecord = (record: UnknownRecord | null, key: string) =>
-  asRecord(record?.[key]);
-
-const unwrapGstRecord = (payload: unknown): UnknownRecord | null => {
-  const payloadRecord = asRecord(payload);
-  const root = payloadRecord?.data ?? payload;
-  if (Array.isArray(root)) return asRecord(root[0]);
-
-  const rootRecord = asRecord(root);
-  if (Array.isArray(rootRecord?.data)) return asRecord(rootRecord.data[0]);
-  return rootRecord;
-};
-
-const getGstAddressRecord = (record: UnknownRecord | null) =>
-    getRecord(getRecord(record, "pradr"), "addr") ??
-    getRecord(getRecord(record, "principalPlaceOfBusiness"), "address") ??
-    getRecord(getRecord(record, "principal_place_of_business"), "address") ??
-    getRecord(record, "address") ??
-    record ??
-    {};
-
-const getGstLegalName = (payload: unknown) => {
-  return buildGstSubmissionFields(payload).legal_name;
-};
-
-const buildGstSubmissionFields = (payload: unknown): GstSubmissionFields => {
-  const record = unwrapGstRecord(payload);
-  const address = getGstAddressRecord(record);
-
-  return {
-    legal_name: firstText(
-      record?.LegalName,
-      record?.legalName,
-      record?.legal_name,
-      record?.lgnm,
-      address?.LegalName,
-      address?.legalName,
-      address?.legal_name,
-      address?.lgnm
-    ),
-    trade_name: firstText(
-      record?.TradeName,
-      record?.tradeName,
-      record?.trade_name,
-      record?.tradeNam,
-      record?.tradenm
-    ),
-    txp_type: firstText(
-      record?.TxpType,
-   
-    ),
-    gst_status: firstText(
-      record?.Status,
-     
-    ),
-    gst_blk_status: firstText(
-      record?.BlkStatus,
-     
-    ),
-    date_of_reg: firstText(
-      record?.DtDReg,
-      
-    ),
-  };
-};
-
-const humanizeGstLabel = (value: string) =>
-  value
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-
-const flattenGstDetails = (value: unknown, path: string[] = []): GstDisplayRow[] => {
-  if (Array.isArray(value)) {
-    return value.flatMap((entry, index) =>
-      flattenGstDetails(entry, [...path, String(index + 1)])
-    );
-  }
-
-  const record = asRecord(value);
-  if (record) {
-    return Object.entries(record).flatMap(([key, entry]) =>
-      flattenGstDetails(entry, [...path, key])
-    );
-  }
-
-  const text = toText(value);
-  if (!text || path.length === 0) return [];
-
-  return [{
-    label: path.map(humanizeGstLabel).join(" / "),
-    value: text,
-  }];
-};
-
-const clearGstSubmissionFields = (record: Record<string, unknown>) => {
-  const next = { ...record };
-  GST_BACKEND_FIELD_KEYS.forEach((key) => {
-    delete next[key];
-  });
-  return next;
-};
-
-const buildGstAddressPatch = (payload: unknown): GstAddressPatch => {
-  const record = unwrapGstRecord(payload);
-  const address = getGstAddressRecord(record);
-
-  const patch: GstAddressPatch = {
-    door_no: joinText(
-      address?.flno,
-      address?.AddrFlno,
-      address?.floor_no,
-      address?.bno,
-      address?.AddrBno,
-      address?.door_no,
-      address?.building_no
-    ),
-    street: firstText(
-      address?.st,
-      address?.AddrSt,
-      address?.street,
-      address?.street_name
-    ),
-    area: firstText(
-      address?.loc,
-      address?.AddrLoc,
-      address?.bnm,
-      address?.AddrBnm,
-      address?.area,
-      address?.locality
-    ),
-    taluk: firstText(
-      address?.taluk,
-      address?.Taluk,
-      address?.subDistrict,
-      address?.sub_district
-    ),
-    city: firstText(
-      address?.city,
-      address?.City,
-      address?.dst,
-      address?.AddrDst,
-      address?.district
-    ),
-    state: firstText(
-      address?.state,
-      address?.State,
-      address?.stcd,
-      address?.AddrStcd,
-      address?.state_name
-    ),
-    // stcd/AddrStcd is the numeric GST state code (e.g. "33") — used above
-    // only as a last-resort fallback for the state NAME when nothing better
-    // is present, and captured here properly as its own field so it can be
-    // saved to kyc_address_info.state_code.
-    state_code: firstText(
-      address?.stcd,
-      address?.AddrStcd,
-      address?.state_code,
-      address?.stateCode
-    ),
-    pincode: firstText(
-      address?.pncd,
-      address?.AddrPncd,
-      address?.pincode,
-      address?.pinCode,
-      address?.postal_code
-    ),
-  };
-
-  return Object.fromEntries(
-    Object.entries(patch).filter(([, value]) => Boolean(value))
-  ) as GstAddressPatch;
-};
 
 export default function KycEntryForm() {
   const addressFields  = useAddressFields();
@@ -276,8 +64,6 @@ export default function KycEntryForm() {
 
   const [basicInfo, setBasicInfo]               = useState<Record<string, unknown>>({});
   const [isModalOpen, setIsModalOpen]           = useState(false);
-  const [isGstDialogOpen, setIsGstDialogOpen]   = useState(false);
-  const [gstDetails, setGstDetails]             = useState<UnknownRecord | null>(null);
   const [gstSubmissionFields, setGstSubmissionFields] = useState<GstSubmissionFields | null>(null);
   const [currentSection, setCurrentSection]     = useState("");
   // In-progress company -> division -> branch -> department chain being built via the
@@ -300,9 +86,122 @@ export default function KycEntryForm() {
 
   const kyc = useKycSections(addressFields, bankFields, contactFields, documentFields);
   const lastFetchedGstRef = useRef("");
+  // Cashfree PAN / MSME / bank-account verification (see cashfreeVerify.tsx)
+  const { busy, track } = useVerifyBusy();
+  const [panActive, setPanActive] = useState(false);
+  // "User already exists" results from the pre-lookup duplicate check, by field.
+  const [dupErrors, setDupErrors] = useState<Record<string, string>>({});
+  const [activeBanks, setActiveBanks] = useState<Record<string, boolean>>({});
+  // Suppliers paid through their own website have no bank account to give (sql/109).
+  const [payViaPortal, setPayViaPortal] = useState(false);
+  const [portal, setPortal] = useState<PortalPayment>(EMPTY_PORTAL);
+  const portalComplete = Boolean(portal.payment_portal_name.trim() && portal.payment_portal_url.trim());
+  const cfUrls = cashfreeUrls(apiGetGSTNDetails);
+  const [msmeDetails, setMsmeDetails] = useState<MsmeDetails | null>(null);
+  const lastVerifiedPanRef = useRef("");
+  const lastVerifiedMsmeRef = useRef("");
+  const panRegisteredNameRef = useRef("");
+  const lastVerifiedBankRef = useRef<Record<string, string>>({});
+  const bankVerifyTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  // true when a live KYC already uses this GST / PAN (no GST) — shows the error and stops the lookup.
+  const isDuplicate = async (field: "gst_no" | "pan_no", value: string, gstAvail: "true" | "false") => {
+    try {
+      const res = await track(() => checkDuplicate(cfUrls, { [field]: value, is_gst_avail: gstAvail }));
+      if (res.exists) {
+        setDupErrors((prev) => ({ ...prev, [field]: String(res.message) }));
+        toast.error(String(res.message));
+        return true;
+      }
+    } catch {
+      // Check unavailable — the server re-checks on submit, so don't block the user here.
+    }
+    setDupErrors((prev) => (prev[field] ? { ...prev, [field]: "" } : prev));
+    return false;
+  };
+
+  // A verified PAN's registered name becomes the Company Name.
+  const maybeVerifyPan = async (panValue: unknown) => {
+    const pan = toText(panValue).toUpperCase();
+    if (!PAN_PATTERN.test(pan) || lastVerifiedPanRef.current === pan) return;
+    lastVerifiedPanRef.current = pan;
+    try {
+      const res = await track(() => verifyPan(cfUrls, pan));
+      if (!res.valid || !res.registered_name) {
+        setPanActive(false);
+        toast.error(res.message || "PAN could not be verified");
+        return;
+      }
+      const registeredName = String(res.registered_name);
+      panRegisteredNameRef.current = registeredName;
+      if (toText(res.pan).toUpperCase() === pan || res.valid) setPanActive(true);
+      setBasicInfo((prev) =>
+        toText(prev.pan_no).toUpperCase() === pan ? { ...prev, company_name: registeredName } : prev
+      );
+      toast.success("PAN verified — company name set to the registered name");
+    } catch (error: unknown) {
+      lastVerifiedPanRef.current = "";
+      toast.error(getErrorMessage(error, "Unable to verify PAN"));
+    }
+  };
+
+  const maybeVerifyMsme = async (value: unknown) => {
+    const udyam = toText(value).toUpperCase();
+    if (!UDYAM_PATTERN.test(udyam) || lastVerifiedMsmeRef.current === udyam) return;
+    lastVerifiedMsmeRef.current = udyam;
+    try {
+      const res = await track(() => verifyMsme(cfUrls, udyam));
+      if (res.status && res.status !== "SUCCESS") {
+        toast.error("Udyam registration could not be verified");
+        return;
+      }
+      setMsmeDetails(res);
+      // Certificate already saved by the lookup: attach it as the MSME document (upload only needed if the lookup fails).
+      if (res.msme_certificate_url && !(kyc.documentInfo.msme_file instanceof File)) {
+        kyc.changeDocument("msme_file", res.msme_certificate_url);
+      }
+      toast.success(res.msme_certificate_url ? "MSME verified — certificate saved" : "MSME verified");
+    } catch (error: unknown) {
+      lastVerifiedMsmeRef.current = "";
+      toast.error(getErrorMessage(error, "Unable to verify MSME number"));
+    }
+  };
+
+  // Account numbers have no fixed length, so wait for the user to stop typing
+  // before making the (billed) verification call.
+  const scheduleBankVerify = (bankId: string, account: unknown, ifscValue: unknown) => {
+    clearTimeout(bankVerifyTimersRef.current[bankId]);
+    setActiveBanks((prev) => (prev[bankId] ? { ...prev, [bankId]: false } : prev));
+    const ac = toText(account);
+    const ifsc = toText(ifscValue).toUpperCase();
+    if (!ACCOUNT_PATTERN.test(ac) || !IFSC_PATTERN.test(ifsc)) return;
+    bankVerifyTimersRef.current[bankId] = setTimeout(async () => {
+      const key = `${ac}|${ifsc}`;
+      if (lastVerifiedBankRef.current[bankId] === key) return;
+      lastVerifiedBankRef.current[bankId] = key;
+      try {
+        const res = await track(() => verifyBank(cfUrls, ac, ifsc));
+        if (res.account_status !== "VALID") {
+          setActiveBanks((prev) => ({ ...prev, [bankId]: false }));
+          const why = res.account_status_code ? ` (${String(res.account_status_code).replace(/_/g, " ").toLowerCase()})` : "";
+          toast.error(`Bank account could not be verified${why}`);
+          return;
+        }
+        kyc.patchBank(bankId, buildBankVerifyPatch(res));
+        setActiveBanks((prev) => ({ ...prev, [bankId]: true }));
+        toast.success("Bank account verified — holder name and bank details filled");
+      } catch (error: unknown) {
+        lastVerifiedBankRef.current[bankId] = "";
+        toast.error(getErrorMessage(error, "Unable to verify bank account"));
+      }
+    }, 1000);
+  };
   const lastFetchedIfscRef = useRef<Record<string, string>>({});
   const latestIfscRef = useRef<Record<string, string>>({});
   const [fetchingIfscId, setFetchingIfscId] = useState<string | null>(null);
+  const lastFetchedPincodeRef = useRef<Record<string, string>>({});
+  const latestPincodeRef = useRef<Record<string, string>>({});
+  const [fetchingPincodeId, setFetchingPincodeId] = useState<string | null>(null);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -319,16 +218,20 @@ export default function KycEntryForm() {
 
     lastFetchedGstRef.current = gst;
 
+    // Registered already? Stop before spending any lookup.
+    if (await isDuplicate("gst_no", gst, "true")) return;
+
     // PAN is embedded in the GSTIN itself (characters 3-12), so it can be
     // filled in immediately, independent of whether the GST lookup below
     // succeeds — no need to wait on (or fail alongside) that network call.
     const panFromGstin = derivePanFromGstin(gst);
     if (panFromGstin) {
       setBasicInfo((prev) => ({ ...prev, pan_no: panFromGstin }));
+      void maybeVerifyPan(panFromGstin);
     }
 
     try {
-      const response = await fetchGstDetails(apiGetGSTNDetails, { gst });
+      const response = await track(() => fetchGstDetails(apiGetGSTNDetails, { gst }));
       const gstRecord = unwrapGstRecord(response?.data);
 
       if (!gstRecord) {
@@ -337,42 +240,52 @@ export default function KycEntryForm() {
 
       const submissionFields = buildGstSubmissionFields(response?.data);
       const legalName = getGstLegalName(response?.data);
-      const addressPatch = buildGstAddressPatch(response?.data);
-
-      setGstDetails(gstRecord);
+      const companyName = panRegisteredNameRef.current || submissionFields.trade_name || legalName;
+      const stateMaster = await fetchGstStateMaster();
+      const addressPatch = completeGstAddressState(
+        { ...buildGstAddressPatch(response?.data), state_code: gst.slice(0, 2) },
+        stateMaster
+      );
+      const additionalPatches = buildGstAdditionalAddressPatches(response?.data).map((patch) =>
+        completeGstAddressState(patch, stateMaster)
+      );
+      const businessType = matchBusinessTypeValue(
+        submissionFields.constitution_of_business,
+        basicInfoFields.find((field) => field.field === "business_type")?.options
+      );
       setGstSubmissionFields(submissionFields);
-      setIsGstDialogOpen(true);
 
       setBasicInfo((prev) => ({
         ...prev,
         ...submissionFields,
-        ...(legalName ? { company_name: legalName } : {}),
+        ...(companyName ? { company_name: companyName } : {}),
+        ...(businessType ? { business_type: businessType } : {}),
       }));
 
       if (Object.keys(addressPatch).length === 0) {
         toast.error(
-          legalName
-            ? "GST legal name loaded, but address information was unavailable"
+          companyName
+            ? "GST company name loaded, but address information was unavailable"
             : "GST details found, but address information was unavailable"
         );
         return;
       }
 
-      const primaryAddressIndex = kyc.addresses.findIndex((address) => address.isPrimary);
-      kyc.patchAddress(primaryAddressIndex >= 0 ? primaryAddressIndex : 0, addressPatch);
+      kyc.applyGstAddresses(addressPatch, additionalPatches);
       toast.success(
-        legalName
-          ? "GST legal name and address details loaded"
+        companyName
+          ? "GST company name and address details loaded"
           : "GST address details loaded into the primary address"
       );
     } catch (error: unknown) {
       lastFetchedGstRef.current = "";
+      setDupErrors((prev) => ({ ...prev, gst_no: "" }));
       toast.error(getErrorMessage(error, "Unable to fetch GST details"));
     }
   };
 
   const handleBasicChange = (field: string, value: unknown) => {
-    const nextValue = field === "gst_no" ? toText(value).toUpperCase() : value;
+    const nextValue = ["gst_no", "msme_no", "pan_no"].includes(field) ? toText(value).toUpperCase() : value;
     const nextGstNo = field === "gst_no" ? nextValue : basicInfo.gst_no;
     const nextIsGstAvailable =
       field === "is_gst_avail" ? nextValue : basicInfo.is_gst_avail;
@@ -390,9 +303,37 @@ export default function KycEntryForm() {
       (field === "is_gst_avail" && nextValue !== "true")
     ) {
       lastFetchedGstRef.current = "";
-      setGstDetails(null);
       setGstSubmissionFields(null);
-      setIsGstDialogOpen(false);
+    }
+
+    // No GST: PAN is the unique key, so check it before the PAN lookup.
+    const verifyPanIfUnique = async (pan: string) => {
+      if (nextIsGstAvailable === "false" && PAN_PATTERN.test(pan) && (await isDuplicate("pan_no", pan, "false"))) return;
+      void maybeVerifyPan(pan);
+    };
+    if (field === "pan_no" && nextValue !== basicInfo.pan_no) {
+      panRegisteredNameRef.current = "";
+      lastVerifiedPanRef.current = "";
+      setPanActive(false);
+      setDupErrors((prev) => ({ ...prev, pan_no: "" }));
+      void verifyPanIfUnique(String(nextValue));
+    }
+    if (field === "is_gst_avail" && nextValue === "false" && basicInfo.pan_no) {
+      void verifyPanIfUnique(toText(basicInfo.pan_no).toUpperCase());
+    }
+    if (field === "is_gst_avail" && nextValue === "true") setDupErrors((prev) => ({ ...prev, pan_no: "" }));
+
+    if (
+      (field === "msme_no" && nextValue !== basicInfo.msme_no) ||
+      (field === "is_msme_avail" && nextValue !== "true")
+    ) {
+      lastVerifiedMsmeRef.current = "";
+      setMsmeDetails(null);
+      if (typeof kyc.documentInfo.msme_file === "string") kyc.changeDocument("msme_file", null);
+    }
+    if (field === "msme_no" || field === "is_msme_avail") {
+      const isMsmeAvail = field === "is_msme_avail" ? nextValue : basicInfo.is_msme_avail;
+      if (isMsmeAvail === "true") void maybeVerifyMsme(field === "msme_no" ? nextValue : basicInfo.msme_no);
     }
 
     if (field === "gst_no" || field === "is_gst_avail") {
@@ -414,13 +355,13 @@ export default function KycEntryForm() {
     setFetchingIfscId(bankId);
 
     try {
-      const response = await fetch(`https://ifsc.razorpay.com/${ifsc}`);
+      const ifscDetails = await track(() => verifyIfsc(cfUrls, ifsc));
 
-      if (!response.ok) {
-        throw new Error(response.status === 404 ? "IFSC code not found" : "Unable to fetch IFSC details");
+      if (ifscDetails.valid === false) {
+        throw new Error("IFSC code not found");
       }
 
-      const bankPatch = buildIfscBankPatch(await response.json());
+      const bankPatch = buildIfscBankPatch(ifscDetails);
 
       if (latestIfscRef.current[bankId] !== ifsc) {
         return;
@@ -451,9 +392,74 @@ export default function KycEntryForm() {
 
     kyc.changeBank(index, field, nextValue);
 
+    if (bankId && (field === "ac_number" || field === "ifsc")) {
+      const row = (kyc.bankDetails[index] ?? {}) as Record<string, unknown>;
+      scheduleBankVerify(
+        bankId,
+        field === "ac_number" ? nextValue : row.ac_number,
+        field === "ifsc" ? nextValue : row.ifsc
+      );
+    }
+
     if (field === "ifsc" && bankId) {
       latestIfscRef.current[bankId] = nextValue;
       void maybeFetchIfscDetails(bankId, nextValue);
+    }
+  };
+
+  const maybeFetchPincodeDetails = async (addressId: string, pincodeValue: unknown) => {
+    const pincode = toText(pincodeValue);
+
+    if (
+      !PINCODE_PATTERN.test(pincode) ||
+      lastFetchedPincodeRef.current[addressId] === pincode
+    ) {
+      return;
+    }
+
+    lastFetchedPincodeRef.current[addressId] = pincode;
+    setFetchingPincodeId(addressId);
+
+    try {
+      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+
+      if (!response.ok) {
+        throw new Error("Unable to fetch pincode details");
+      }
+
+      const addressPatch = buildPincodeAddressPatch(await response.json());
+
+      if (latestPincodeRef.current[addressId] !== pincode) {
+        return;
+      }
+
+      if (Object.keys(addressPatch).length === 0) {
+        toast.error("Pincode not found");
+        return;
+      }
+
+      kyc.patchAddressById(addressId, addressPatch);
+      toast.success("Address details loaded from pincode");
+    } catch (error: unknown) {
+      if (latestPincodeRef.current[addressId] === pincode) {
+        lastFetchedPincodeRef.current[addressId] = "";
+        toast.error(getErrorMessage(error, "Unable to fetch pincode details"));
+      }
+    } finally {
+      if (latestPincodeRef.current[addressId] === pincode) {
+        setFetchingPincodeId((current) => (current === addressId ? null : current));
+      }
+    }
+  };
+
+  const handleAddressChange = (index: number, field: string, value: string) => {
+    const addressId = kyc.addresses[index]?.id;
+
+    kyc.changeAddress(index, field, value);
+
+    if (field === "pincode" && addressId) {
+      latestPincodeRef.current[addressId] = value;
+      void maybeFetchPincodeDetails(addressId, value);
     }
   };
 
@@ -532,14 +538,20 @@ export default function KycEntryForm() {
   const closeModal = () => { setIsModalOpen(false); setCurrentSection(""); };
 
   const handleReset = () => {
+    setDupErrors({});
+    setPanActive(false);
+    setActiveBanks({});
+    setPayViaPortal(false);
+    setPortal(EMPTY_PORTAL);
     setBasicInfo({});
-    setGstDetails(null);
     setGstSubmissionFields(null);
-    setIsGstDialogOpen(false);
     lastFetchedGstRef.current = "";
     lastFetchedIfscRef.current = {};
     latestIfscRef.current = {};
     setFetchingIfscId(null);
+    lastFetchedPincodeRef.current = {};
+    latestPincodeRef.current = {};
+    setFetchingPincodeId(null);
     setDraftCompany(""); setDraftDivision(""); setDraftBranch(""); setDraftDept(""); setOrgMappings([]);
     kyc.resetSections();
   };
@@ -560,10 +572,16 @@ export default function KycEntryForm() {
       if (!toText(primaryAddress?.[f.field])) missing.push(`Address: ${f.label}`);
     });
 
-    const primaryBank = kyc.bankDetails.find((b) => b.isPrimary) ?? kyc.bankDetails[0];
-    bankFields.filter((f) => f.input && f.require).forEach((f) => {
-      if (!toText(primaryBank?.[f.field])) missing.push(`Bank: ${f.label}`);
-    });
+    if (payViaPortal) {
+      if (!portal.payment_portal_name.trim()) missing.push("Payment: Portal / Website Name");
+      if (!portal.payment_portal_url.trim()) missing.push("Payment: Portal URL");
+      else if (!/^https?:\/\/\S+\.\S+/i.test(portal.payment_portal_url.trim())) missing.push("Payment: Portal URL (must start with http:// or https://)");
+    } else {
+      const primaryBank = kyc.bankDetails.find((b) => b.isPrimary) ?? kyc.bankDetails[0];
+      bankFields.filter((f) => f.input && f.require).forEach((f) => {
+        if (!toText(primaryBank?.[f.field])) missing.push(`Bank: ${f.label}`);
+      });
+    }
 
     const primaryContact = kyc.contacts.find((c) => c.isPrimary) ?? kyc.contacts[0];
     contactFields.filter((f) => f.input && f.require).forEach((f) => {
@@ -594,6 +612,10 @@ export default function KycEntryForm() {
   };
 
   const handleSubmit = async () => {
+    if (Object.values(dupErrors).some(Boolean)) {
+      toast.error(Object.values(dupErrors).find(Boolean) as string);
+      return;
+    }
     const missing = getMissingKycFields();
     if (missing.length > 0) {
       toast.error(`Fill in the required fields: ${missing.join(", ")}`);
@@ -603,7 +625,7 @@ export default function KycEntryForm() {
       const formData = new FormData();
 
       // Collect non-file metadata and encrypt as a single _ep field
-      const bankData    = kyc.bankDetails.map(({ id, cancelChequeFile, ...b }) => ({ id, ...b, hasCancelCheque: !!cancelChequeFile }));
+      const bankData    = payViaPortal ? [] : kyc.bankDetails.map(({ id, cancelChequeFile, ...b }) => ({ id, ...b, hasCancelCheque: !!cancelChequeFile }));
       const contactData = kyc.contacts.map(({ id, document, ...c }) => ({ id, ...c, hasDocument: !!document }));
       const basicInfoScalars = Object.fromEntries(
         Object.entries(basicInfo).filter(([, v]) => !(v instanceof File))
@@ -620,11 +642,13 @@ export default function KycEntryForm() {
         addresses:     kyc.addresses.map(({ id, ...a }) => ({ id, ...a })),
         bankDetails:   bankData,
         contacts:      contactData,
+        pay_via_portal: payViaPortal,
+        ...(payViaPortal ? portal : {}),
         ...basicInfoScalars,
       }));
 
       // Append binary files separately (cannot be encrypted)
-      kyc.bankDetails.forEach((b, i) => { if (b.cancelChequeFile) formData.append(`bankCancelCheque_${i}`, b.cancelChequeFile); });
+      if (!payViaPortal) kyc.bankDetails.forEach((b, i) => { if (b.cancelChequeFile) formData.append(`bankCancelCheque_${i}`, b.cancelChequeFile); });
       kyc.contacts.forEach((c, i)    => { if (c.document) formData.append(`contactDocument_${i}`, c.document); });
       Object.entries(kyc.documentInfo).forEach(([k, v]) => { if (v instanceof File) formData.append(k, v); });
 
@@ -651,8 +675,9 @@ export default function KycEntryForm() {
             addressFields={addressFields}
             onAdd={kyc.addAddress}
             onRemove={kyc.removeAddress}
-            onChange={kyc.changeAddress}
+            onChange={handleAddressChange}
             onSetPrimary={kyc.setPrimaryAddress}
+            fetchingPincodeId={fetchingPincodeId}
           />
         );
       case "account":
@@ -666,6 +691,11 @@ export default function KycEntryForm() {
             onSetPrimary={kyc.setPrimaryBank}
             onChequeChange={kyc.changeBankCheque}
             fetchingIfscId={fetchingIfscId}
+            activeBankIds={activeBanks}
+            payViaPortal={payViaPortal}
+            onPayModeChange={setPayViaPortal}
+            portal={portal}
+            onPortalChange={(field, value) => setPortal((p) => ({ ...p, [field]: value }))}
           />
         );
       case "contacts":
@@ -694,22 +724,11 @@ export default function KycEntryForm() {
   };
 
   const meta = SECTION_META[currentSection];
-  const gstDetailRows = gstDetails ? flattenGstDetails(gstDetails) : [];
-  const gstSummaryRows = gstSubmissionFields
-    ? [
-        { label: "Legal Name", value: gstSubmissionFields.legal_name },
-        { label: "Trade Name", value: gstSubmissionFields.trade_name },
-        { label: "Taxpayer Type", value: gstSubmissionFields.txp_type },
-        { label: "GST Status", value: gstSubmissionFields.gst_status },
-        { label: "GST Block Status", value: gstSubmissionFields.gst_blk_status },
-        { label: "Date Of Registration", value: gstSubmissionFields.date_of_reg },
-      ]
-    : [];
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-full bg-muted/20 py-6 px-4 lg:px-8">
-      <div className="mx-auto space-y-6">
+      <VerifyLock busy={busy} className="block mx-auto space-y-6">
         {/* {hierarchyError && (
           <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg text-sm">
             Failed to load hierarchy data: {hierarchyError}
@@ -806,8 +825,8 @@ export default function KycEntryForm() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {basicInfoFields?.filter((f) => f.input)
                     .map((field) => (
+                      <div key={field.field}>
                       <CustomInputField
-                        key={field.field}
                         field={field.field}
                         label={field.label}
                         require={field.require}
@@ -817,9 +836,13 @@ export default function KycEntryForm() {
                         type={field.type}
                         options={field.options || []}
                         disabled={field.field === "gst_no" && fetchingGst}
+                        className={field.field === "gst_no" && isGstActive(gstSubmissionFields?.gst_status) ? "border-green-500 bg-green-50 text-green-700 focus-visible:ring-green-500" : undefined}
                       />
-                    ))}
+                      <FieldActiveNote field={field.field} errors={dupErrors} active={{ gst_no: isGstActive(gstSubmissionFields?.gst_status), pan_no: panActive, msme_no: Boolean(msmeDetails) }} />
+                      </div>
+                    )) }
                 </div>
+                <MsmeVerifiedCard details={msmeDetails} />
               </>
             )}
           </CardContent>
@@ -834,7 +857,7 @@ export default function KycEntryForm() {
                 title={title}
                 description={description}
                 icon={icon}
-                isComplete={kyc.getCompletionStatus(key)}
+                isComplete={key === "account" && payViaPortal ? portalComplete : kyc.getCompletionStatus(key)}
                 onClick={() => openModal(key)}
               />
             ))}
@@ -870,7 +893,7 @@ export default function KycEntryForm() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </VerifyLock>
 
       <DynamicDialog
         open={isModalOpen}
@@ -880,47 +903,9 @@ export default function KycEntryForm() {
         onSave={async () => { await new Promise((r) => setTimeout(r, 200)); closeModal(); }}
         onCancel={closeModal}
       >
-        {renderModalContent()}
+        <VerifyLock busy={busy}>{renderModalContent()}</VerifyLock>
       </DynamicDialog>
 
-      <DynamicDialog
-        open={isGstDialogOpen}
-        onOpenChange={setIsGstDialogOpen}
-        title="GST Details"
-        Icon={FileText}
-        cancelText="Close"
-        onCancel={() => setIsGstDialogOpen(false)}
-      >
-        <div className="space-y-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {gstSummaryRows.map(({ label, value }) => (
-              <div key={label} className="rounded-md border bg-muted/20 p-3">
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="mt-1 text-sm font-medium break-words">{value || "-"}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold">All GST Response Details</h3>
-            <div className="divide-y rounded-md border">
-              {gstDetailRows.length > 0 ? (
-                gstDetailRows.map(({ label, value }, index) => (
-                  <div
-                    key={`${label}-${index}`}
-                    className="grid grid-cols-1 gap-1 p-3 text-sm sm:grid-cols-[minmax(180px,240px)_1fr] sm:gap-4"
-                  >
-                    <span className="text-muted-foreground break-words">{label}</span>
-                    <span className="font-medium break-words">{value}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="p-3 text-sm text-muted-foreground">No GST details available.</div>
-              )}
-            </div>
-          </div>
-        </div>
-      </DynamicDialog>
     </div>
   );
 }

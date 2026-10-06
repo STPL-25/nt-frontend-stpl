@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { RefreshCw, DoorOpen, Menu } from 'lucide-react';
+import { DoorOpen } from 'lucide-react';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
-import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
+import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
+import { DetailEmptyState } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import axios from 'axios';
 import {
   gateGetApprovedPOs, gateGetAllEntries, gateCreateEntry, gateUpdateEntry, gateGetDispatchByLr,
@@ -28,7 +28,6 @@ import GateEntryDetailView from './GateEntry/GateEntryDetailView';
 const GateEntryPage: React.FC = () => {
   const { userData } = useAppState();
   const { canCreate, canEdit } = usePermissions();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const currentUserEcno: string = useMemo(() => {
     const u = Array.isArray(userData) ? userData[0] : userData;
@@ -271,103 +270,92 @@ const GateEntryPage: React.FC = () => {
   const showEdit = !isNew && isEditing && selected;
   const showDetail = !isNew && !isEditing && selected;
 
+  const detailContent = (
+    <div className="px-3 py-4 space-y-4 sm:px-5 lg:px-6">
+      {showSearch ? (
+        activePO ? (
+          <GateEntryForm
+            key={`${activePO.po_basic_sno}-${prefill?.lr_no ?? ''}`}
+            po={activePO}
+            transportList={transportList}
+            receiverEcno={currentUserEcno}
+            onSubmit={handleSubmit}
+            onCancel={() => { setActivePO(null); setPrefill(null); }}
+            submitting={submitting}
+            initial={prefill ?? undefined}
+          />
+        ) : scanning ? (
+          <GateEntryQRScan onScan={handleScanned} onClose={() => setScanning(false)} />
+        ) : (
+          <GateEntryPOSearch
+            poList={poList}
+            onStartGateEntry={(po) => { setPrefill(null); setActivePO(po); }}
+            onScanQR={() => setScanning(true)}
+            onLookupLr={handleScanned}
+          />
+        )
+      ) : showEdit ? (
+        <GateEntryForm
+          key={`edit-${selected!.gate_entry_sno}`}
+          mode="edit"
+          gateEntryNo={selected!.gate_entry_no}
+          po={{ po_basic_sno: selected!.po_basic_sno, po_no: selected!.po_no, vendor_name: selected!.vendor_name }}
+          transportList={transportList}
+          receiverEcno={currentUserEcno}
+          existingPhotoUrl={selected!.photo_url}
+          initial={{
+            invoice_no: selected!.invoice_no ?? '',
+            invoice_date: selected!.invoice_date ?? '',
+            received_qty: selected!.received_qty != null ? String(selected!.received_qty) : '',
+            received_date: selected!.received_date ?? '',
+            bundles: selected!.bundles != null ? String(selected!.bundles) : '',
+            transport_name: selected!.transport_name ?? '',
+            lr_no: selected!.lr_no ?? '',
+            receiver_ecno: selected!.receiver_ecno ?? currentUserEcno,
+          }}
+          onSubmit={handleUpdate}
+          onCancel={() => setIsEditing(false)}
+          submitting={submitting}
+        />
+      ) : showDetail ? (
+        <GateEntryDetailView
+          entry={selected!}
+          canEdit={canEdit('GateEntryPage')}
+          onEdit={handleEditStart}
+        />
+      ) : null}
+    </div>
+  );
+
   return (
-    <TwoPaneLayout
-      icon={DoorOpen}
-      title="Gate Entry"
-      description="Security inward register — search a PO, review its summary, then record what arrived at the gate"
-      sidebarOpen={sidebarOpen}
-      onSidebarOpenChange={setSidebarOpen}
-      sidebar={
+    <SidebarDetailLayout
+      sidebarTitle="Gate Entry"
+      sidebarCount={entries.length}
+      sidebarCountLabel="gate entry"
+      sidebarCountLabelPlural="gate entries"
+      sidebarCountQualifier="open"
+      listItems={(closeSheet) => (
         <GateEntrySidebar
           entries={entries}
           loading={loading}
           selected={selected}
-          onSelect={(e) => { handleSelect(e); setSidebarOpen(false); }}
-          onNew={canCreate('GateEntryPage') ? () => { handleNew(); setSidebarOpen(false); } : undefined}
+          onSelect={(e) => { handleSelect(e); closeSheet(); }}
+          onNew={canCreate('GateEntryPage') ? () => { handleNew(); closeSheet(); } : undefined}
+          onRefresh={fetchAll}
+        />
+      )}
+      hasSelection={isNew || !!selected}
+      detailContent={detailContent}
+      emptyContent={
+        <DetailEmptyState
+          icon={DoorOpen}
+          title="Select or create a gate entry"
+          description="Pick a gate entry from the list to view details, or click New to search a PO and record an incoming delivery."
         />
       }
-      headerChildren={
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline" size="sm"
-            className="lg:hidden bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <Menu size={16} className="mr-1" /> Entries
-          </Button>
-          <Button
-            variant="outline" size="sm"
-            className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
-            onClick={fetchAll} disabled={loading}
-          >
-            <RefreshCw size={15} className={loading ? 'animate-spin mr-1' : 'mr-1'} />
-            Refresh
-          </Button>
-        </div>
-      }
-    >
-      <div className="px-4 sm:px-6 py-4 space-y-4">
-        {showSearch ? (
-          activePO ? (
-            <GateEntryForm
-              key={`${activePO.po_basic_sno}-${prefill?.lr_no ?? ''}`}
-              po={activePO}
-              transportList={transportList}
-              receiverEcno={currentUserEcno}
-              onSubmit={handleSubmit}
-              onCancel={() => { setActivePO(null); setPrefill(null); }}
-              submitting={submitting}
-              initial={prefill ?? undefined}
-            />
-          ) : scanning ? (
-            <GateEntryQRScan onScan={handleScanned} onClose={() => setScanning(false)} />
-          ) : (
-            <GateEntryPOSearch
-              poList={poList}
-              onStartGateEntry={(po) => { setPrefill(null); setActivePO(po); }}
-              onScanQR={() => setScanning(true)}
-              onLookupLr={handleScanned}
-            />
-          )
-        ) : showEdit ? (
-          <GateEntryForm
-            key={`edit-${selected!.gate_entry_sno}`}
-            mode="edit"
-            gateEntryNo={selected!.gate_entry_no}
-            po={{ po_basic_sno: selected!.po_basic_sno, po_no: selected!.po_no, vendor_name: selected!.vendor_name }}
-            transportList={transportList}
-            receiverEcno={currentUserEcno}
-            existingPhotoUrl={selected!.photo_url}
-            initial={{
-              invoice_no: selected!.invoice_no ?? '',
-              invoice_date: selected!.invoice_date ?? '',
-              received_qty: selected!.received_qty != null ? String(selected!.received_qty) : '',
-              received_date: selected!.received_date ?? '',
-              bundles: selected!.bundles != null ? String(selected!.bundles) : '',
-              transport_name: selected!.transport_name ?? '',
-              lr_no: selected!.lr_no ?? '',
-              receiver_ecno: selected!.receiver_ecno ?? currentUserEcno,
-            }}
-            onSubmit={handleUpdate}
-            onCancel={() => setIsEditing(false)}
-            submitting={submitting}
-          />
-        ) : showDetail ? (
-          <GateEntryDetailView
-            entry={selected!}
-            canEdit={canEdit('GateEntryPage')}
-            onEdit={handleEditStart}
-          />
-        ) : (
-          <EmptyState
-            icon={DoorOpen}
-            message="Select or Create a Gate Entry"
-            description="Choose a gate entry from the left panel to view details, or click 'New' to search a PO and record an incoming delivery"
-          />
-        )}
-      </div>
-    </TwoPaneLayout>
+      mobileListLabel="Entries"
+      mobileSelectionTitle={isNew ? "New gate entry" : selected?.gate_entry_no}
+    />
   );
 };
 

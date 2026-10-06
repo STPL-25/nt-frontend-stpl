@@ -45,6 +45,9 @@ export const apiGetKycOrgMappings = (kycId: number | string) => baseUrl + `/api/
 export const apiGetSupplierStatusList = baseUrl + "/api/kyc/supplier_status";
 export const apiGetSupplierStatusTimeline = (source: string, id: number | string) =>
   `${baseUrl}/api/kyc/supplier_status/${source}/${id}`;
+// Everything entered for a supplier (addresses, banks, contacts, documents, verifications).
+export const apiGetSupplierFullDetails = (source: string, id: number | string) =>
+  `${baseUrl}/api/kyc/supplier_details/${source}/${id}`;
 
 // Public Supplier KYC — anonymous self-service submission at /supplier_kyc,
 // no staff session required (see backend-stpl/src/Kyc/routes/PublicKyc.routes.js)
@@ -56,8 +59,8 @@ export const apiPublicKycGetGSTNDetails = baseUrl + "/api/public_kyc/Get_GSTN_De
 export const apiFetchCommonMaster = baseUrl + "/api/common_master/";
 export const getAllRequiredMasterForOptions = baseUrl + "/api/common_master/getRequiredMasterForOptions";
 export const apiPostCommonMaster   = (master: string) => `${baseUrl}/api/common_master/${master}`;
-export const apiUpdateCommonMaster = (master: string) => `${baseUrl}/api/${master}`;
-export const apiDeleteCommonMaster = (master: string) => `${baseUrl}/api/${master}`;
+export const apiUpdateCommonMaster = (master: string, id: string | number) => `${baseUrl}/api/common_master/${master}/${id}`;
+export const apiDeleteCommonMaster = (master: string, id: string | number) => `${baseUrl}/api/common_master/${master}/${id}`;
 
 // Common Basic Details (hierarchy + employee)
 export const apiCommonBasicDetails = baseUrl + "/api/common_basic_details";
@@ -70,6 +73,7 @@ export const apiGetSignEmployee = baseUrl + "/api/common_basic_details/getSignUp
 // the gateway, not the internal app's session-cookie auth).
 export const apiNonStaffCreate = baseUrl + "/api/nonstaff/create";
 export const apiNonStaffList   = baseUrl + "/api/nonstaff/list";
+export const apiGetUsersInScope = baseUrl + "/api/user_approval/get_users_in_scope";
 
 // Notifications
 export const apiGetNotifications = baseUrl + "/api/notifications";
@@ -85,6 +89,8 @@ export const apiGetMasterItems = baseUrl + "/api/MasterItems";
 export const apiSaveFullWorkflow    = baseUrl + "/api/workflow_approval/saveFullWorkflow";
 export const apiGetWorkflows        = baseUrl + "/api/workflow_approval/getWorkflows";
 export const apiGetEntityTypes      = baseUrl + "/api/workflow_approval/getEntityTypes";
+// Which values a stage condition can test for a kind of workflow (field registry, sql/99) — pass ?entity_type=
+export const apiGetConditionFields  = baseUrl + "/api/workflow_approval/getConditionFields";
 export const apiUpdateWorkflow      = baseUrl + "/api/workflow_approval/updateWorkflow";
 export const apiGetWorkflowByEntity = (entityType: string) =>
   `${baseUrl}/api/workflow_approval/getWorkflowByEntity/${entityType}`;
@@ -117,6 +123,9 @@ export const apiGetTermsConditions    = baseUrl + "/api/terms_conditions/getTerm
 export const apiCreateTermsConditions = baseUrl + "/api/terms_conditions/createTermsConditions";
 export const apiUpdateTermsConditions = baseUrl + "/api/terms_conditions/updateTermsConditions";
 export const apiDeleteTermsConditions = baseUrl + "/api/terms_conditions/deleteTermsConditions";
+export const apiGetTermsConditionsForScope = (
+  com_sno: number | string, div_sno: number | string, brn_sno: number | string, dept_sno: number | string
+) => `${baseUrl}/api/terms_conditions/getTermsConditionsForScope?com_sno=${com_sno}&div_sno=${div_sno}&brn_sno=${brn_sno}&dept_sno=${dept_sno}`;
 export const apiGetDefaultTermsConditions = (
   com_sno: number | string, div_sno: number | string, brn_sno: number | string, dept_sno: number | string
 ) => `${baseUrl}/api/terms_conditions/getDefaultTermsConditions?com_sno=${com_sno}&div_sno=${div_sno}&brn_sno=${brn_sno}&dept_sno=${dept_sno}`;
@@ -135,6 +144,8 @@ export const apiDeleteProductStockLevel  = baseUrl + "/api/product_stock_level/d
 export const createPrRecord = baseUrl + "/api/pr/createPrRecords";
 export const getPrRecords = baseUrl + "/api/pr/getPrRecords";
 export const prApproveAction = baseUrl + "/api/pr/approvePr";
+// Conditional approval (sql/99): path, what the caller may do, forward / send-back targets, action log
+export const getPrApprovalContext = baseUrl + "/api/pr/getApprovalContext";
 
 // Purchase Order — Approval
 export const getPoRecords = baseUrl + "/api/po/getPoRecords";
@@ -192,6 +203,7 @@ export const purchaseTeamGetVendors = baseUrl + "/api/purchase_team/getApprovedV
 export const purchaseTeamCreateQuotation = baseUrl + "/api/purchase_team/createSupplierQuotation";
 export const purchaseTeamGetQuotations = (prBasicSno: number,pr_no: string) =>
   `${baseUrl}/api/purchase_team/getSupplierQuotations/${prBasicSno}/${pr_no}`;
+export const purchaseTeamGetQuotationSupplyInfo = baseUrl + "/api/purchase_team/getQuotationSupplyInfo";
 export const purchaseTeamSelectQuotation = baseUrl + "/api/purchase_team/selectQuotation";
 export const purchaseTeamCreatePO = baseUrl + "/api/purchase_team/createPOFromQuotation";
 export const purchaseTeamSendPOEmail = baseUrl + "/api/purchase_team/sendPOEmail";
@@ -260,6 +272,7 @@ export const approveServiceAgreement         = baseUrl + "/api/service_agreement
 export const getServiceAgreements            = baseUrl + "/api/service_agreement/getServiceAgreements";
 export const getServiceAgreementsForApproval = baseUrl + "/api/service_agreement/getServiceAgreementsForApproval";
 export const getServiceAgreementHistory      = baseUrl + "/api/service_agreement/getServiceAgreementHistory";
+export const uploadSignedAgreement          = baseUrl + "/api/service_agreement/uploadSignedAgreement";
 
 // Service GRN (Unfixed agreements only — PO reference + invoice, no stock tracking)
 export const createServiceGrn         = baseUrl + "/api/service_grn/createServiceGrn";
@@ -270,6 +283,7 @@ export const submitServicePoEntry        = baseUrl + "/api/service_po/submitServ
 export const approveServicePoCycle       = baseUrl + "/api/service_po/approveServicePoCycle";
 export const getServicePoCycles          = baseUrl + "/api/service_po/getServicePoCycles";
 export const getServicePoCyclesForApproval = baseUrl + "/api/service_po/getServicePoCyclesForApproval";
+export const uploadServicePoInvoice        = baseUrl + "/api/service_po/uploadInvoice";
 
 // Loan payments — rate history, interest calculator, bank payment vouchers
 export const getLoanAccounts                = baseUrl + "/api/loan_voucher/getLoanAccounts";

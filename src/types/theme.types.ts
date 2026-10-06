@@ -10,7 +10,23 @@ export type ThemeColor =
   | "green"
   | "amber"
   | "orange"
-  | "rose";
+  | "rose"
+  | "sky"
+  | "cyan"
+  | "emerald"
+  | "lime"
+  | "pink"
+  | "fuchsia"
+  | "red"
+  | "slate"
+  | "mint"
+  | "peach"
+  | "lavender"
+  | "babyblue"
+  | "blush"
+  | "lemon"
+  | "sage"
+  | "aqua";
 
 export type ThemeMode = "light" | "dark" | "system";
 

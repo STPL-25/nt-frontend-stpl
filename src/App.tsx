@@ -86,7 +86,7 @@ const router = createBrowserRouter([
   { path: "/", element: <RootRoute /> },
   { path: "/signup", element: <Signup /> },
    { path: "/Supplier", element: <SupplierPortal /> },
-  { path: "/supplier_kyc", element: <SupplierKycPage /> },
+  { path: "/supplier_onboarding", element: <SupplierKycPage /> },
   //  { path: "/store-incharge-approval", element: <StoreInchargeApprovalPage /> },
 ]);
 

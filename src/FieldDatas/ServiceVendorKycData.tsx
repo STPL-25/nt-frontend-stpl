@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useMasterOptions } from "../hooks/ReUsableHook/useMasterOptions";
-import { useBankFields } from "./KycFieldDatas";
+import { useBankFields, SUPPLIER_TYPE_OPTIONS } from "./KycFieldDatas";
 import type { FieldType } from "./fieldType/fieldType";
 
 interface CascadeOption {
@@ -67,8 +67,9 @@ function orgCascadeFields(CompanyMaster: any, divisionOptions: any, branchOption
 /**
  * Fields for the Service Vendor KYC create form — org scope, basic company/
  * contact/PAN/GST/MSME info, a single primary bank account (reuses the goods-
- * KYC's useBankFields verbatim) and a preferred payment mode. No address
- * section (a service vendor's work site varies per engagement).
+ * KYC's useBankFields verbatim) and a preferred payment mode. No full address
+ * section (a service vendor's work site varies per engagement) — just the
+ * town/city/state/state code the GST lookup itself returns.
  */
 export const useServiceVendorKycFields = (params: OrgCascadeParams): FieldType[] => {
   const { options } = useMasterOptions([
@@ -87,7 +88,7 @@ export const useServiceVendorKycFields = (params: OrgCascadeParams): FieldType[]
       { field: "mobile_number", label: "Mobile Number", require: true, type: "text", placeholder: "+91 98765 43210", input: true, view: true },
       { field: "email", label: "Email Address", require: true, type: "email", placeholder: "vendor@example.com", input: true, view: true },
       { field: "business_type", label: "Business Type", require: true, type: "select", options: options?.BusinessDetailsMatster, placeholder: "Select business type", input: true, view: true },
-      { field: "supplier_cat_code", label: "Category", require: false, type: "select", options: options?.SupplierCatagoryMaster, placeholder: "Select category", input: true, view: true },
+      { field: "supplier_cat_code", label: "Supplier Type", require: false, type: "select", options: SUPPLIER_TYPE_OPTIONS, placeholder: "Select supplier type", input: true, view: true },
       { field: "pan_no", label: "PAN Number", require: true, type: "text", placeholder: "ABCDE1234F", input: true, view: true },
       {
         field: "is_gst_avail", label: "GST Available", require: true, type: "radio", input: true, view: true,
@@ -99,6 +100,12 @@ export const useServiceVendorKycFields = (params: OrgCascadeParams): FieldType[]
         options: [{ label: "Yes", value: "true" }, { label: "No", value: "false" }],
       },
       { field: "msme_no", label: "MSME Number", require: false, type: "text", placeholder: "UDYAM-XX-00-0000000", input: true, view: true },
+
+      // Auto-filled from the GST lookup only (no full address section — see module note above).
+      { field: "taluk", label: "Town", require: false, type: "text", placeholder: "Auto-filled from GST", input: true, view: true },
+      { field: "city", label: "City", require: false, type: "text", placeholder: "Auto-filled from GST", input: true, view: true },
+      { field: "state", label: "State", require: false, type: "text", placeholder: "Auto-filled from GST", input: true, view: true },
+      { field: "state_code", label: "State Code", require: false, type: "text", placeholder: "Auto-filled from GST", input: true, view: true },
 
       ...bankFields,
       { field: "preferred_payment_mode", label: "Preferred Payment Mode", require: false, type: "select", options: options?.PaymentModeMaster, placeholder: "Select payment mode", input: true, view: true },

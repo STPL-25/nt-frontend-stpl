@@ -383,6 +383,9 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
           if (selectedProduct.uom_sno) {
             updated.unit_sno = String(selectedProduct.uom_sno);
             updated.unit_name = selectedProduct.uom_name ?? '';
+          } else {
+            updated.unit_sno = '';
+            updated.unit_name = '';
           }
         }
       }
@@ -410,6 +413,27 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   };
 
   // ── Item CRUD ─────────────────────────────────────────────────────────────
+
+  // UOM dropdown order for the selected product: its own UOM first, then UOMs
+  // related to it (same class, or its conversion unit), then everything else.
+  const orderedUnitOptions = useMemo(() => {
+    const uoms = ((itemDetailsFields.find((f) => f.field === 'unit_sno')?.options as any[]) ?? []);
+    const prods = ((itemDetailsFields.find((f) => f.field === 'prod_sno')?.options as any[]) ?? []);
+    const product = prods.find((p) => String(p.value) === String(currentItem.prod_sno));
+    if (!product?.uom_sno) return uoms;
+    const own = uoms.find((u) => String(u.value) === String(product.uom_sno));
+    const ownClass = own?.uom_class;
+    const rank = (u: any) => {
+      if (String(u.value) === String(product.uom_sno)) return 0;
+      if (product.prod_uom_con_uom_sno && String(u.value) === String(product.prod_uom_con_uom_sno)) return 1;
+      if (ownClass && u.uom_class === ownClass) return 1;
+      return 2;
+    };
+    return uoms
+      .map((u, i) => ({ u, i, r: rank(u) }))
+      .sort((a, b) => a.r - b.r || a.i - b.i)
+      .map((x) => x.u);
+  }, [itemDetailsFields, currentItem.prod_sno]);
 
   const inputItemFields = useMemo(
     () => itemDetailsFields.filter((f) => f.input),
@@ -978,7 +1002,7 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
                           label={field.label}
                           require={field.require}
                           type={field.type}
-                          options={field.options}
+                          options={field.field === 'unit_sno' ? orderedUnitOptions : field.options}
                           value={currentItem[field.field] ?? ''}
                           onChange={(value) => handleItemFieldChange(field.field, value)}
                           error={itemErrors[field.field]}

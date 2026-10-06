@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from 'react';
+import axios from 'axios';
+import { purchaseTeamGetQuotationSupplyInfo } from '@/Services/Api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -8,13 +10,13 @@ import {
 } from '@/components/ui/dialog';
 import {
   Users, Send, Loader2, CreditCard, RefreshCcw, Paperclip,
-  FileText, X, ChevronRight, CheckCircle2, Lock, Info,
+  ChevronRight, CheckCircle2, Lock, Info,
   Download, Upload, AlertCircle,
 } from 'lucide-react';
 import { downloadQuotationItemsExcel, parseQuotationItemsExcel } from '@/utils/excelUtils';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { useQuotationHeaderFields, useQuotationItemFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
-import type { QuotationItem, QuotationFormState, AdvancePaymentData } from './types';
+import type { QuotationItem, QuotationFormState, AdvancePaymentData, Vendor } from './types';
 import { formatINR, calcQuotationTotals, recalcItemTotal, today } from './helpers';
 import AdvancePaymentDialog from './AdvancePaymentDialog';
 
@@ -23,28 +25,41 @@ interface QuotationDialogProps {
   onOpenChange: (open: boolean) => void;
   quotationItems: QuotationItem[];
   defaultQuotationRefNo?: string;
+  /** Selected supplier — its KYC MSME flag/type pre-fills the quotation's MSME fields. */
+  vendor?: Vendor | null;
+  /** Billing company — its GSTIN state prefix is compared with the supplier's to decide intrastate vs interstate. */
+  comSno?: number | string | null;
   onSubmit: (form: QuotationFormState, items: QuotationItem[], file: File | null) => Promise<void>;
 }
 
 const MAX_FILE_MB = 10;
-const ACCEPTED_FILE = 'image/png,image/jpeg,image/jpg,image/webp,application/pdf';
 
 const INITIAL_FORM: QuotationFormState = {
   quotation_ref_no: '',
   quotation_date: today(),
   valid_upto: '',
   currency_code: 'INR',
-  payment_terms: 'Net 30',
+  payment_terms: '',
   delivery_days: 0,
   remarks: '',
   buyback_available: false,
   buyback_value: 0,
   advance_payment_required: false,
   advance_payment_pct: 0,
+  freight_charges: 0,
+  other_charges: 0,
 };
 
+interface SupplyInfo {
+  is_msme: string | null;
+  msme_type: string | null;
+  vendor_gst: string | null;
+  company_gst: string | null;
+  is_intrastate: boolean | null;
+}
+
 const QuotationDialog: React.FC<QuotationDialogProps> = ({
-  open, onOpenChange, quotationItems: initialItems, defaultQuotationRefNo, onSubmit,
+  open, onOpenChange, quotationItems: initialItems, defaultQuotationRefNo, vendor, comSno, onSubmit,
 }) => {
   const headerFields = useQuotationHeaderFields();
   const itemFields = useQuotationItemFields();
@@ -78,6 +93,9 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
   const [showAdvanceDialog, setShowAdvanceDialog] = useState(false);
   const [excelErrors, setExcelErrors] = useState<string[]>([]);
   const [excelUploading, setExcelUploading] = useState(false);
+  // MSME + intrastate/interstate are never entered: fetched from the supplier KYC and GST state prefixes.
+  const [supply, setSupply] = useState<SupplyInfo | null>(null);
+  const [supplyLoading, setSupplyLoading] = useState(false);
 
   React.useEffect(() => {
     if (open) {
@@ -89,6 +107,19 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
       setShowAdvanceDialog(false);
     }
   }, [open, initialItems, defaultQuotationRefNo]);
+
+  React.useEffect(() => {
+    const vendorSno = vendor?.kyc_basic_info_sno ?? vendor?.vendor_sno;
+    if (!open || !vendorSno) { setSupply(null); return; }
+    let cancelled = false;
+    setSupplyLoading(true);
+    axios
+      .get(purchaseTeamGetQuotationSupplyInfo, { params: { vendor_sno: vendorSno, com_sno: comSno ?? undefined }, withCredentials: true })
+      .then(res => { if (!cancelled) setSupply(res.data?.data ?? null); })
+      .catch(() => { if (!cancelled) setSupply(null); })
+      .finally(() => { if (!cancelled) setSupplyLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, vendor, comSno]);
 
   const handleDownloadExcel = () => {
     downloadQuotationItemsExcel(
@@ -133,6 +164,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
     }
   };
 
+  // Delete (null) and Re-upload (a new File) both come through here; the file only reaches the server on submit.
   const handlePickFile = (f: File | null) => {
     setFileError('');
     if (!f) { setFile(null); return; }
@@ -160,9 +192,15 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
   );
   const totals = useMemo(() => calcQuotationTotals(selectedItems), [selectedItems]);
 
+  // Quotation-level extras (not per item)
+  const freight = Math.max(0, Number(form.freight_charges) || 0);
+  const otherCharges = Math.max(0, Number(form.other_charges) || 0);
+  const grandWithCharges = totals.grandTotal + freight + otherCharges;
+  const intrastate = supply?.is_intrastate === true;
+
   // Global buyback from form state
   const totalBuyback = form.buyback_available ? (form.buyback_value || 0) : 0;
-  const netAfterBuyback = totals.grandTotal - totalBuyback;
+  const netAfterBuyback = grandWithCharges - totalBuyback;
 
   // Advance payment is only enabled when every selected item has a unit price AND tax entered
   const canEnableAdvance = selectedItems.length > 0
@@ -227,6 +265,26 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
           ))}
         </div>
 
+        {/* ── Supplier tax profile (read-only, from KYC + GST) ─────────────── */}
+        <div className="rounded-lg border bg-muted/30 p-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Supplier MSME (from KYC)</div>
+            <div className="font-medium">
+              {supplyLoading ? 'Loading…' : supply?.is_msme === 'Y' ? `Yes${supply.msme_type ? ` — ${supply.msme_type}` : ''}` : supply?.is_msme === 'N' ? 'No' : '—'}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Supply Type</div>
+            <div className="font-medium">
+              {supplyLoading ? 'Loading…' : supply?.is_intrastate === true ? 'Intrastate (CGST + SGST)' : supply?.is_intrastate === false ? 'Interstate (IGST)' : 'Not determined (IGST shown)'}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70">GSTIN — ours / supplier</div>
+            <div className="font-medium break-all">{supply?.company_gst ?? '—'} / {supply?.vendor_gst ?? '—'}</div>
+          </div>
+        </div>
+
         {textareaHeaderFields.map(field => (
           <CustomInputField
             key={field.field}
@@ -250,7 +308,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
               {!canEnableAdvance && (
                 <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
                   <Lock size={11} />
-                  Enter unit price &amp; tax for all items to enable
+                  Enter unit price &amp; GST for all items to enable
                 </span>
               )}
             </div>
@@ -391,7 +449,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
         {/* ── Excel import/export toolbar ───────────────────────────────────── */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-xs text-muted-foreground">
-            {items.length} item{items.length !== 1 ? 's' : ''} — fill unit price, discount &amp; tax below
+            {items.length} item{items.length !== 1 ? 's' : ''} — fill unit price, discount &amp; GST below
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -609,7 +667,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
         {!canEnableAdvance && selectedItems.length > 0 && (
           <p className="flex items-center gap-1.5 text-[11px] text-amber-600">
             <Info size={11} />
-            Fields highlighted in amber need unit price &amp; tax to unlock Advance Payment.
+            Fields highlighted in amber need unit price &amp; GST to unlock Advance Payment.
           </p>
         )}
 
@@ -624,13 +682,38 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
               <span>Discount</span>
               <span className="font-medium text-red-600">-{formatINR(totals.discount)}</span>
             </div>
-            <div className="flex justify-between text-muted-foreground">
-              <span>Tax</span>
-              <span className="font-medium">{formatINR(totals.tax)}</span>
-            </div>
+            {intrastate ? (
+              <>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>CGST</span>
+                  <span className="font-medium">{formatINR(totals.tax / 2)}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>SGST</span>
+                  <span className="font-medium">{formatINR(totals.tax / 2)}</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between text-muted-foreground">
+                <span>IGST</span>
+                <span className="font-medium">{formatINR(totals.tax)}</span>
+              </div>
+            )}
+            {freight > 0 && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Freight Charges</span>
+                <span className="font-medium">{formatINR(freight)}</span>
+              </div>
+            )}
+            {otherCharges > 0 && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Other Charges</span>
+                <span className="font-medium">{formatINR(otherCharges)}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t pt-1 font-bold">
               <span>Grand Total</span>
-              <span className="text-primary">{formatINR(totals.grandTotal)}</span>
+              <span className="text-primary">{formatINR(grandWithCharges)}</span>
             </div>
             {totalBuyback > 0 && (
               <>
@@ -660,45 +743,23 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
           </div>
         </div>
 
-        {/* ── File upload ───────────────────────────────────────────────────── */}
-        <div className="rounded-lg border border-dashed border-primary/20 bg-primary/10/40 p-3">
-          <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-primary">
+        {/* ── File upload (same view / re-upload / delete control as the KYC entry screen) ── */}
+        <div className="rounded-lg border border-dashed border-primary/20 p-3 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-semibold text-primary">
             <Paperclip size={14} />
             Quotation Document
             <span className="text-[10px] font-normal text-muted-foreground/70">
               (image or PDF, optional, max {MAX_FILE_MB}MB)
             </span>
           </div>
-          {file ? (
-            <div className="flex items-center gap-2 bg-card border rounded px-2.5 py-1.5">
-              <FileText size={16} className="text-primary shrink-0" />
-              <span className="text-xs font-medium text-foreground truncate flex-1">{file.name}</span>
-              <span className="text-[10px] text-muted-foreground/70 shrink-0">
-                {(file.size / 1024).toFixed(0)} KB
-              </span>
-              <button
-                type="button"
-                className="text-muted-foreground/50 hover:text-red-500"
-                onClick={() => handlePickFile(null)}
-                title="Remove file"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          ) : (
-            <label className="flex items-center gap-2 cursor-pointer text-xs text-primary hover:text-primary">
-              <span className="inline-flex items-center gap-1.5 border border-primary/40 rounded px-2.5 py-1.5 bg-card hover:bg-primary/10">
-                <Paperclip size={13} /> Choose file…
-              </span>
-              <input
-                type="file"
-                accept={ACCEPTED_FILE}
-                className="hidden"
-                onChange={e => handlePickFile(e.target.files?.[0] ?? null)}
-              />
-            </label>
-          )}
-          {fileError && <p className="text-[11px] text-red-500 mt-1">{fileError}</p>}
+          <CustomInputField
+            field="quotation_file"
+            label="Quotation Document"
+            type="file"
+            value={file}
+            onChange={(f: File | null) => handlePickFile(f)}
+          />
+          {fileError && <p className="text-[11px] text-red-500">{fileError}</p>}
         </div>
 
         <DialogFooter>

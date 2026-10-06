@@ -3,7 +3,10 @@ import {
   buildWorkflowLabels,
   planTypeRowSync,
   workflowShortLabel,
+  serializeStages,
+  validateStageRouting,
 } from "@/Application/RoleApproval/workflowUtils";
+import type { ConditionFieldDef } from "@/Application/RoleApproval/approvalConditions";
 import type { WorkflowMasterRow } from "@/Application/RoleApproval/types/ApprovalWorkflowManagerTypes";
 
 const wf = (over: Partial<WorkflowMasterRow> & { workflow_id: number }): WorkflowMasterRow => ({
@@ -134,5 +137,82 @@ describe("planTypeRowSync", () => {
   it("drops a legacy branch-only row when its branch is deselected", () => {
     const legacy = [{ id: 19, dept_sno: "", brn_sno: "1" }];
     expect(planTypeRowSync(legacy, [], ["4"]).remove).toEqual(legacy);
+  });
+});
+
+describe("stage routing (conditions + alternates), driven by the field registry", () => {
+  const PR_FIELDS: ConditionFieldDef[] = [
+    { field_key: "amount", field_label: "Amount (PR total)", value_kind: "number", unit: "INR" },
+    { field_key: "priority", field_label: "Priority", value_kind: "list", option_source: "PriorityMaster" },
+  ];
+  const PAYMENT_FIELDS: ConditionFieldDef[] = [
+    { field_key: "amount", field_label: "Payment amount", value_kind: "number", unit: "INR" },
+    { field_key: "days_overdue", field_label: "Days overdue", value_kind: "number", unit: "days" },
+  ];
+  const stage = (over: Record<string, unknown> = {}) => ({
+    approver_ecno: "A1", stage: "Admin", required_approvals: "1", is_mandatory: "Y", escalation_hours: "24",
+    approver_condition: "", next_approver_ecno: "", can_forward: "Y", can_backward: "N", can_edit_data: "N",
+    ...over,
+  });
+  const gt = (n: number, field = "amount") => ({ match: "all" as const, rules: [{ field, op: "gt" as const, value: n }] });
+  const blank = { match: "all" as const, rules: [{ field: "amount", op: "gt" as const, value: null }] };
+
+  it("serializeStages keeps a condition and alternates when the workflow type has fields", () => {
+    const out = JSON.parse(
+      serializeStages([stage(), stage({ approver_ecno: "GM", stage: "GM", condition: gt(50000), alternates: ["X", "X", "Y", ""] })], PR_FIELDS)
+    );
+    expect(out[0]).not.toHaveProperty("condition");
+    expect(out[0]).not.toHaveProperty("alternates");
+    expect(out[1].condition).toEqual(gt(50000));
+    expect(out[1].alternates).toEqual(["X", "Y"]);
+  });
+
+  it("serializeStages drops an empty condition and untouched stages stay byte-compatible", () => {
+    const out = JSON.parse(serializeStages([stage({ condition: { match: "all", rules: [] }, alternates: [] })], PR_FIELDS));
+    expect(out[0]).toEqual(stage());
+  });
+
+  it("serializeStages strips routing keys for a workflow type with NO fields (they would be silently ignored)", () => {
+    const out = JSON.parse(serializeStages([stage({ condition: gt(1), alternates: ["X"] })], []));
+    expect(out[0]).toEqual(stage());
+  });
+
+  it("serializeStages leaves everything exactly as loaded while the fields are not known — never strips on 'unknown'", () => {
+    const stages = [stage({ condition: gt(1), alternates: ["X"] }), stage({ condition: blank })];
+    expect(JSON.parse(serializeStages(stages, null))).toEqual(stages);
+  });
+
+  it("validateStageRouting: a workflow type with no fields has nothing to check", () => {
+    expect(validateStageRouting([stage({ condition: gt(1) })], [])).toBeNull();
+  });
+
+  it("validateStageRouting: fields not known yet blocks a save that carries conditions or alternates, but not one that does not", () => {
+    expect(validateStageRouting([stage(), stage({ condition: gt(1) })], null)).toMatch(/could not be loaded yet/);
+    expect(validateStageRouting([stage({ alternates: ["B1"] })], null)).toMatch(/could not be loaded yet/);
+    expect(validateStageRouting([stage(), stage({ approver_ecno: "GM", stage: "GM" })], null)).toBeNull();
+  });
+
+  it("validateStageRouting rejects a condition on the first stage", () => {
+    expect(validateStageRouting([stage({ condition: gt(1) })], PR_FIELDS)).toMatch(/first stage.*always required/);
+  });
+
+  it("validateStageRouting names an incomplete rule, and the stage it is on", () => {
+    expect(validateStageRouting([stage(), stage({ stage: "GM", condition: blank })], PR_FIELDS)).toMatch(/"GM": Rule 1: enter a value for amount \(pr total\)/);
+  });
+
+  it("validateStageRouting checks a rule against the fields of THIS kind of workflow", () => {
+    const stages = [stage(), stage({ stage: "GM", condition: gt(5, "days_overdue") })];
+    expect(validateStageRouting(stages, PAYMENT_FIELDS)).toBeNull();
+    expect(validateStageRouting(stages, PR_FIELDS)).toMatch(/"GM": Rule 1: "days_overdue" is not available for this kind of workflow/);
+  });
+
+  it("validateStageRouting rejects the approver being their own alternate", () => {
+    expect(validateStageRouting([stage({ alternates: ["A1"] })], PR_FIELDS)).toMatch(/alternate approver cannot be the approver/);
+  });
+
+  it("validateStageRouting passes a good chain", () => {
+    expect(
+      validateStageRouting([stage({ alternates: ["B1"] }), stage({ approver_ecno: "GM", stage: "GM", condition: gt(50000) })], PR_FIELDS)
+    ).toBeNull();
   });
 });

@@ -71,7 +71,7 @@ describe("themeSlice — persists to localStorage", () => {
 
 describe("THEME_COLORS constant", () => {
   it("has 8 color entries", () => {
-    expect(THEME_COLORS.length).toBe(8);
+    expect(THEME_COLORS.length).toBe(24);
   });
 
   it("all entries have required fields", () => {

@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { SupplierDownloadButtons } from '@/Application/SupplierStatus/SupplierFullDetailsView';
 import { cn } from '@/lib/utils';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { getAuthFileUrl } from '@/Services/authUrl';
@@ -107,86 +109,123 @@ function KycListCard({ kyc, isSelected, onClick }: { kyc: KYCApprovalRecord; isS
 
 // ─── Detail sections ───────────────────────────────────────────────────────
 
-function AddressesPanel({ addresses }: { addresses: any[] }) {
+/**
+ * A panel that shows the primary entry and, when more were entered, a "View all N" button that opens
+ * every entry (other places of business, other bank accounts, other contacts) with all their fields.
+ */
+function EntriesPanel<T extends Record<string, any>>({ icon, title, noun, items, emptyText, isPrimary, renderCard }: {
+  icon: LucideIcon; title: string; noun: string; items: T[]; emptyText: string;
+  isPrimary: (item: T) => boolean;
+  renderCard: (item: T, idx: number) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  // primary first, so the collapsed view always shows the main one
+  const ordered = useMemo(() => [...items].sort((x, y) => Number(isPrimary(y)) - Number(isPrimary(x))), [items, isPrimary]);
+  const more = ordered.length - 1;
+
   return (
-    <Panel icon={MapPin} title="Addresses" description={`${addresses.length} on file`}>
-      {addresses.length === 0 ? <EmptyNote>No addresses found.</EmptyNote> : (
+    <Panel icon={icon} title={title} description={`${items.length} ${noun}${items.length !== 1 ? "s" : ""} on file`}>
+      {items.length === 0 ? <EmptyNote>{emptyText}</EmptyNote> : (
         <div className="space-y-3">
-          {addresses.map((addr, idx) => (
-            <EntryCard key={idx} icon={MapPin} title={`Address ${idx + 1}`} primary={String(addr.address_type).toUpperCase() === 'PRIMARY'}>
-              <FactGrid>
-                <Fact label="Street / Door">{[addr.door_no, addr.street].filter(Boolean).join(', ') || '—'}</Fact>
-                <Fact label="Area">{addr.area || '—'}</Fact>
-                <Fact label="City">{addr.city || '—'}</Fact>
-                {addr.taluk && <Fact label="Taluk">{addr.taluk}</Fact>}
-                <Fact label="State">{addr.state || '—'}</Fact>
-                <Fact label="Pincode"><span className="font-mono">{addr.pincode || '—'}</span></Fact>
-                {addr.location_link && (
-                  <Fact label="Location">
-                    <a href={addr.location_link} target="_blank" rel="noopener noreferrer" className={cn('inline-flex items-center gap-1', linkClass)}>
-                      <MapPin className="h-3 w-3" />View on map
-                    </a>
-                  </Fact>
-                )}
-              </FactGrid>
-            </EntryCard>
-          ))}
+          {renderCard(ordered[0], 0)}
+          {more > 0 && (
+            <Button type="button" variant="outline" size="sm" className="w-full gap-1.5" onClick={() => setOpen(true)}>
+              <Eye className="h-4 w-4" />View all {ordered.length} {noun}s ({more} more)
+            </Button>
+          )}
         </div>
       )}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{title} — all {ordered.length}</DialogTitle>
+            <DialogDescription>Everything entered in the KYC form, including the primary one.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">{ordered.map((item, idx) => renderCard(item, idx))}</div>
+        </DialogContent>
+      </Dialog>
     </Panel>
+  );
+}
+
+const isPrimaryAddress = (a: any) => String(a.address_type).toUpperCase() === "PRIMARY" || a.is_primary === "Y";
+const isPrimaryBank = (b: any) => b.is_primary === "Y";
+const isPrimaryContact = (c: any) => String(c.contact_type).toUpperCase() === "PRIMARY";
+
+function AddressesPanel({ addresses }: { addresses: any[] }) {
+  return (
+    <EntriesPanel
+      icon={MapPin} title="Addresses" noun="address" items={addresses} emptyText="No addresses found." isPrimary={isPrimaryAddress}
+      renderCard={(addr, idx) => (
+        <EntryCard key={idx} icon={MapPin} title={isPrimaryAddress(addr) ? "Primary address" : addr.address_type ? `${addr.address_type} — place of business` : `Address ${idx + 1}`} primary={isPrimaryAddress(addr)}>
+          <FactGrid>
+            <Fact label="Door / Building">{addr.door_no || "—"}</Fact>
+            <Fact label="Street">{addr.street || "—"}</Fact>
+            <Fact label="Area">{addr.area || "—"}</Fact>
+            <Fact label="City">{addr.city || "—"}</Fact>
+            {addr.taluk && <Fact label="Taluk">{addr.taluk}</Fact>}
+            <Fact label="State">{addr.state || "—"}</Fact>
+            <Fact label="Pincode"><span className="font-mono">{addr.pincode || "—"}</span></Fact>
+            {addr.location_link && (
+              <Fact label="Location">
+                <a href={addr.location_link} target="_blank" rel="noopener noreferrer" className={cn("inline-flex items-center gap-1", linkClass)}>
+                  <MapPin className="h-3 w-3" />View on map
+                </a>
+              </Fact>
+            )}
+          </FactGrid>
+        </EntryCard>
+      )}
+    />
   );
 }
 
 function BankPanel({ banks }: { banks: any[] }) {
   return (
-    <Panel icon={Landmark} title="Bank details" description={`${banks.length} account${banks.length !== 1 ? 's' : ''}`}>
-      {banks.length === 0 ? <EmptyNote>No bank accounts found.</EmptyNote> : (
-        <div className="space-y-3">
-          {banks.map((bank, idx) => (
-            <EntryCard key={idx} icon={Landmark} title={bank.bank_name || `Bank ${idx + 1}`} primary={bank.is_primary === 'Y'}>
-              <FactGrid>
-                <Fact label="Account holder">{bank.ac_holder_name || '—'}</Fact>
-                <Fact label="Account number"><span className="font-mono">{bank.ac_number || '—'}</span></Fact>
-                {/* ac_type is the master id; ac_type_name is what the SP resolved it to */}
-                <Fact label="Account type">{bank.ac_type_name || bank.ac_type || '—'}</Fact>
-                <Fact label="IFSC"><span className="font-mono">{bank.ifsc || '—'}</span></Fact>
-                <Fact label="Bank">{bank.bank_name || '—'}</Fact>
-                <Fact label="Branch">{bank.bank_branch_name || '—'}</Fact>
-              </FactGrid>
-            </EntryCard>
-          ))}
-        </div>
+    <EntriesPanel
+      icon={Landmark} title="Bank details" noun="account" items={banks} emptyText="No bank accounts found." isPrimary={isPrimaryBank}
+      renderCard={(bank, idx) => (
+        <EntryCard key={idx} icon={Landmark} title={bank.bank_name || `Bank ${idx + 1}`} primary={isPrimaryBank(bank)}>
+          <FactGrid>
+            <Fact label="Account holder">{bank.ac_holder_name || "—"}</Fact>
+            <Fact label="Account number"><span className="font-mono">{bank.ac_number || "—"}</span></Fact>
+            {/* ac_type is the master id; ac_type_name is what the SP resolved it to */}
+            <Fact label="Account type">{bank.ac_type_name || bank.ac_type || "—"}</Fact>
+            <Fact label="IFSC"><span className="font-mono">{bank.ifsc || "—"}</span></Fact>
+            <Fact label="Bank">{bank.bank_name || "—"}</Fact>
+            <Fact label="Branch">{bank.bank_branch_name || "—"}</Fact>
+            {bank.bank_address && <Fact label="Bank address">{bank.bank_address}</Fact>}
+          </FactGrid>
+        </EntryCard>
       )}
-    </Panel>
+    />
   );
 }
 
 function ContactsPanel({ contacts }: { contacts: any[] }) {
   return (
-    <Panel icon={Users} title="Contacts" description={`${contacts.length} on file`}>
-      {contacts.length === 0 ? <EmptyNote>No contacts found.</EmptyNote> : (
-        <div className="space-y-3">
-          {contacts.map((c, idx) => {
-            const name = c.contact_name || c.ownername || '—';
-            const position = c.contact_position || c.ownerposition || '';
-            const mobile = c.contact_mobile || c.ownermobile || '';
-            const email = c.contact_email || c.owneremail || '';
-            return (
-              <EntryCard key={idx} icon={User} title={position ? `${name} — ${position}` : name} primary={String(c.contact_type).toUpperCase() === 'PRIMARY'}>
-                <FactGrid>
-                  <Fact label="Mobile">
-                    {mobile ? <a href={`tel:${mobile}`} className={linkClass}>{mobile}</a> : '—'}
-                  </Fact>
-                  <Fact label="Email">
-                    {email ? <a href={`mailto:${email}`} className={cn('break-all', linkClass)}>{email}</a> : '—'}
-                  </Fact>
-                </FactGrid>
-              </EntryCard>
-            );
-          })}
-        </div>
-      )}
-    </Panel>
+    <EntriesPanel
+      icon={Users} title="Contacts" noun="contact" items={contacts} emptyText="No contacts found." isPrimary={isPrimaryContact}
+      renderCard={(c, idx) => {
+        const name = c.contact_name || c.ownername || "—";
+        const position = c.contact_position || c.ownerposition || "";
+        const mobile = c.contact_mobile || c.ownermobile || "";
+        const email = c.contact_email || c.owneremail || "";
+        return (
+          <EntryCard key={idx} icon={User} title={position ? `${name} — ${position}` : name} primary={isPrimaryContact(c)}>
+            <FactGrid>
+              {c.contact_type && <Fact label="Type">{c.contact_type}</Fact>}
+              <Fact label="Mobile">
+                {mobile ? <a href={`tel:${mobile}`} className={linkClass}>{mobile}</a> : "—"}
+              </Fact>
+              <Fact label="Email">
+                {email ? <a href={`mailto:${email}`} className={cn("break-all", linkClass)}>{email}</a> : "—"}
+              </Fact>
+            </FactGrid>
+          </EntryCard>
+        );
+      }}
+    />
   );
 }
 
@@ -360,6 +399,11 @@ function KycDetailPanel({ kyc, handleAction }: { kyc: KYCApprovalRecord; handleA
               ]}
             />
 
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card px-4 py-3">
+              <p className="text-sm text-muted-foreground">Download every detail entered for this supplier</p>
+              <SupplierDownloadButtons source="KYC" recordId={kyc.kyc_basic_info_sno} />
+            </div>
+
             <Panel icon={IdCard} title="Contact & registration">
               <FactGrid>
                 <Fact label="Contact person">{kyc.contact_person || '—'}</Fact>
@@ -369,7 +413,10 @@ function KycDetailPanel({ kyc, handleAction }: { kyc: KYCApprovalRecord; handleA
                 <Fact label="Email">
                   {kyc.email ? <a href={`mailto:${kyc.email}`} className={cn('break-all', linkClass)}>{kyc.email}</a> : '—'}
                 </Fact>
+                <Fact label="PAN no.">{kyc.pan_no ? <span className="font-mono">{kyc.pan_no}</span> : '—'}</Fact>
+                <Fact label="PAN status">{kyc.pan_status || '—'}</Fact>
                 <Fact label="MSME no.">{kyc.msme_no || '—'}</Fact>
+                <Fact label="MSME type">{kyc.msme_type || '—'}</Fact>
                 {kyc.legal_name && <Fact label="Legal name">{kyc.legal_name}</Fact>}
                 {kyc.trade_name && <Fact label="Trade name">{kyc.trade_name}</Fact>}
                 <Fact label="Submitted on">{formatDate(kyc.created_date)}</Fact>

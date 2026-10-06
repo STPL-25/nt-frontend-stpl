@@ -9,6 +9,10 @@ interface SidebarDetailLayoutProps {
   sidebarTitle: string;
   sidebarCount: number;
   sidebarCountLabel?: string;
+  /** Overrides the default `label + 's'` plural (e.g. entry → entries). */
+  sidebarCountLabelPlural?: string;
+  /** Replaces the word "pending" in the count line. */
+  sidebarCountQualifier?: string;
   /** Render prop: receives a closeSheet fn so list items can dismiss the mobile drawer on selection */
   listItems: (closeSheet: () => void) => React.ReactNode;
   detailContent: React.ReactNode;
@@ -24,6 +28,8 @@ export default function SidebarDetailLayout({
   sidebarTitle,
   sidebarCount,
   sidebarCountLabel = 'request',
+  sidebarCountLabelPlural,
+  sidebarCountQualifier = 'pending',
   listItems,
   detailContent,
   emptyContent,
@@ -44,8 +50,8 @@ export default function SidebarDetailLayout({
           {sidebarTitle}
         </h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          {sidebarCount} pending {sidebarCountLabel}
-          {sidebarCount !== 1 ? 's' : ''}
+          {sidebarCount} {sidebarCountQualifier}{' '}
+          {sidebarCount !== 1 ? (sidebarCountLabelPlural ?? `${sidebarCountLabel}s`) : sidebarCountLabel}
         </p>
       </div>
     </div>
@@ -108,7 +114,7 @@ export default function SidebarDetailLayout({
               <p className="font-semibold text-sm truncate flex-1">{mobileSelectionTitle}</p>
             )}
             <Badge variant="outline" className="text-xs shrink-0">
-              {sidebarCount} pending
+              {sidebarCount} {sidebarCountQualifier}
             </Badge>
           </div>
 

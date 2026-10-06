@@ -8,12 +8,13 @@ import {
 } from '@/components/ui/dialog';
 import {
   CheckCircle2, XCircle, Clock, Check, Repeat, Wallet, Layers, Search, X, ListChecks, Landmark, Users,
+  ArrowRightCircle, ArrowLeftCircle, History, User,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
-  AGREEMENT_TYPE_LABEL, TONE, computeAmount, formatINR,
-  type AgreementType, type SupplierShare, type Tone,
+  AGREEMENT_TYPE_LABEL, TONE, computeAmount, formatDate, formatINR,
+  type AgreementType, type ApprovalAction, type ApprovalRoute, type SupplierShare, type Tone,
 } from '@/CustomComponent/ServiceComponents/serviceUtils';
 
 // Shared presentational pieces for the Service Agreement / Service PO screens
@@ -473,11 +474,23 @@ export function ApprovalStepper({ stages, currentApproverId, currentUserEcno }: 
   );
 }
 
-export function DecisionButtons({ onApprove, onReject, approveLabel, rejectLabel, className }: {
+export function DecisionButtons({ onApprove, onReject, onForward, onSendBack, approveLabel, rejectLabel, className }: {
   onApprove: () => void; onReject: () => void; approveLabel: string; rejectLabel: string; className?: string;
+  /** Passed only when the approver's stage allows it (see approvalRoutes). */
+  onForward?: () => void; onSendBack?: () => void;
 }) {
   return (
     <div className={cn('flex gap-2', className)}>
+      {onForward && (
+        <Button onClick={onForward} variant="outline" className="h-11 flex-1 gap-1.5">
+          <ArrowRightCircle className="h-4 w-4" />Forward
+        </Button>
+      )}
+      {onSendBack && (
+        <Button onClick={onSendBack} variant="outline" className="h-11 flex-1 gap-1.5">
+          <ArrowLeftCircle className="h-4 w-4" />Send back
+        </Button>
+      )}
       <Button
         onClick={onApprove}
         className="h-11 flex-1 bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500/40"
@@ -488,6 +501,40 @@ export function DecisionButtons({ onApprove, onReject, approveLabel, rejectLabel
         <XCircle className="h-4 w-4" />{rejectLabel}
       </Button>
     </div>
+  );
+}
+
+const ACTION_ICON_LABEL: Record<string, string> = {
+  APPROVED: 'Approved', REJECTED: 'Rejected', FORWARDED: 'Forwarded', SENT_BACK: 'Sent back',
+  SUBMITTED: 'Submitted', RESUBMITTED: 'Resubmitted', RENEWED: 'Renewed', ENTRY_SUBMITTED: 'Rate entered',
+  CYCLE_CREATED: 'Cycle created',
+};
+const ACTION_TONE: Record<string, Tone> = {
+  APPROVED: 'success', REJECTED: 'danger', FORWARDED: 'info', SENT_BACK: 'warning',
+};
+
+/** Recent activity on the item — so a forward / send-back reason reaches whoever receives it. */
+export function ApprovalActivity({ history }: { history?: { action_type: string; status_by?: string; comment?: string; created_at?: string }[] }) {
+  if (!history?.length) return null;
+  return (
+    <Panel icon={History} title="Recent activity" description="Latest first">
+      <ul className="space-y-3">
+        {history.map((h, i) => (
+          <li key={i} className="flex items-start gap-3 text-sm">
+            <StatusPill tone={ACTION_TONE[h.action_type] ?? 'neutral'} className="mt-0.5 shrink-0">
+              {ACTION_ICON_LABEL[h.action_type] ?? h.action_type}
+            </StatusPill>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground/80">{h.status_by ?? '—'}</span>
+                {h.created_at && <> · {formatDate(h.created_at)}</>}
+              </p>
+              {h.comment && <p className="mt-0.5 whitespace-pre-wrap break-words text-sm">{h.comment}</p>}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Panel>
   );
 }
 
@@ -519,15 +566,126 @@ export function DetailEmptyState({ icon: Icon = Layers, title, description }: {
 
 export function ApprovalDecisionDialog({
   open, onOpenChange, actionType, comments, setComments, onSubmit, loading,
-  entityName, approveNote, summary,
+  entityName, approveNote, summary, forwardTo, sendBackOptions, sendBackTarget, setSendBackTarget,
 }: {
   open: boolean; onOpenChange: (open: boolean) => void;
-  actionType: 'approve' | 'reject';
+  actionType: ApprovalAction;
   comments: string; setComments: (c: string) => void;
   onSubmit: () => void; loading: boolean;
   entityName: string; approveNote: string;
   summary?: { label: string; value: React.ReactNode }[];
+  /** Forward: who it goes to. Send back: who it can go back to + the picked one. */
+  forwardTo?: ApprovalRoute | null;
+  sendBackOptions?: ApprovalRoute[];
+  sendBackTarget?: string; setSendBackTarget?: (ecno: string) => void;
 }) {
+  if (actionType === 'forward' || actionType === 'send_back') {
+    const forwarding = actionType === 'forward';
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-h-[90vh] gap-5 overflow-y-auto sm:max-w-md">
+          <DialogHeader className="flex-row items-start gap-3 text-left">
+            <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full border', forwarding ? TONE.info : TONE.warning)}>
+              {forwarding ? <ArrowRightCircle className="h-5 w-5" /> : <ArrowLeftCircle className="h-5 w-5" />}
+            </span>
+            <div className="min-w-0 space-y-1 pr-6">
+              <DialogTitle className="text-base leading-tight sm:text-lg">
+                {forwarding ? `Forward ${entityName}` : `Send back ${entityName}`}
+              </DialogTitle>
+              <DialogDescription className="text-xs sm:text-sm">
+                {forwarding
+                  ? 'Hands it to the next approver without approving it.'
+                  : 'Returns it to an earlier approver, who can approve it onward again.'}
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+
+          {summary && summary.length > 0 && (
+            <dl className="space-y-2 rounded-lg border bg-muted/40 p-3 text-sm">
+              {summary.map((row) => (
+                <div key={row.label} className="flex items-baseline justify-between gap-3">
+                  <dt className="shrink-0 text-muted-foreground">{row.label}</dt>
+                  <dd className="break-words text-right font-semibold">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+
+          {forwarding ? (
+            <div className="flex items-center gap-3 rounded-lg border bg-muted/20 p-3">
+              <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full border', TONE.info)}>
+                <User className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Forwarding to</p>
+                <p className="truncate text-sm font-bold">{forwardTo?.ecno ?? '—'}</p>
+                <p className="text-xs text-muted-foreground">{forwardTo?.stage ?? 'Next stage'}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label className="text-xs sm:text-sm">Send back to <span className="text-destructive">*</span></Label>
+              <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+                {(sendBackOptions ?? []).map((o) => (
+                  <label
+                    key={o.ecno}
+                    className={cn(
+                      'flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 transition-colors',
+                      sendBackTarget === o.ecno ? 'border-primary/60 bg-primary/5' : 'hover:border-primary/40',
+                    )}
+                  >
+                    <input
+                      type="radio" name="send-back-target" value={o.ecno}
+                      checked={sendBackTarget === o.ecno}
+                      onChange={() => setSendBackTarget?.(o.ecno)}
+                      className="shrink-0 accent-primary"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">{o.stage ?? o.ecno}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{o.ecno}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="decision-comments" className="text-xs sm:text-sm">
+              {forwarding ? 'Comments' : 'Reason'} {!forwarding && <span className="text-destructive">*</span>}
+            </Label>
+            <Textarea
+              id="decision-comments"
+              autoFocus={!forwarding}
+              placeholder={forwarding ? 'Anything the next approver should know…' : 'What needs to be corrected…'}
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              rows={3}
+              className="resize-none text-sm"
+            />
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading} className="sm:min-w-24">Cancel</Button>
+            <Button
+              onClick={onSubmit}
+              disabled={loading || (forwarding ? !forwardTo : !sendBackTarget || !comments.trim())}
+              className="sm:min-w-40"
+            >
+              {loading ? (
+                <><Clock className="h-4 w-4 animate-spin" />Processing…</>
+              ) : forwarding ? (
+                <><ArrowRightCircle className="h-4 w-4" />Confirm forward</>
+              ) : (
+                <><ArrowLeftCircle className="h-4 w-4" />Confirm send back</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   const approving = actionType === 'approve';
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ChevronDown, ExternalLink, FileText, GitCompare, History, ReceiptText, StickyNote } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getAuthFileUrl } from '@/Services/authUrl';
 import useFetch from '@/hooks/useFetchHook';
 import { getServiceAgreementHistory } from '@/Services/Api';
 import {
@@ -196,7 +197,7 @@ const VersionCard: React.FC<{
 
             {t.agreement_doc_url && (
               <a
-                href={t.agreement_doc_url} target="_blank" rel="noreferrer"
+                href={getAuthFileUrl(t.agreement_doc_url)} target="_blank" rel="noreferrer"
                 className="group flex items-center gap-3 rounded-lg border bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
               >
                 <FileText className="h-4 w-4 shrink-0 text-primary" />

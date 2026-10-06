@@ -6,7 +6,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-  AlertCircle, Building2, ClipboardList, FilePlus2, IdCard, Landmark, RefreshCw, Send, ShieldCheck, SearchX,
+  AlertCircle, Building2, ClipboardList, FilePlus2, IdCard, Landmark, MapPin, RefreshCw, Send, ShieldCheck, SearchX,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import axios from 'axios';
@@ -17,8 +17,9 @@ import { AGREEMENT_STATUS, formatDate, statusMeta } from '@/CustomComponent/Serv
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { useServiceVendorKycFields } from '@/FieldDatas/ServiceVendorKycData';
 import { apiGetGSTNDetails, createServiceVendorKyc, getServiceVendorKycs } from '@/Services/Api';
-import { unwrapGstRecord, buildGstSubmissionFields, derivePanFromGstin, GSTIN_PATTERN } from '@/Application/Kyc-Screen/gstUtils';
+import { unwrapGstRecord, buildGstSubmissionFields, buildGstAddressPatch, derivePanFromGstin, GSTIN_PATTERN, fetchGstStateMaster, resolveGstStateName, matchBusinessTypeValue, isGstActive } from '@/Application/Kyc-Screen/gstUtils';
 import { buildIfscBankPatch, IFSC_PATTERN } from '@/Application/Kyc-Screen/ifscUtils';
+import { cashfreeUrls, verifyIfsc, checkDuplicate, useVerifyBusy, VerifyLock, ActiveNote } from '@/Application/Kyc-Screen/cashfreeVerify';
 import { getErrorMessage } from '@/lib/errors';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import type { FieldType } from '@/FieldDatas/fieldType/fieldType';
@@ -53,7 +54,8 @@ interface FormSectionDef {
 const FORM_SECTIONS: FormSectionDef[] = [
   { key: 'org', title: 'Organisation', description: 'Who this vendor is being onboarded for', icon: Building2, fields: ['com_sno', 'div_sno', 'brn_sno', 'dept_sno'], grid: 'sm:grid-cols-2 xl:grid-cols-4' },
   { key: 'basic', title: 'Basic information', icon: IdCard, fields: ['company_name', 'contact_person', 'mobile_number', 'email', 'business_type', 'supplier_cat_code', 'pan_no', 'is_gst_avail', 'gst_no', 'is_msme_avail', 'msme_no'], grid: 'sm:grid-cols-2 lg:grid-cols-3' },
-  { key: 'bank', title: 'Bank & payment', description: 'Primary account used to pay this vendor', icon: Landmark, fields: ['ac_holder_name', 'ac_number', 'ac_type', 'ifsc', 'bank_name', 'bank_branch_name', 'bank_address', 'preferred_payment_mode'], grid: 'sm:grid-cols-2 lg:grid-cols-3' },
+  { key: 'location', title: 'Location', description: 'Auto-filled from the GST lookup', icon: MapPin, fields: ['taluk', 'city', 'state', 'state_code'], grid: 'sm:grid-cols-2 lg:grid-cols-4' },
+  { key: 'bank', title: 'Bank & payment', description: 'Primary account used to pay this vendor', icon: Landmark, fields: ['ac_number', 'ifsc', 'ac_type', 'ac_holder_name', 'bank_name', 'bank_branch_name', 'bank_address', 'preferred_payment_mode'], grid: 'sm:grid-cols-2 lg:grid-cols-3' },
   { key: 'docs', title: 'Document & remarks', icon: ClipboardList, fields: ['document', 'remarks'], grid: 'sm:grid-cols-2' },
 ];
 
@@ -95,8 +97,9 @@ const FieldCell: React.FC<{
         onBlur={() => onBlurValue?.(field.field, formData[field.field])}
         error={errors[field.field]}
         placeholder={defaultPlaceholder(field)}
-        {...(isTextarea ? { rows: 3, className: 'resize-none' } : isFile ? {} : { className: 'h-10' })}
+        {...(isTextarea ? { rows: 3, className: 'resize-none' } : isFile ? {} : { className: cn('h-10', field.field === 'gst_no' && isGstActive(formData.gst_status) && 'border-green-500 bg-green-50 text-green-700 focus-visible:ring-green-500') })}
       />
+      {field.field === 'gst_no' && isGstActive(formData.gst_status) && <ActiveNote label="GST" />}
     </div>
   );
 };
@@ -119,10 +122,13 @@ const ServiceVendorKycPage: React.FC = () => {
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const { postData: fetchGst } = usePost();
+  const { busy, track } = useVerifyBusy();
+  const cfUrls = cashfreeUrls(apiGetGSTNDetails);
 
   const handleFieldChange = (fieldName: string, value: any) => {
     setFormData((prev) => {
       const updated = { ...prev, [fieldName]: value };
+      if (fieldName === 'gst_no') updated.gst_status = '';
       if (fieldName === 'com_sno') {
         updated.div_sno = ''; updated.div_name = ''; updated.brn_sno = ''; updated.brn_name = '';
         updated.dept_sno = ''; updated.dept_name = '';
@@ -150,31 +156,74 @@ const ServiceVendorKycPage: React.FC = () => {
   };
 
   // GST auto-fetch — populates legal/trade name + PAN, same lookup the goods
-  // KYC form uses, minus address patching (this table has no address columns).
+  // KYC form uses, plus town/city/state/state code (this table has no full
+  // address section, just what the GST lookup itself returns).
+  // A live KYC already registered with this GST (or this PAN when there is no GST)?
+  // Shown as a field error and stops any paid lookup.
+  const isDuplicate = async (field: 'gst_no' | 'pan_no', value: string, gstAvail: 'true' | 'false') => {
+    try {
+      const res = await track(() => checkDuplicate(cfUrls, { [field]: value, is_gst_avail: gstAvail }));
+      if (res.exists) {
+        setErrors((prev) => ({ ...prev, [field]: String(res.message) }));
+        toast.error(String(res.message));
+        return true;
+      }
+    } catch {
+      // Check unavailable — don't block; the lookup/submit will still work.
+    }
+    return false;
+  };
+
+  const handlePanBlur = async (fieldName: string, value: any) => {
+    if (fieldName !== 'pan_no' || formData.is_gst_avail === 'true') return;
+    const pan = String(value ?? '').trim().toUpperCase();
+    if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) await isDuplicate('pan_no', pan, 'false');
+  };
+
   const handleGstBlur = async (fieldName: string, value: any) => {
     if (fieldName !== 'gst_no') return;
     const gst = String(value ?? '').trim().toUpperCase();
     if (!GSTIN_PATTERN.test(gst)) return;
+    if (await isDuplicate('gst_no', gst, 'true')) return;
     try {
-      const response = await fetchGst(apiGetGSTNDetails, { gst });
+      const response = await track(() => fetchGst(apiGetGSTNDetails, { gst }));
       const record = unwrapGstRecord((response as any)?.data);
       if (!record) return;
       const gstFields = buildGstSubmissionFields(record);
-      setFormData((prev) => ({ ...prev, ...gstFields, pan_no: prev.pan_no || derivePanFromGstin(gst) }));
+      const { taluk, city, state, state_code: patchStateCode } = buildGstAddressPatch(record);
+      const state_code = patchStateCode || gst.slice(0, 2);
+      const businessType = matchBusinessTypeValue(gstFields.constitution_of_business, byName.get('business_type')?.options);
+      const companyName = gstFields.trade_name || gstFields.legal_name;
+      let resolvedState = state;
+      if (state_code) {
+        const stateMaster = await fetchGstStateMaster();
+        resolvedState = resolveGstStateName(state_code, stateMaster) || state;
+      }
+      setFormData((prev) => ({
+        ...prev,
+        ...gstFields,
+        ...(companyName ? { company_name: companyName } : {}),
+        ...(businessType ? { business_type: businessType } : {}),
+        ...(taluk ? { taluk } : {}),
+        ...(city ? { city } : {}),
+        ...(resolvedState ? { state: resolvedState } : {}),
+        ...(state_code ? { state_code } : {}),
+        pan_no: prev.pan_no || derivePanFromGstin(gst),
+      }));
     } catch {
       // Lookup failures are non-blocking — the vendor can still enter fields manually.
     }
   };
 
-  // IFSC auto-fetch — same public lookup KycEntry uses.
+  // IFSC auto-fetch — Cashfree IFSC lookup, same as KycEntry.
   const handleIfscBlur = async (fieldName: string, value: any) => {
     if (fieldName !== 'ifsc') return;
     const ifsc = String(value ?? '').trim().toUpperCase();
     if (!IFSC_PATTERN.test(ifsc)) return;
     try {
-      const res = await fetch(`https://ifsc.razorpay.com/${ifsc}`);
-      if (!res.ok) return;
-      const patch = buildIfscBankPatch(await res.json());
+      const details = await track(() => verifyIfsc(cfUrls, ifsc));
+      if (details.valid === false) return;
+      const patch = buildIfscBankPatch(details);
       setFormData((prev) => ({ ...prev, ...patch }));
     } catch {
       // Non-blocking — bank fields can still be entered manually.
@@ -183,6 +232,7 @@ const ServiceVendorKycPage: React.FC = () => {
 
   const handleFieldBlur = (fieldName: string, value: any) => {
     handleGstBlur(fieldName, value);
+    handlePanBlur(fieldName, value);
     handleIfscBlur(fieldName, value);
   };
 
@@ -282,6 +332,7 @@ const ServiceVendorKycPage: React.FC = () => {
 
           {canSubmit && (
             <TabsContent value="create" className="mt-5">
+              <VerifyLock busy={busy}>
               <form onSubmit={handleSubmit} noValidate className="space-y-4">
                 {sections.map((s) => (
                   <Panel key={s.key} icon={s.icon} title={s.title} description={s.description} bodyClassName="space-y-4">
@@ -312,6 +363,7 @@ const ServiceVendorKycPage: React.FC = () => {
                   </Button>
                 </div>
               </form>
+              </VerifyLock>
             </TabsContent>
           )}
 

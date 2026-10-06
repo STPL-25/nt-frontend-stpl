@@ -9,7 +9,7 @@ import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputF
 import { usePOFormFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
 import usePost from '@/hooks/usePostHook';
 import useFetch from '@/hooks/useFetchHook';
-import { purchaseTeamSendPOEmail, apiGetDefaultTermsConditions } from '@/Services/Api';
+import { purchaseTeamSendPOEmail, apiGetTermsConditionsForScope } from '@/Services/Api';
 import type { PRRecord, Quotation, POFormState } from './types';
 import { formatINR, getQuotationTotal, getPRDisplayNo, today } from './helpers';
 import { buildPOPdfBlob } from './generatePOPdfBlob';
@@ -28,10 +28,15 @@ interface CreatePODialogProps {
   selectedPR: PRRecord | null;
   selectedQuotation: Quotation | null;
   onCreatePO: (form: POFormState) => Promise<unknown>;
+  // Scope the PO is actually saved under (billing company/division/branch +
+  // PR department); T&C must be resolved for this, not the PR's own scope.
+  poScope?: { com_sno?: number | string; div_sno?: number | string; brn_sno?: number | string; dept_sno?: number | string };
 }
 
+interface TcOption { tc_sno: number; tc_title: string; tc_text: string; is_default: 'Y' | 'N' }
+
 const CreatePODialog: React.FC<CreatePODialogProps> = ({
-  open, onOpenChange, selectedPR, selectedQuotation, onCreatePO,
+  open, onOpenChange, selectedPR, selectedQuotation, onCreatePO, poScope,
 }) => {
   const poFormFields = usePOFormFields();
   const inputFields = poFormFields.filter(f => f.input);
@@ -54,10 +59,14 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
   // configured (nt-frontend-stpl/src/Application/TermsConditions). The
   // textarea stays freely editable afterward — this only sets the starting
   // value, it doesn't lock the field.
-  const scopeReady = open && selectedPR?.com_sno && selectedPR?.div_sno && selectedPR?.brn_sno && selectedPR?.dept_sno;
-  const { data: defaultTcResponse } = useFetch<{ success: boolean; data: { tc_text?: string } | null }>(
+  const scCom = poScope?.com_sno ?? selectedPR?.com_sno;
+  const scDiv = poScope?.div_sno ?? selectedPR?.div_sno;
+  const scBrn = poScope?.brn_sno ?? selectedPR?.brn_sno;
+  const scDept = poScope?.dept_sno ?? selectedPR?.dept_sno;
+  const scopeReady = open && scCom && scDiv && scBrn && scDept;
+  const { data: tcListResponse } = useFetch<{ success: boolean; data: TcOption[] }>(
     scopeReady
-      ? apiGetDefaultTermsConditions(selectedPR!.com_sno!, selectedPR!.div_sno!, selectedPR!.brn_sno!, selectedPR!.dept_sno!)
+      ? apiGetTermsConditionsForScope(scCom!, scDiv!, scBrn!, scDept!)
       : null
   );
 
@@ -70,7 +79,9 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
   // who clicked "Create PO" quickly used to beat the async lookup and save
   // the quotation's raw payment_terms (e.g. the literal "Net 30" default in
   // QuotationDialog.tsx) instead of the Master's text — see project memory.
-  const awaitingDefaultTc = Boolean(scopeReady) && defaultTcResponse === null;
+  const awaitingDefaultTc = Boolean(scopeReady) && tcListResponse === null;
+  const tcOptions = tcListResponse?.data ?? [];
+  const [selectedTcId, setSelectedTcId] = useState('');
 
   // Deliberately keyed on IDs, not the selectedPR/selectedQuotation object
   // references — PurchaseTeamPage replaces selectedPR with a fresh object on
@@ -101,10 +112,19 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
   // run for it).
   React.useEffect(() => {
     if (!open || awaitingDefaultTc) return;
-    const defaultText = defaultTcResponse?.data?.tc_text;
-    setForm((f) => ({ ...f, terms_conditions: defaultText || selectedQuotation?.payment_terms || '' }));
+    // The scope's default entry is preselected; the buyer can switch to any
+    // other entry configured for the same scope via the picker below.
+    const initial = tcOptions.find((t) => t.is_default === 'Y') ?? tcOptions[0];
+    setSelectedTcId(initial ? String(initial.tc_sno) : '');
+    setForm((f) => ({ ...f, terms_conditions: initial?.tc_text || '' }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, awaitingDefaultTc, defaultTcResponse, selectedQuotation?.sq_basic_sno]);
+  }, [open, awaitingDefaultTc, tcListResponse, selectedQuotation?.sq_basic_sno]);
+
+  const handlePickTc = (id: string) => {
+    setSelectedTcId(id);
+    const picked = tcOptions.find((t) => String(t.tc_sno) === id);
+    if (picked) setForm((f) => ({ ...f, terms_conditions: picked.tc_text }));
+  };
 
   const handleCreate = async () => {
     if (!selectedPR || !selectedQuotation) return;
@@ -241,6 +261,27 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
                 />
               ))}
             </div>
+
+            {tcOptions.length > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Terms & Conditions template</label>
+                <select
+                  value={selectedTcId}
+                  onChange={(e) => handlePickTc(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  {!selectedTcId && <option value="">Select a template…</option>}
+                  {tcOptions.map((t) => (
+                    <option key={t.tc_sno} value={t.tc_sno}>
+                      {t.tc_title}{t.is_default === 'Y' ? ' (default)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Configured for this PR's company / division / branch / department. You can still edit the text below.
+                </p>
+              </div>
+            )}
 
             {textareaFields.map(field => (
               <CustomInputField

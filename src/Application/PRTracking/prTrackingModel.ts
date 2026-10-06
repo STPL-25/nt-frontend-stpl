@@ -1,5 +1,5 @@
 import type { ApprovalStep, ApprovalStepState } from "@/components/ApprovalTrail";
-import { formatDate } from "@/lib/formatDate";
+import { formatDate, formatDateTime } from "@/lib/formatDate";
 
 // Shape returned by GET /api/pr_tracking/getTimeline/:pr_no — see
 // backend-stpl/src/PRTracking/services/PRTracking.service.js#getPRTrackingTimeline, whose 15 result
@@ -24,6 +24,16 @@ export interface PRTrackingTimelineData {
   quotationStages?: any[];
   /** The PR row itself: status and who it is with right now. Absent on an older backend. */
   prCore?: any[];
+  /**
+   * The conditional-approval engine's view (sql/99): the stages this PR actually needs with the state of
+   * each, and every approve / forward / send-back / edit. Null/absent for a PR the engine has no record of
+   * (or an older backend) — the trail then falls back to approvalStages + approvalHistory.
+   */
+  approvalEngine?: {
+    summary: { cycle_no?: number | null; amount?: number | null; has_instance?: boolean } & Record<string, any>;
+    stages: any[];
+    log: any[];
+  } | null;
 }
 
 export interface DeliveryLane {
@@ -132,6 +142,9 @@ export function prStatusOf(data: PRTrackingTimelineData): string | undefined {
  * team's "PR SPLITED" entry recorded after approval — are appended as additional actions.
  */
 export function buildPrApprovalSteps(data: PRTrackingTimelineData): ApprovalStep[] {
+  const engine = data.approvalEngine;
+  if (engine?.summary?.has_instance && engine.stages?.length) return buildEngineApprovalSteps(engine);
+
   const stages = data.approvalStages ?? [];
   const rows = data.approvalHistory ?? [];
   const status = prStatusOf(data);
@@ -194,6 +207,68 @@ export function buildPrApprovalSteps(data: PRTrackingTimelineData): ApprovalStep
     });
   }
 
+  return steps;
+}
+
+/**
+ * The PR approval trail from the conditional-approval engine. Unlike the plain history, it knows which
+ * stages the PR's own values required: a stage whose condition was not met is left out (instead of showing
+ * as approved by someone who never saw it), a stage the approver forwarded past is left out too, and the
+ * forwards / send-backs / value edits are told in the trail so the requester can see why it moved.
+ */
+export function buildEngineApprovalSteps(engine: NonNullable<PRTrackingTimelineData["approvalEngine"]>): ApprovalStep[] {
+  const cycle = engine.summary.cycle_no ?? 1;
+  const log = engine.log ?? [];
+  const inCycle = (l: any, action: string, seq: number) => l.cycle_no === cycle && l.action === action && l.from_seq === seq;
+  const lastOf = (action: string, seq: number) => [...log].reverse().find((l) => inCycle(l, action, seq));
+  const steps: ApprovalStep[] = [];
+
+  // A restart says the PR's values changed and everything begins again — say so, and who did it and why.
+  if (cycle > 1) {
+    const edit = [...log].reverse().find((l) => l.action === "EDIT" && l.cycle_no === cycle - 1);
+    steps.push({
+      key: "eng-restart",
+      label: `Values edited — approval restarted (round ${cycle})`,
+      person: nameOf(edit?.acted_by_name, edit?.acted_by),
+      state: "approved",
+      word: "Restarted",
+      at: formatDateTime(edit?.acted_at),
+      comment: edit?.comments || null,
+    });
+  }
+
+  for (const st of engine.stages) {
+    // Not needed for this PR (condition not met) or bypassed by a forward: nothing happened, so nothing to show.
+    if (st.state === "NOT_REQUIRED" || st.state === "SKIPPED") continue;
+    const approver = nameOf(st.approver_name, st.approver_ecno);
+    const actor = nameOf(st.acted_by_name, st.acted_by);
+    const key = `eng-${st.seq}`;
+    const label = st.stage_name || `Stage ${st.seq + 1}`;
+
+    if (st.state === "DONE") {
+      steps.push({ key, label, person: actor ?? approver, state: "approved", at: formatDateTime(st.acted_at), comment: st.comments || null,
+        note: actor && approver && st.acted_by !== st.approver_ecno ? `On behalf of ${approver} (alternate)` : null });
+    } else if (st.state === "FORWARDED") {
+      const fwd = lastOf("FORWARD", st.seq);
+      steps.push({ key, label, person: actor ?? approver, state: "approved", word: "Forwarded", at: formatDateTime(st.acted_at),
+        comment: st.comments || null, note: fwd?.target_name ? `Forwarded to ${fwd.target_name}` : "Forwarded to a higher stage" });
+    } else if (st.state === "REJECTED") {
+      steps.push({ key, label, person: actor ?? approver, state: "rejected", at: formatDateTime(st.acted_at), comment: st.comments || null });
+    } else if (st.state === "SENT_BACK") {
+      const back = lastOf("SEND_BACK", st.seq);
+      const holder = engine.summary.awaiting_requester
+        ? "the requester"
+        : (engine.stages.find((s) => s.state === "CURRENT")?.approver_name ?? "an earlier approver");
+      steps.push({ key, label, person: approver, state: "pending", word: "Sent back",
+        at: formatDateTime(st.acted_at), comment: back?.comments || st.comments || null,
+        note: `Sent back to ${back?.target_name ?? holder} — returns here once they respond` });
+    } else if (st.state === "CURRENT") {
+      const alts = st.alternate_names ? `Alternate: ${st.alternate_names} (can act after ${st.escalation_hours}h)` : null;
+      steps.push({ key, label, person: approver, state: "pending", note: alts });
+    } else {
+      steps.push({ key, label, person: approver, state: "upcoming" });
+    }
+  }
   return steps;
 }
 

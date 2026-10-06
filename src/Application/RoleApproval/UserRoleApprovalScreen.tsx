@@ -60,6 +60,7 @@ import {
   apiDeleteUserPermissionsJson,
   getUserPermissionsJson,
   apiNonStaffList,
+  apiGetUsersInScope,
 } from "@/Services/Api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -83,9 +84,17 @@ interface NonStaffUserRow {
 // staff — tagged so a non-staff login_id (admin-chosen text) can never
 // collide with a staff nt_sign_up_sno (a plain sequential int-as-string).
 const NONSTAFF_PREFIX = "ns:";
-const isNonStaffUserId = (id: string) => id.startsWith(NONSTAFF_PREFIX);
+const isNonStaffUserId = (id: string | number) => String(id).startsWith(NONSTAFF_PREFIX);
 const rawUserId = (id: string) => isNonStaffUserId(id) ? id.slice(NONSTAFF_PREFIX.length) : id;
 const identityQuery = (id: string) => isNonStaffUserId(id) ? "?identity=nonstaff" : "";
+
+interface UsersInScope {
+  restricted:         boolean;
+  ecnos:              string[];
+  login_ids:          string[];
+  assigned_ecnos:     string[];
+  assigned_login_ids: string[];
+}
 
 type Branch   = { brn_sno: string; brn_name: string };
 type Division = { div_sno: string; div_name: string; branches: Branch[] };
@@ -271,9 +280,15 @@ export default function PermissionManager() {
     "", null, userListRefreshKey
   );
 
-  // API: { success, data: { companies: [...] } }
+  // API: { success, data: { companies: [...] } } — ?scoped=1 limits the tree to the
+  // logged-in admin's own companies / divisions / branches
   const { data: hierarchyRes } = useFetch<{ data?: { companies: Company[] } }>(
-    apiGetHierarchyDetails
+    `${apiGetHierarchyDetails}?scoped=1`
+  );
+
+  // Which users this admin may see (scope overlap, plus not-yet-assigned users)
+  const { data: scopeUsersRes } = useFetch<{ data?: UsersInScope }>(
+    apiGetUsersInScope, "", null, userListRefreshKey
   );
 
   // API: { success, data: ScreenGroup[] }
@@ -335,7 +350,22 @@ export default function PermissionManager() {
     [], [], selectedBranches.map(Number)
   );
 
-  const allUsers       = [...(usersRes?.data ?? []), ...nonStaffUsers];
+  // Only users inside the admin's own scope. Users with no saved scope yet stay visible so
+  // they can be assigned one. While the scope list is still loading, show nothing rather
+  // than flash the unfiltered list.
+  const allUsers = useMemo(() => {
+    const everyone = [...(usersRes?.data ?? []), ...nonStaffUsers];
+    const scope = scopeUsersRes?.data;
+    if (!scope) return [];
+    if (!scope.restricted) return everyone;
+    const ecnos = new Set(scope.ecnos), assignedEcnos = new Set(scope.assigned_ecnos);
+    const logins = new Set(scope.login_ids), assignedLogins = new Set(scope.assigned_login_ids);
+    return everyone.filter((u) =>
+      isNonStaffUserId(u.nt_sign_up_sno)
+        ? logins.has(u.login_id ?? "") || !assignedLogins.has(u.login_id ?? "")
+        : ecnos.has(u.ecno) || !assignedEcnos.has(u.ecno)
+    );
+  }, [usersRes, nonStaffUsers, scopeUsersRes]);
   const allCompanies   = hierarchyRes?.data?.companies ?? [];
   const allScreens     = screensRes?.data            ?? [];
   const permDetails    = permDetailsRes?.data        ?? [];

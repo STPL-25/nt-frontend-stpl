@@ -5,6 +5,7 @@ import useFetch from '@/hooks/useFetchHook';
 import usePost from '@/hooks/usePostHook';
 import { getServiceAgreementsForApproval, approveServiceAgreement } from '@/Services/Api';
 import { useAppState } from '@/imports';
+import { ACTION_DONE_LABEL, type ApprovalAction } from '@/CustomComponent/ServiceComponents/serviceUtils';
 import {
   socket, SOCKET_JOIN_SERVICE_AGREEMENT_APPROVAL, SOCKET_LEAVE_SERVICE_AGREEMENT_APPROVAL,
   SOCKET_SERVICE_AGREEMENT_APPROVAL_UPDATED,
@@ -28,7 +29,8 @@ function parseStages(agreement: any): any[] {
 const ServiceAgreementApprovalScreen: React.FC = () => {
   const [selectedAgreement, setSelectedAgreement] = useState<any | null>(null);
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
-  const [actionType, setActionType] = useState<'approve' | 'reject'>('approve');
+  const [actionType, setActionType] = useState<ApprovalAction>('approve');
+  const [sendBackTarget, setSendBackTarget] = useState('');
   const [comments, setComments] = useState('');
   const [agreementList, setAgreementList] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -74,7 +76,8 @@ const ServiceAgreementApprovalScreen: React.FC = () => {
   const handleAgreementSelect = (agreement: any) => setSelectedAgreement(agreement);
 
   const handleAction = (action: string) => {
-    setActionType(action as 'approve' | 'reject');
+    setActionType(action as ApprovalAction);
+    setSendBackTarget('');
     setComments('');
     setShowApprovalDialog(true);
   };
@@ -91,6 +94,7 @@ const ServiceAgreementApprovalScreen: React.FC = () => {
       comments: comments.trim(),
       approval_stages,
     };
+    if (actionType === 'send_back') payload.send_back_to = sendBackTarget;
 
     try {
       await postData(approveServiceAgreement, payload);
@@ -99,7 +103,7 @@ const ServiceAgreementApprovalScreen: React.FC = () => {
       setSelectedAgreement(null);
       setShowApprovalDialog(false);
       setComments('');
-      setToast({ message: `Agreement ${actionType === 'approve' ? 'approved' : 'rejected'} successfully`, type: 'success' });
+      setToast({ message: `Agreement ${ACTION_DONE_LABEL[actionType]} successfully`, type: 'success' });
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Action failed';
       setToast({ message, type: 'error' });
@@ -128,6 +132,8 @@ const ServiceAgreementApprovalScreen: React.FC = () => {
       handleSubmit={handleSubmit}
       loading={loading}
       actionType={actionType}
+      sendBackTarget={sendBackTarget}
+      setSendBackTarget={setSendBackTarget}
       toast={toast}
     />
   );

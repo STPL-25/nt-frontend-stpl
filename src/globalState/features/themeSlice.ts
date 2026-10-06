@@ -1,7 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import type { RootState } from '../store'
 
-export type ThemeColor = 'blue' | 'purple' | 'green' | 'orange' | 'teal' | 'rose' | 'amber' | 'indigo'
+export type ThemeColor = 'blue' | 'purple' | 'green' | 'orange' | 'teal' | 'rose' | 'amber' | 'indigo' | 'sky' | 'cyan' | 'emerald' | 'lime' | 'pink' | 'fuchsia' | 'red' | 'slate' | 'mint' | 'peach' | 'lavender' | 'babyblue' | 'blush' | 'lemon' | 'sage' | 'aqua'
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 export interface ThemeColorConfig {

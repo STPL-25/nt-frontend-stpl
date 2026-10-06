@@ -11,7 +11,7 @@ import {
 import {
   FileText, Building2, RefreshCw, Send, Repeat, Wallet, CalendarClock, Bell, ClipboardList,
   Pencil, Loader2, Briefcase, ScrollText, Check, FilePlus2, AlertCircle, SearchX, Layers,
-  /* Landmark, */ History, RotateCcw,   // TEMP-DISABLED (loan/statutory): Landmark is only used by the commented-out Statutory type card / tab
+  /* Landmark, */ History, RotateCcw, FileSignature,   // TEMP-DISABLED (loan/statutory): Landmark is only used by the commented-out Statutory type card / tab
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { EmptyState, PageHeader } from '@/CustomComponent/PageComponents';
@@ -27,6 +27,7 @@ import {
 import { SupplierSplitEditor } from '@/CustomComponent/ServiceComponents/SupplierSplitEditor';
 import { StatutoryFieldsPanel } from '@/CustomComponent/ServiceComponents/StatutoryFieldsPanel';
 import { AgreementHistoryDialog } from '@/CustomComponent/ServiceComponents/AgreementHistoryDialog';
+import { DocLink, SignedAgreementDialog } from '@/CustomComponent/ServiceComponents/ServiceUploads';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { useServiceAgreementFields, type AgreementType } from '@/FieldDatas/ServiceAgreementData';
 import axios from 'axios';
@@ -36,6 +37,7 @@ import { usePermissions } from '@/globalState/hooks/usePermissions';
 import type { FieldType } from '@/FieldDatas/fieldType/fieldType';
 import { cn } from '@/lib/utils';
 import useFetch from '@/hooks/useFetchHook';
+import { useServiceLive } from '@/hooks/useServiceLive';
 
 interface FormErrors {
   [key: string]: string;
@@ -54,6 +56,9 @@ interface AgreementRow {
   po_generation_day?: number; notify_days_before?: number;
   period_start_date: string; period_end_date: string;
   agreement_doc_url: string; remarks?: string; terms_conditions?: string;
+  /** Signed copy uploaded after approval — newest first; signed_doc_url is the current one. */
+  signed_docs?: { signed_doc_sno: number; doc_url: string; uploaded_by: string; uploaded_at: string }[];
+  signed_doc_url?: string | null;
   facility_type?: string; facility_ref_no?: string; sanctioned_amount?: number; drawing_power?: number;
   rate_type?: string; benchmark_rate_pct?: number; spread_pct?: number; interest_rate_pct?: number;
   benchmark_name?: string; disbursed_amount?: number; disbursement_date?: string;
@@ -585,6 +590,7 @@ const ServiceAgreementPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ListTab>('fixed');
   const [editing, setEditing] = useState<{ row: AgreementRow; mode: 'edit' | 'renew' } | null>(null);
   const [historyRow, setHistoryRow] = useState<AgreementRow | null>(null);
+  const [signingRow, setSigningRow] = useState<AgreementRow | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [search, setSearch] = useState('');
 
@@ -620,6 +626,9 @@ const ServiceAgreementPage: React.FC = () => {
       setSubmitting(false);
     }
   };
+
+  // Real time: anyone creating / approving / uploading refreshes this list without a manual reload.
+  useServiceLive('agreement', refresh);
 
   const { data: agreementsRes, loading: loadingAgreements } = useFetch<{ success: boolean; data: AgreementRow[] }>(
     getServiceAgreements, '', null, refreshKey
@@ -671,6 +680,14 @@ const ServiceAgreementPage: React.FC = () => {
       <Button size="sm" variant="ghost" onClick={() => setHistoryRow(row)} className={className ? 'flex-1' : undefined}>
         <History size={14} /> History
       </Button>
+      {row.status === 'A' && row.signed_doc_url && (
+        <DocLink url={row.signed_doc_url} label={`Signed copy${(row.signed_docs?.length ?? 0) > 1 ? ` (${row.signed_docs?.length})` : ''}`} className="inline-flex items-center gap-1 px-2 text-xs font-medium text-primary hover:underline" />
+      )}
+      {canEditAgreements && row.status === 'A' && (
+        <Button size="sm" variant="outline" onClick={() => setSigningRow(row)} className={className ? 'flex-1' : undefined}>
+          <FileSignature size={14} /> {row.signed_doc_url ? 'Replace signed' : 'Upload signed'}
+        </Button>
+      )}
       {canEditAgreements && row.status === 'X' && (
         <Button size="sm" onClick={() => setEditing({ row, mode: 'renew' })} className={className ? 'flex-1' : undefined}>
           <RotateCcw size={14} /> Renew
@@ -972,6 +989,14 @@ const ServiceAgreementPage: React.FC = () => {
 
       {historyRow && (
         <AgreementHistoryDialog agreement={historyRow} onClose={() => setHistoryRow(null)} />
+      )}
+
+      {signingRow && (
+        <SignedAgreementDialog
+          agreement={signingRow}
+          onClose={() => setSigningRow(null)}
+          onSaved={() => { setSigningRow(null); refresh(); }}
+        />
       )}
     </div>
   );

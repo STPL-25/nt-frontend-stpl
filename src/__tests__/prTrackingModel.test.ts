@@ -258,3 +258,106 @@ describe("buildSummary", () => {
     expect(buildPoApproval(buildDeliveryLanes(data)[0], data.quotationStages).steps.length).toBeGreaterThan(0);
   });
 });
+
+// ── sql/99: the trail built from the conditional-approval engine ──────────────
+describe("buildPrApprovalSteps — conditional approval engine", () => {
+  const stage = (seq: number, name: string, ecno: string, approver: string, state: string, over: Record<string, unknown> = {}) => ({
+    seq, stage_name: name, approver_ecno: ecno, approver_name: approver, alternate_names: null, escalation_hours: 24,
+    state, acted_by: null, acted_by_name: null, acted_at: null, comments: null, ...over,
+  });
+  const engine = (stages: any[], log: any[] = [], summary: Record<string, unknown> = {}) => ({
+    summary: { has_instance: true, cycle_no: 1, awaiting_requester: false, ...summary }, stages, log,
+  });
+
+  it("leaves out stages the PR's values did not require instead of showing them approved", () => {
+    const steps = buildPrApprovalSteps(base({
+      prCore: [{ status: "A" }],
+      approvalEngine: engine([
+        stage(0, "Admin", "A1", "ADMIN", "DONE", { acted_by: "A1", acted_by_name: "ADMIN", acted_at: "2026-09-26T10:00:00.000Z", comments: "ok" }),
+        stage(1, "GM", "G1", "GM", "SKIPPED"),
+        stage(2, "ED", "E1", "ED", "NOT_REQUIRED"),
+      ]),
+    }));
+    expect(steps.map((s) => [s.label, s.state])).toEqual([["Admin", "approved"]]);
+    expect(steps[0].comment).toBe("ok");
+  });
+
+  it("shows the current stage as pending and later required ones as upcoming", () => {
+    const steps = buildPrApprovalSteps(base({
+      prCore: [{ status: "P" }],
+      approvalEngine: engine([
+        stage(0, "Admin", "A1", "ADMIN", "DONE", { acted_by: "A1", acted_by_name: "ADMIN" }),
+        stage(1, "GM", "G1", "GM", "CURRENT", { alternate_names: "PRIYA" }),
+        stage(2, "ED", "E1", "ED", "UPCOMING"),
+      ]),
+    }));
+    expect(steps.map((s) => s.state)).toEqual(["approved", "pending", "upcoming"]);
+    expect(steps[1].note).toBe("Alternate: PRIYA (can act after 24h)");
+  });
+
+  it("says when an alternate approved for someone", () => {
+    const [step] = buildPrApprovalSteps(base({
+      approvalEngine: engine([stage(0, "Admin", "A1", "ADMIN", "DONE", { acted_by: "B2", acted_by_name: "BACKUP" })]),
+    }));
+    expect(step).toMatchObject({ person: "BACKUP", note: "On behalf of ADMIN (alternate)" });
+  });
+
+  it("tells a forward: the forwarding stage counts as handled, the bypassed one is not listed", () => {
+    const steps = buildPrApprovalSteps(base({
+      prCore: [{ status: "P" }],
+      approvalEngine: engine(
+        [
+          stage(0, "Admin", "A1", "ADMIN", "FORWARDED", { acted_by: "A1", acted_by_name: "ADMIN", comments: "needs ED" }),
+          stage(1, "GM", "G1", "GM", "SKIPPED"),
+          stage(2, "ED", "E1", "ED", "CURRENT"),
+        ],
+        [{ cycle_no: 1, action: "FORWARD", from_seq: 0, target_name: "ED" }]
+      ),
+    }));
+    expect(steps.map((s) => [s.label, s.state, s.word ?? null])).toEqual([["Admin", "approved", "Forwarded"], ["ED", "pending", null]]);
+    expect(steps[0].note).toBe("Forwarded to ED");
+  });
+
+  it("tells a send-back to the requester, keeping the sender pending", () => {
+    const steps = buildPrApprovalSteps(base({
+      prCore: [{ status: "P" }],
+      approvalEngine: engine(
+        [
+          stage(0, "Admin", "A1", "ADMIN", "DONE", { acted_by: "A1", acted_by_name: "ADMIN" }),
+          stage(1, "GM", "G1", "GM", "SENT_BACK", { acted_by: "G1", acted_by_name: "GM", acted_at: "2026-09-26T11:00:00.000Z" }),
+        ],
+        [{ cycle_no: 1, action: "SEND_BACK", from_seq: 1, target_name: "LEENA", comments: "attach quotation" }],
+        { awaiting_requester: true }
+      ),
+    }));
+    expect(steps[1]).toMatchObject({ state: "pending", word: "Sent back", comment: "attach quotation" });
+    expect(steps[1].note).toBe("Sent back to LEENA — returns here once they respond");
+  });
+
+  it("opens a restarted PR with what was edited, by whom and why", () => {
+    const steps = buildPrApprovalSteps(base({
+      prCore: [{ status: "P" }],
+      approvalEngine: engine(
+        [stage(0, "Admin", "A1", "ADMIN", "CURRENT"), stage(1, "GM", "G1", "GM", "UPCOMING")],
+        [{ cycle_no: 1, action: "EDIT", acted_by: "G1", acted_by_name: "GM", comments: "cut quantity", acted_at: "2026-09-26T12:00:00.000Z" }],
+        { cycle_no: 2 }
+      ),
+    }));
+    expect(steps[0]).toMatchObject({ label: "Values edited — approval restarted (round 2)", person: "GM", word: "Restarted", comment: "cut quantity" });
+    expect(steps.slice(1).map((s) => s.state)).toEqual(["pending", "upcoming"]);
+  });
+
+  it("marks a rejection", () => {
+    const steps = buildPrApprovalSteps(base({
+      prCore: [{ status: "R" }],
+      approvalEngine: engine([stage(0, "Admin", "A1", "ADMIN", "REJECTED", { acted_by: "A1", acted_by_name: "ADMIN", comments: "no budget" })]),
+    }));
+    expect(steps[0]).toMatchObject({ state: "rejected", comment: "no budget" });
+  });
+
+  it("falls back to the plain history when the engine has nothing on the PR", () => {
+    const plain = buildPrApprovalSteps(base());
+    expect(buildPrApprovalSteps(base({ approvalEngine: null }))).toEqual(plain);
+    expect(buildPrApprovalSteps(base({ approvalEngine: { summary: { has_instance: false }, stages: [], log: [] } }))).toEqual(plain);
+  });
+});

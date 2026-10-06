@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Search, Loader2, ShoppingCart, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ChevronRight, Loader2, RefreshCw } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { SearchInput, SelectableCard, StatusPill } from '@/CustomComponent/ServiceComponents/ServiceParts';
+import type { Tone } from '@/CustomComponent/ServiceComponents/serviceUtils';
 import type { PORecord } from './types';
 import { formatDate, getPODisplayNo, getGRNStatus } from './helpers';
 
@@ -10,16 +12,14 @@ interface POListSidebarProps {
   loading: boolean;
   selectedPO: PORecord | null;
   onSelectPO: (po: PORecord) => void;
+  onRefresh: () => void;
 }
 
-const statusBadge: Record<string, string> = {
-  green: 'bg-green-100 text-green-700 border-green-200',
-  amber: 'bg-amber-100 text-amber-700 border-amber-200',
-  red:   'bg-red-100   text-red-700   border-red-200',
-};
+export const GRN_STATUS_TONE: Record<string, Tone> = { green: 'success', amber: 'warning', red: 'danger' };
 
+/** List body for SidebarDetailLayout: pinned search / refresh row, then one card per gate-cleared PO. */
 const POListSidebar: React.FC<POListSidebarProps> = ({
-  poList, loading, selectedPO, onSelectPO,
+  poList, loading, selectedPO, onSelectPO, onRefresh,
 }) => {
   const [search, setSearch] = useState('');
 
@@ -34,86 +34,61 @@ const POListSidebar: React.FC<POListSidebarProps> = ({
     );
   }, [poList, search]);
 
-  const pendingCount   = poList.filter(p => !p.grn_status || p.grn_status === 'Pending').length;
-  const partialCount   = poList.filter(p => p.grn_status === 'Partial').length;
-
   return (
-    <div className="w-80 flex-shrink-0 bg-card border-r flex flex-col overflow-hidden h-full">
-      {/* Stats */}
-      <div className="px-4 py-3 border-b bg-muted/40 flex gap-3 text-xs font-medium flex-wrap">
-        <span className="text-muted-foreground">{poList.length} POs</span>
-        {pendingCount > 0 && <span className="text-red-600">{pendingCount} pending</span>}
-        {partialCount > 0 && <span className="text-amber-600">{partialCount} partial</span>}
+    <>
+      <div className="sticky top-0 z-10 -mx-2 -mt-2 flex items-center gap-2 bg-white px-2 pb-2 pt-2 sm:-mx-3 sm:-mt-3 sm:px-3 sm:pt-3 dark:bg-slate-950">
+        <SearchInput value={search} onChange={setSearch} placeholder="Search PO no, vendor…" className="min-w-0 flex-1" />
+        <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={onRefresh} disabled={loading} aria-label="Refresh list">
+          <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+        </Button>
       </div>
 
-      {/* Search */}
-      <div className="px-3 py-2 border-b">
-        <div className="relative">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
-          <Input
-            placeholder="Search PO no, vendor..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 text-sm"
-          />
+      {loading && poList.length === 0 ? (
+        <div className="flex h-40 flex-col items-center justify-center gap-2 text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span className="text-sm">Loading POs…</span>
         </div>
-      </div>
-
-      {/* PO List */}
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground/70">
-            <Loader2 size={24} className="animate-spin" />
-            <span className="text-sm">Loading POs...</span>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground/70">
-            <ShoppingCart size={24} />
-            <span className="text-sm">No POs found</span>
-          </div>
-        ) : (
-          filtered.map((po, idx) => {
-            const isActive = selectedPO?.po_basic_sno === po.po_basic_sno;
-            const poKey = String(po.po_no ?? po.po_basic_sno ?? idx);
-            const { label, color } = getGRNStatus(po);
-
-            return (
-              <button
-                key={poKey}
-                onClick={() => onSelectPO(po)}
-                className={`w-full text-left px-4 py-3 border-b hover:bg-primary/10 transition-colors border-l-4 ${
-                  isActive ? 'bg-primary/10 border-l-primary' : 'border-l-transparent'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-semibold text-primary truncate">
-                    {getPODisplayNo(po)}
-                  </span>
-                  <Badge className={`text-xs shrink-0 ml-1 ${statusBadge[color]}`}>
-                    {label}
-                  </Badge>
-                </div>
-                <div className="text-xs text-foreground font-medium truncate">
-                  {po.vendor_name ?? po.company_name ?? '—'}
-                </div>
+      ) : filtered.length === 0 ? (
+        <p className="p-6 text-center text-sm text-muted-foreground">{search ? 'No matches found' : 'No POs found'}</p>
+      ) : (
+        filtered.map((po, idx) => {
+          const isActive = selectedPO?.po_basic_sno === po.po_basic_sno;
+          const { label, color } = getGRNStatus(po);
+          return (
+            <SelectableCard key={String(po.po_no ?? po.po_basic_sno ?? idx)} selected={isActive} onClick={() => onSelectPO(po)}>
+              <span className="flex items-start justify-between gap-2">
+                <span className="block min-w-0">
+                  <span className="block truncate text-sm font-semibold">{getPODisplayNo(po)}</span>
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">{po.vendor_name ?? po.company_name ?? '—'}</span>
+                </span>
+                <ChevronRight className={cn('mt-0.5 h-4 w-4 shrink-0 transition-transform', isActive ? 'translate-x-0.5 text-primary' : 'text-muted-foreground/60')} />
+              </span>
+              <span className="mt-2.5 block">
+                <StatusPill tone={GRN_STATUS_TONE[color] ?? 'neutral'}>{label}</StatusPill>
+              </span>
+              <span className="mt-3 block space-y-1 text-xs">
                 {po.gate_entry_no && (
-                  <div className="text-xs text-muted-foreground/70 truncate">Gate: {po.gate_entry_no}</div>
+                  <span className="flex justify-between gap-3">
+                    <span className="shrink-0 text-muted-foreground">Gate entry</span>
+                    <span className="truncate text-right font-medium">{po.gate_entry_no}</span>
+                  </span>
                 )}
                 {po.pr_no && (
-                  <div className="text-xs text-muted-foreground/70 truncate">PR: {po.pr_no}</div>
-                )}
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs text-muted-foreground/70">
-                    {formatDate(po.gate_received_date ?? po.po_date ?? po.required_date)}
+                  <span className="flex justify-between gap-3">
+                    <span className="shrink-0 text-muted-foreground">PR</span>
+                    <span className="truncate text-right font-medium">{po.pr_no}</span>
                   </span>
-                  <ChevronRight size={14} className="text-muted-foreground/70" />
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
+                )}
+                <span className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Date</span>
+                  <span className="text-right font-medium">{formatDate(po.gate_received_date ?? po.po_date ?? po.required_date)}</span>
+                </span>
+              </span>
+            </SelectableCard>
+          );
+        })
+      )}
+    </>
   );
 };
 

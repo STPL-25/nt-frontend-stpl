@@ -41,6 +41,7 @@ import {
   apiSaveFullWorkflow,
   apiGetSignEmployee,
   apiGetWorkflows,
+  apiGetConditionFields,
   apiGetWorkflowTypes,
   apiUpdateWorkflow,
   apiUpdateWorkflowType,
@@ -59,7 +60,15 @@ import {
   WorkflowMasterRow,
   StageOrderItem,
 } from "./types/ApprovalWorkflowManagerTypes";
-import { buildWorkflowLabels, planTypeRowSync } from "./workflowUtils";
+import {
+  buildWorkflowLabels,
+  planTypeRowSync,
+  serializeStages,
+  validateStageRouting,
+} from "./workflowUtils";
+import { StageConditionEditor } from "./StageConditionEditor";
+import { describeCondition, normalizeCondition, type ConditionFieldDef, type ConditionLookups } from "./approvalConditions";
+import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
 import { usePermissions } from "@/globalState/hooks/usePermissions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -236,12 +245,18 @@ const WorkflowTypeCard: React.FC<{
   typeIndex: number;
   employeeOptions: { label: string; value: string }[];
   allDepartments: CascadeOption[];
+  /**
+   * What a stage condition can test for this kind of workflow, from the field registry.
+   * null = not known yet (loading / failed) · [] = this kind of workflow has no conditions.
+   */
+  conditionFields: ConditionFieldDef[] | null;
+  lookups: ConditionLookups;
   onChange: (i: number, field: keyof WorkflowType, value: any) => void;
   onStageChange: (
     ti: number,
     si: number,
     field: keyof StageOrderItem,
-    value: string
+    value: any
   ) => void;
   onAddStage: (ti: number) => void;
   onRemoveStage: (ti: number, si: number) => void;
@@ -254,6 +269,8 @@ const WorkflowTypeCard: React.FC<{
     typeIndex,
     employeeOptions,
     allDepartments,
+    conditionFields,
+    lookups,
     onChange,
     onStageChange,
     onAddStage,
@@ -263,6 +280,7 @@ const WorkflowTypeCard: React.FC<{
     removable = true,
   }) => {
     const [stagesOpen, setStagesOpen] = useState(true);
+    const routing = !!conditionFields && conditionFields.length > 0;
     const { workflowTypeFields: rawTypeFields } = useApprovalFlowHierarchy(
       type.com_snos.map(Number),
       type.div_snos.map(Number),
@@ -425,15 +443,69 @@ const WorkflowTypeCard: React.FC<{
                           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                             <CustomInputField field="required_approvals" label="Required Approvals" type="number" min="1" input={true} view={true} value={stage.required_approvals} onChange={(v) => onStageChange(typeIndex, si, "required_approvals", v)} />
                             <CustomInputField field="is_mandatory" label="Is Mandatory" type="select" input={true} view={true} options={YN_OPTIONS} value={stage.is_mandatory} onChange={(v) => onStageChange(typeIndex, si, "is_mandatory", v)} />
-                            <CustomInputField field="escalation_hours" label="Escalation Hours" type="number" min="1" input={true} view={true} value={stage.escalation_hours} onChange={(v) => onStageChange(typeIndex, si, "escalation_hours", v)} />
+                            <CustomInputField field="escalation_hours" label={routing ? "Alternate can act after (hours)" : "Escalation Hours"} type="number" min="1" input={true} view={true} value={stage.escalation_hours} onChange={(v) => onStageChange(typeIndex, si, "escalation_hours", v)} />
                             <CustomInputField field="next_approver_ecno" label="Next Approver" type="select" placeholder="Select (optional)" input={true} view={true} options={[{ label: "None", value: "0" }, ...employeeOptions]} value={stage.next_approver_ecno} onChange={(v) => onStageChange(typeIndex, si, "next_approver_ecno", v)} />
                           </div>
-                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                            <CustomInputField field="approver_condition" label="Approver Condition" type="text" placeholder="e.g., amount > 50000" input={true} view={true} value={stage.approver_condition} onChange={(v) => onStageChange(typeIndex, si, "approver_condition", v)} />
+                          <div className={`grid grid-cols-2 gap-3 ${routing ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
+                            {!routing && (
+                              <CustomInputField field="approver_condition" label="Approver Condition" type="text" placeholder="e.g., amount > 50000" input={true} view={true} value={stage.approver_condition} onChange={(v) => onStageChange(typeIndex, si, "approver_condition", v)} />
+                            )}
                             <CustomInputField field="can_forward" label="Can Forward" type="select" input={true} view={true} options={YN_OPTIONS} value={stage.can_forward} onChange={(v) => onStageChange(typeIndex, si, "can_forward", v)} />
                             <CustomInputField field="can_backward" label="Can Backward" type="select" input={true} view={true} options={YN_OPTIONS} value={stage.can_backward} onChange={(v) => onStageChange(typeIndex, si, "can_backward", v)} />
                             <CustomInputField field="can_edit_data" label="Can Edit Data" type="select" input={true} view={true} options={YN_OPTIONS} value={stage.can_edit_data} onChange={(v) => onStageChange(typeIndex, si, "can_edit_data", v)} />
                           </div>
+                          {routing && (
+                            <div className="space-y-3 border-t pt-3" data-testid="stage-routing">
+                              <div className="space-y-1.5">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                  When is this stage required?
+                                </p>
+                                {si === 0 ? (
+                                  <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                                    <span className="font-medium text-foreground">Always required.</span> The first stage is
+                                    where every requisition starts, so it cannot have a condition.
+                                    {normalizeCondition(stage.condition) && (
+                                      <span className="ml-1 text-red-600">
+                                        This stage still has one ({describeCondition(stage.condition, conditionFields, lookups)}) — remove it below.
+                                      </span>
+                                    )}
+                                  </p>
+                                ) : null}
+                                {(si > 0 || normalizeCondition(stage.condition)) && (
+                                  <StageConditionEditor
+                                    value={stage.condition}
+                                    fields={conditionFields ?? []}
+                                    lookups={lookups}
+                                    onChange={(next) => onStageChange(typeIndex, si, "condition", next)}
+                                  />
+                                )}
+                              </div>
+                              <div className="space-y-1.5">
+                                <CustomInputField
+                                  field="alternates"
+                                  label="Alternate approvers (optional)"
+                                  type="multi-select"
+                                  placeholder="None — only the approver above can act"
+                                  input={true}
+                                  view={true}
+                                  options={employeeOptions.filter((o) => o.value !== stage.approver_ecno)}
+                                  value={stage.alternates ?? []}
+                                  onChange={(v: string[]) => onStageChange(typeIndex, si, "alternates", v ?? [])}
+                                />
+                                <p className="text-[11px] text-muted-foreground">
+                                  An alternate sees this request and can act on it once it has waited here longer than the
+                                  hours set above.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          {!routing && (normalizeCondition(stage.condition) || (stage.alternates ?? []).length > 0) && (
+                            <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200" data-testid="routing-notice">
+                              {conditionFields === null
+                                ? "This stage has a condition or alternates. They are kept as they are, but cannot be shown or changed until the condition fields for this workflow have loaded."
+                                : "This kind of workflow does not support conditions or alternates, so the ones saved on this stage will be removed when you save."}
+                            </p>
+                          )}
                         </div>
 
                         <Button onClick={() => onRemoveStage(typeIndex, si)} variant="ghost" size="icon" className="text-red-500 hover:text-red-600 h-8 w-8">
@@ -506,6 +578,28 @@ export default function ApprovalFlowDynamic() {
   const { deleteData } = useDelete<any>();
   const { workflowFields, entityTypeCount, hierarchyData, allDepartments } = useApprovalFlowHierarchy();
   const isSaving = createSaving || editSaving;
+
+  // What a stage condition can test depends on the kind of workflow (what "amount" means for a PR is not
+  // what it means for a payment): load the field registry for the entity the workflow being created /
+  // edited is for. null = not known (nothing chosen yet, loading, or the request failed) — never "none".
+  const activeEntityType = (mode === "create" ? createWorkflow.entity_type : editWorkflow.entity_type) || "";
+  const { data: conditionFieldsResp, loading: conditionFieldsLoading, error: conditionFieldsError } =
+    useFetch<{ data: ConditionFieldDef[] }>(
+      activeEntityType ? apiGetConditionFields : null,
+      "",
+      activeEntityType ? { entity_type: activeEntityType } : null
+    );
+  const conditionFields: ConditionFieldDef[] | null = useMemo(() => {
+    if (!activeEntityType || conditionFieldsLoading || conditionFieldsError || !conditionFieldsResp) return null;
+    return Array.isArray(conditionFieldsResp.data) ? conditionFieldsResp.data : [];
+  }, [activeEntityType, conditionFieldsLoading, conditionFieldsError, conditionFieldsResp]);
+  // The masters that supply the choices of list fields (categories, priorities, suppliers, ...).
+  const conditionSources = useMemo(
+    () => [...new Set((conditionFields ?? []).map((f) => f.option_source).filter((src): src is string => !!src))],
+    [conditionFields]
+  );
+  const { options: conditionMasters } = useMasterOptions(conditionSources);
+  const conditionLookups: ConditionLookups = conditionMasters ?? {};
 
   useEffect(() => {
     postData(apiGetSignEmployee, {})
@@ -595,7 +689,7 @@ export default function ApprovalFlowDynamic() {
     },
     addStage: (ti: number) =>
       setter((prev) => prev.map((t, i) => (i === ti ? { ...t, stages: [...t.stages, emptyStage()] } : t))),
-    updateStage: (ti: number, si: number, field: keyof StageOrderItem, value: string) =>
+    updateStage: (ti: number, si: number, field: keyof StageOrderItem, value: any) =>
       setter((prev) =>
         prev.map((t, i) =>
           i === ti ? { ...t, stages: t.stages.map((s, j) => (j === si ? { ...s, [field]: value } : s)) } : t
@@ -735,9 +829,11 @@ export default function ApprovalFlowDynamic() {
       if (!t.stages.length || t.stages.some((s) => !s.stage || !s.approver_ecno)) {
         toast.error(`"${t.workflow_types_name}" — each stage needs a name and approver`); return false;
       }
+      const routingProblem = validateStageRouting(t.stages, conditionFields);
+      if (routingProblem) { toast.error(`"${t.workflow_types_name}" — ${routingProblem}`); return false; }
     }
     return true;
-  }, [createWorkflow, createTypes]);
+  }, [createWorkflow, createTypes, conditionFields]);
 
   const handleCreateSubmit = useCallback(async () => {
     if (!validateCreate()) return;
@@ -759,7 +855,7 @@ export default function ApprovalFlowDynamic() {
           brn_sno: dp[String(dept)].brn_sno,
           dept_sno: dept,
           is_active: t.is_active ? "Y" : "N",
-          stage_order_json: JSON.stringify(t.stages),
+          stage_order_json: serializeStages(t.stages, conditionFields),
         }))
     );
     // The stored procedure rejects an empty workflow_types array. A type/branch/department
@@ -792,7 +888,7 @@ export default function ApprovalFlowDynamic() {
       setCreateSaving(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [validateCreate, createWorkflow, createTypes, entityTypeCount, buildDeptParent]);
+  }, [validateCreate, createWorkflow, createTypes, entityTypeCount, buildDeptParent, conditionFields]);
 
   // ── Edit submit ───────────────────────────────────────────────────────────
   const handleUpdateSubmit = useCallback(async () => {
@@ -821,6 +917,14 @@ export default function ApprovalFlowDynamic() {
           return;
         }
         claimedBy.set(dept, index);
+      }
+    }
+
+    for (const { type, index } of plans) {
+      const routingProblem = validateStageRouting(type.stages, conditionFields);
+      if (routingProblem) {
+        toast.error(`"${typeLabel(type, index)}" — ${routingProblem}`);
+        return;
       }
     }
 
@@ -869,7 +973,7 @@ export default function ApprovalFlowDynamic() {
           });
           await updateData(apiUpdateWorkflowStage, null, {
             workflow_types_id: row.id,
-            stage_order_json: JSON.stringify(type.stages),
+            stage_order_json: serializeStages(type.stages, conditionFields),
           });
         }
 
@@ -891,7 +995,7 @@ export default function ApprovalFlowDynamic() {
           if (!newTypeId) throw new Error(`Could not add ${deptLabel(dept)} to "${type.workflow_types_name}"`);
           await postData(apiSaveWorkflowStage, {
             workflow_types_id: newTypeId,
-            stage_order_json: JSON.stringify(type.stages),
+            stage_order_json: serializeStages(type.stages, conditionFields),
           });
           added++;
         }
@@ -938,7 +1042,7 @@ export default function ApprovalFlowDynamic() {
       setEditSaving(false);
     }
   }, [
-    selectedRow, editWorkflow, editTypes, buildDeptParent, allDepartments, canRemove,
+    selectedRow, editWorkflow, editTypes, buildDeptParent, allDepartments, canRemove, conditionFields,
     updateData, postData, deleteData, handleReset, handleSelectById,
   ]);
 
@@ -1276,6 +1380,8 @@ export default function ApprovalFlowDynamic() {
                     typeIndex={index}
                     employeeOptions={approverOptions}
                     allDepartments={allDepartments}
+                    conditionFields={conditionFields}
+                    lookups={conditionLookups}
                     onChange={mode === "create" ? ch.updateType : eh.updateType}
                     onStageChange={mode === "create" ? ch.updateStage : eh.updateStage}
                     onAddStage={mode === "create" ? ch.addStage : eh.addStage}

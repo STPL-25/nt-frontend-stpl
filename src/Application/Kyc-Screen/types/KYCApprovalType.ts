@@ -15,6 +15,8 @@ export interface KYCApprovalRecord {
   is_msme_avail: string;
   msme_no: string | null;
   pan_no: string;
+  pan_status?: string | null;
+  msme_type?: string | null;
   legal_name?: string | null;
   trade_name?: string | null;
   status: string;

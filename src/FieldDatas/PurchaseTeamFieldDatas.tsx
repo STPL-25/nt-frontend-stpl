@@ -1,13 +1,6 @@
 import { useMemo } from 'react';
 import { FieldType } from './fieldType/fieldType';
-
-// ── Payment terms options ────────────────────────────────────────────────────
-const PAYMENT_TERMS = [
-  'Net 30', 'Net 45', 'Net 60',
-  'Advance 100%', 'Advance 50%, Balance on Delivery', 'On Delivery',
-];
-
-const paymentTermOptions = PAYMENT_TERMS.map(t => ({ value: t, label: t }));
+import { useMasterOptions } from '@/hooks/ReUsableHook/useMasterOptions';
 
 const ynOptions = [
   { value: 'Y', label: 'Y' },
@@ -50,6 +43,9 @@ export const useVendorFields = (): FieldType[] => {
 
 // ── Quotation Header Fields (form) ───────────────────────────────────────────
 export const useQuotationHeaderFields = (): FieldType[] => {
+  // Payment terms come from the Payment Terms master (option value = the terms text, which is what the quotation stores).
+  const { options: masterOptions } = useMasterOptions(['PaymentTermsMaster']);
+  const paymentTermOptions = masterOptions?.PaymentTermsMaster || [];
   return useMemo<FieldType[]>(() => [
     { field: 'quotation_ref_no', label: 'Quotation Ref No', type: 'text',   require: true,  input: true, view: true,  placeholder: 'e.g. SQ-2026-001' },
     { field: 'quotation_date',   label: 'Quotation Date',   type: 'date',   require: false, input: true, view: true  },
@@ -57,9 +53,10 @@ export const useQuotationHeaderFields = (): FieldType[] => {
     { field: 'payment_terms',    label: 'Payment Terms',    type: 'select', require: false, input: true, view: true, options: paymentTermOptions },
     { field: 'delivery_days',    label: 'Delivery Days',    type: 'number', require: false, input: true, view: true, placeholder: 'e.g. 15' },
     { field: 'currency_code',    label: 'Currency',         type: 'text',   require: false, input: true, view: true  },
-   
+    { field: 'freight_charges',  label: 'Freight Charges (Extra)', type: 'number', require: false, input: true, view: true, placeholder: '0' },
+    { field: 'other_charges',    label: 'Other Charges (Extra)',   type: 'number', require: false, input: true, view: true, placeholder: '0' },
     { field: 'remarks',          label: 'Remarks',          type: 'textarea', require: false, input: true, view: true, placeholder: 'Additional notes...' },
-  ], []);
+  ], [paymentTermOptions]);
 };
 
 // ── Quotation Item Fields (table with editable columns) ──────────────────────
@@ -70,7 +67,7 @@ export const useQuotationItemFields = (): FieldType[] => {
     { field: 'unit_name',     label: 'Unit',        type: 'text',   view: true, input: false },
     { field: 'unit_price',    label: 'Unit Price',   type: 'number', view: true, input: true, require: true },
     { field: 'discount_pct',  label: 'Disc %',      type: 'number', view: true, input: true  },
-    { field: 'tax_pct',       label: 'Tax %',       type: 'number', view: true, input: true  },
+    { field: 'tax_pct',       label: 'GST %',       type: 'number', view: true, input: true  },
     { field: 'total_amount',  label: 'Total',       type: 'number', view: true, input: false },
   ], []);
 };

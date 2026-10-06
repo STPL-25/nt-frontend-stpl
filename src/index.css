@@ -233,6 +233,242 @@
   --sidebar-primary: oklch(0.620 0.240 15);
 }
 
+/* ─── Additional Color Themes ─────────────────────────────────────── */
+.theme-sky {
+  --primary: oklch(0.6 0.15 235);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.730 0.075 235);
+  --sidebar-primary: oklch(0.6 0.15 235);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.730 0.075 235);
+}
+.dark.theme-sky {
+  --primary: oklch(0.62 0.17 235);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.62 0.17 235);
+  --sidebar-primary: oklch(0.62 0.17 235);
+}
+.theme-cyan {
+  --primary: oklch(0.58 0.13 210);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.710 0.065 210);
+  --sidebar-primary: oklch(0.58 0.13 210);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.710 0.065 210);
+}
+.dark.theme-cyan {
+  --primary: oklch(0.6 0.15 210);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.6 0.15 210);
+  --sidebar-primary: oklch(0.6 0.15 210);
+}
+.theme-emerald {
+  --primary: oklch(0.56 0.15 162);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.690 0.075 162);
+  --sidebar-primary: oklch(0.56 0.15 162);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.690 0.075 162);
+}
+.dark.theme-emerald {
+  --primary: oklch(0.54 0.17 162);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.54 0.17 162);
+  --sidebar-primary: oklch(0.54 0.17 162);
+}
+.theme-lime {
+  --primary: oklch(0.62 0.19 125);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.750 0.095 125);
+  --sidebar-primary: oklch(0.62 0.19 125);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.750 0.095 125);
+}
+.dark.theme-lime {
+  --primary: oklch(0.66 0.2 125);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.66 0.2 125);
+  --sidebar-primary: oklch(0.66 0.2 125);
+}
+.theme-pink {
+  --primary: oklch(0.62 0.21 350);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.750 0.105 350);
+  --sidebar-primary: oklch(0.62 0.21 350);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.750 0.105 350);
+}
+.dark.theme-pink {
+  --primary: oklch(0.66 0.22 350);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.66 0.22 350);
+  --sidebar-primary: oklch(0.66 0.22 350);
+}
+.theme-fuchsia {
+  --primary: oklch(0.56 0.25 325);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.690 0.125 325);
+  --sidebar-primary: oklch(0.56 0.25 325);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.690 0.125 325);
+}
+.dark.theme-fuchsia {
+  --primary: oklch(0.6 0.26 325);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.6 0.26 325);
+  --sidebar-primary: oklch(0.6 0.26 325);
+}
+.theme-red {
+  --primary: oklch(0.55 0.23 27);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.680 0.115 27);
+  --sidebar-primary: oklch(0.55 0.23 27);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.680 0.115 27);
+}
+.dark.theme-red {
+  --primary: oklch(0.62 0.24 27);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.62 0.24 27);
+  --sidebar-primary: oklch(0.62 0.24 27);
+}
+.theme-slate {
+  --primary: oklch(0.42 0.04 255);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.550 0.020 255);
+  --sidebar-primary: oklch(0.42 0.04 255);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.550 0.020 255);
+}
+.dark.theme-slate {
+  --primary: oklch(0.62 0.04 255);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.62 0.04 255);
+  --sidebar-primary: oklch(0.62 0.04 255);
+}
+
+/* ─── Light / Pastel Themes ───────────────────────────────────────── */
+.theme-mint {
+  --primary: oklch(0.84 0.1 165);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.720 0.1 165);
+  --sidebar-primary: oklch(0.84 0.1 165);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-ring: oklch(0.720 0.1 165);
+}
+.dark.theme-mint {
+  --primary: oklch(0.84 0.1 165);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.84 0.1 165);
+  --sidebar-primary: oklch(0.84 0.1 165);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+}
+.theme-peach {
+  --primary: oklch(0.84 0.11 50);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.720 0.11 50);
+  --sidebar-primary: oklch(0.84 0.11 50);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-ring: oklch(0.720 0.11 50);
+}
+.dark.theme-peach {
+  --primary: oklch(0.84 0.11 50);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.84 0.11 50);
+  --sidebar-primary: oklch(0.84 0.11 50);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+}
+.theme-lavender {
+  --primary: oklch(0.8 0.09 295);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.680 0.09 295);
+  --sidebar-primary: oklch(0.8 0.09 295);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-ring: oklch(0.680 0.09 295);
+}
+.dark.theme-lavender {
+  --primary: oklch(0.8 0.09 295);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.8 0.09 295);
+  --sidebar-primary: oklch(0.8 0.09 295);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+}
+.theme-babyblue {
+  --primary: oklch(0.84 0.09 235);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.720 0.09 235);
+  --sidebar-primary: oklch(0.84 0.09 235);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-ring: oklch(0.720 0.09 235);
+}
+.dark.theme-babyblue {
+  --primary: oklch(0.84 0.09 235);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.84 0.09 235);
+  --sidebar-primary: oklch(0.84 0.09 235);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+}
+.theme-blush {
+  --primary: oklch(0.83 0.09 5);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.710 0.09 5);
+  --sidebar-primary: oklch(0.83 0.09 5);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-ring: oklch(0.710 0.09 5);
+}
+.dark.theme-blush {
+  --primary: oklch(0.83 0.09 5);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.83 0.09 5);
+  --sidebar-primary: oklch(0.83 0.09 5);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+}
+.theme-lemon {
+  --primary: oklch(0.9 0.14 100);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.780 0.14 100);
+  --sidebar-primary: oklch(0.9 0.14 100);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-ring: oklch(0.780 0.14 100);
+}
+.dark.theme-lemon {
+  --primary: oklch(0.9 0.14 100);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.9 0.14 100);
+  --sidebar-primary: oklch(0.9 0.14 100);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+}
+.theme-sage {
+  --primary: oklch(0.78 0.05 145);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.660 0.05 145);
+  --sidebar-primary: oklch(0.78 0.05 145);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-ring: oklch(0.660 0.05 145);
+}
+.dark.theme-sage {
+  --primary: oklch(0.78 0.05 145);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.78 0.05 145);
+  --sidebar-primary: oklch(0.78 0.05 145);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+}
+.theme-aqua {
+  --primary: oklch(0.85 0.09 195);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.730 0.09 195);
+  --sidebar-primary: oklch(0.85 0.09 195);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-ring: oklch(0.730 0.09 195);
+}
+.dark.theme-aqua {
+  --primary: oklch(0.85 0.09 195);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --ring: oklch(0.85 0.09 195);
+  --sidebar-primary: oklch(0.85 0.09 195);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
+}
+
 /* ─── Radius variants ─────────────────────────────────────────────── */
 .radius-none   { --radius: 0rem; }
 .radius-sm     { --radius: 0.25rem; }

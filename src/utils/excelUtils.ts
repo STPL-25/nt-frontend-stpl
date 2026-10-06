@@ -297,7 +297,7 @@ export async function downloadQuotationItemsExcel(
     { header: "Qty *",         key: "qty",            width: 10 },
     { header: "Unit Price *",  key: "unit_price",     width: 14 },
     { header: "Disc %",        key: "discount_pct",   width: 10 },
-    { header: "Tax %",         key: "tax_pct",        width: 10 },
+    { header: "GST %",         key: "tax_pct",        width: 10 },
     { header: "Delivery Days", key: "delivery_days",  width: 14 },
     { header: "Remarks",       key: "remarks",        width: 30 },
   ];

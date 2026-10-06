@@ -74,6 +74,8 @@ export interface Vendor {
   gst_no?: string;
   pan_no?: string;
   business_type?: string;
+  is_msme_avail?: string;   // Y / N (from KYC)
+  msme_type?: string;       // Micro / Small / Medium (from KYC)
 }
 
 export interface QuotationItem {
@@ -111,6 +113,11 @@ export interface Quotation {
   status?: string;
   items: QuotationItem[];
   sq_quotation_file?: string;
+  freight_charges?: number;
+  other_charges?: number;
+  is_msme?: string | null;        // Y / N
+  msme_type?: string | null;      // Micro / Small / Medium
+  is_intrastate?: boolean | number | null;
   split_group?: number;       // which confirmed split group this quotation belongs to
   advance_payment_required?: boolean;
   advance_payment_pct?: number;
@@ -172,6 +179,8 @@ export interface QuotationFormState {
   advance_payment_required: boolean;
   advance_payment_pct: number;
   advance_payment_data?: AdvancePaymentData;
+  freight_charges: number;
+  other_charges: number;
 }
 
 export interface POFormState {

@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import ApprovalTrail from "@/components/ApprovalTrail";
+import SupplierFullDetailsView from "./SupplierFullDetailsView";
 import { getStatusInfo } from "@/utils/statusUtils";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/formatDate";
@@ -163,6 +164,8 @@ function SupplierDetail({ row }: { row: SupplierStatusRow }) {
           </p>
         )}
       </div>
+
+      <SupplierFullDetailsView source={row.source} recordId={row.record_id} />
     </div>
   );
 }
@@ -335,7 +338,7 @@ const SupplierStatusPage: React.FC = () => {
       </div>
 
       <Sheet open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
           <SheetHeader className="pr-12">
             <SheetTitle className="capitalize">{selected ? displayName(selected) : ""}</SheetTitle>
             <SheetDescription>Where this supplier's approval stands — who has acted and who is next.</SheetDescription>

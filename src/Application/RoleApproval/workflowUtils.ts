@@ -1,7 +1,9 @@
 import type {
+  StageOrderItem,
   WorkflowMasterRow,
   WorkflowTypeRow,
 } from "./types/ApprovalWorkflowManagerTypes";
+import { cleanCondition, normalizeCondition, validateCondition, type ConditionFieldDef } from "./approvalConditions";
 
 // ─── Short workflow labels ────────────────────────────────────────────────────
 
@@ -127,4 +129,61 @@ export const planTypeRowSync = (
 
   const addDepts = [...depts].filter((d) => !existingDepts.has(d));
   return { keep, addDepts, remove };
+};
+
+// ─── Conditional routing & alternates on a stage (sql/99) ────────────────────
+
+// Whether a workflow type supports conditions/alternates is NOT a fixed list of entity types: it is
+// whatever the field registry (approval_condition_field) offers for that entity. The screen loads
+// those fields and passes them here:
+//   fields === null   not known yet (loading, or the request failed)
+//   fields.length===0 this kind of workflow has no conditions
+//   fields.length > 0 conditions + alternates are available, built from these fields
+// "Not known" must never be treated as "none": that would silently strip saved conditions on save.
+export type RoutingFields = ConditionFieldDef[] | null;
+
+const hasRouting = (stage: StageOrderItem): boolean =>
+  !!normalizeCondition(stage.condition) || (stage.alternates ?? []).length > 0;
+
+/** The first thing wrong with a workflow type's stages, or null when they can be saved. */
+export const validateStageRouting = (stages: StageOrderItem[], fields: RoutingFields): string | null => {
+  if (fields === null) {
+    return stages.some(hasRouting)
+      ? "The condition fields for this workflow could not be loaded yet, so its conditions cannot be checked or saved — wait a moment and try again"
+      : null;
+  }
+  if (fields.length === 0) return null;
+  for (const [i, stage] of stages.entries()) {
+    const label = stage.stage?.trim() || `Stage ${i + 1}`;
+    const cond = normalizeCondition(stage.condition);
+    if (i === 0 && cond) return `"${label}" is the first stage, which is always required — remove its condition or move it down`;
+    const problem = validateCondition(cond, fields);
+    if (problem) return `"${label}": ${problem}`;
+    if ((stage.alternates ?? []).some((a) => String(a) === String(stage.approver_ecno)))
+      return `"${label}": the alternate approver cannot be the approver themselves`;
+  }
+  return null;
+};
+
+/**
+ * What is stored in workflow_stage.stage_order_json. With registered fields, conditions are tidied and an
+ * empty condition / alternate list is left out (so untouched stages look exactly as before). For a workflow
+ * type with no fields they are dropped (they would be silently ignored). When the fields are not known they
+ * are left exactly as loaded.
+ */
+export const serializeStages = (stages: StageOrderItem[], fields: RoutingFields): string => {
+  if (fields === null) return JSON.stringify(stages);
+  return JSON.stringify(
+    stages.map((stage) => {
+      const { condition, alternates, ...rest } = stage;
+      if (fields.length === 0) return rest;
+      const cleaned = cleanCondition(normalizeCondition(condition));
+      const alts = [...new Set((alternates ?? []).map(String).filter(Boolean))];
+      return {
+        ...rest,
+        ...(cleaned ? { condition: cleaned } : {}),
+        ...(alts.length ? { alternates: alts } : {}),
+      };
+    })
+  );
 };

@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { RefreshCw, PackageCheck, FileText, Building2, CalendarDays, Truck, Menu, DoorOpen } from 'lucide-react';
+import { PackageCheck, FileText } from 'lucide-react';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
-import { TwoPaneLayout, EmptyState } from '@/CustomComponent/PageComponents';
-import { StatusBadge } from '@/utils/statusUtils';
+import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
+import { DetailEmptyState, DetailHero, Fact, FactGrid, Panel, StatusPill } from '@/CustomComponent/ServiceComponents/ServiceParts';
 
 import type { PORecord, GRNRecord, GRNFormState, GRNItemEntry, DebitNoteRecord, DebitNoteItemEntry } from './GRN/types';
 import { getPODisplayNo, formatDate, formatINR, getGRNStatus, normalisePORows, normaliseGRNRows, normaliseDebitNoteRows } from './GRN/helpers';
@@ -39,61 +37,43 @@ import {
   SOCKET_DEBIT_NOTE_CREATED,
 } from '@/Services/Socket';
 
-import POListSidebar from './GRN/POListSidebar';
+import POListSidebar, { GRN_STATUS_TONE } from './GRN/POListSidebar';
 import GRNEntryForm from './GRN/GRNEntryForm';
 import GRNListView from './GRN/GRNListView';
 import GRNDraftList from './GRN/GRNDraftList';
 import DebitNoteForm from './GRN/DebitNoteForm';
 import InventorySyncIssues from './GRN/InventorySyncIssues';
 
-// ── PO Summary Card ───────────────────────────────────────────────────────────
+// ── PO Summary ────────────────────────────────────────────────────────────────
 
-const POSummaryCard: React.FC<{ po: PORecord }> = ({ po }) => {
-  const { label: grnLabel } = getGRNStatus(po);
-
-  const fields = [
-    { icon: DoorOpen,     label: 'Gate Entry',   value: po.gate_entry_no ?? '—' },
-    { icon: FileText,     label: 'PO Number',    value: getPODisplayNo(po) },
-    { icon: FileText,     label: 'PR Reference', value: po.pr_no ?? '—' },
-    { icon: Truck,        label: 'Vendor',        value: po.vendor_name ?? po.company_name ?? '—' },
-    { icon: Building2,    label: 'Company',       value: po.com_name ?? '—' },
-    { icon: CalendarDays, label: 'Gate Received', value: formatDate(po.gate_received_date) },
-  ];
-
+const POSummary: React.FC<{ po: PORecord }> = ({ po }) => {
+  const { label: grnLabel, color } = getGRNStatus(po);
   return (
-    <Card>
-      <CardHeader className="pb-3 border-b">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <PackageCheck size={16} className="text-primary" />
-            Purchase Order — {getPODisplayNo(po)}
-          </CardTitle>
-          <StatusBadge status={grnLabel} />
-        </div>
-      </CardHeader>
-      <CardContent className="pt-4">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {fields.map(f => (
-            <div key={f.label}>
-              <p className="text-xs text-muted-foreground font-medium">{f.label}</p>
-              <p className="text-sm font-medium text-foreground">{f.value}</p>
-            </div>
-          ))}
-        </div>
-        {po.delivery_address && (
-          <div className="mt-3 pt-3 border-t">
-            <p className="text-xs text-muted-foreground font-medium">Delivery Address</p>
-            <p className="text-sm text-foreground">{po.delivery_address}</p>
-          </div>
-        )}
-        {po.total_amount != null && (
-          <div className="mt-2 text-xs">
-            <span className="text-muted-foreground">PO Value: </span>
-            <span className="font-semibold text-foreground">{formatINR(po.total_amount)}</span>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <>
+      <DetailHero
+        icon={PackageCheck}
+        eyebrow="Goods receipt"
+        title={getPODisplayNo(po)}
+        subtitle={po.vendor_name ?? po.company_name}
+        badges={<StatusPill tone={GRN_STATUS_TONE[color] ?? 'neutral'}>{grnLabel}</StatusPill>}
+        metrics={[
+          { label: 'Gate entry', value: po.gate_entry_no ?? '—', valueClassName: 'text-base @md:text-base' },
+          { label: 'Gate received', value: formatDate(po.gate_received_date), valueClassName: 'text-base @md:text-base' },
+          { label: 'PO value', value: po.total_amount != null ? formatINR(po.total_amount) : '—', accent: true },
+        ]}
+      />
+      <Panel icon={FileText} title="Purchase order details">
+        <FactGrid>
+          <Fact label="Gate entry">{po.gate_entry_no ?? '—'}</Fact>
+          <Fact label="PO number">{getPODisplayNo(po)}</Fact>
+          <Fact label="PR reference">{po.pr_no ?? '—'}</Fact>
+          <Fact label="Vendor">{po.vendor_name ?? po.company_name ?? '—'}</Fact>
+          <Fact label="Company">{po.com_name ?? '—'}</Fact>
+          <Fact label="Gate received">{formatDate(po.gate_received_date)}</Fact>
+          {po.delivery_address && <Fact label="Delivery address" className="col-span-2 @xl:col-span-3">{po.delivery_address}</Fact>}
+        </FactGrid>
+      </Panel>
+    </>
   );
 };
 
@@ -106,7 +86,6 @@ const GRNPage: React.FC = () => {
   const [poList, setPOList] = useState<PORecord[]>([]);
   const [loadingPO, setLoadingPO] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PORecord | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [grnList, setGRNList] = useState<GRNRecord[]>([]);
   const [loadingGRNs, setLoadingGRNs] = useState(false);
@@ -440,101 +419,86 @@ console.log(selectedPO);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  const canAct = canCreate("GRNPage") || canEdit("GRNPage");
+
+  const detailContent = selectedPO ? (
+    <div className="@container space-y-4 px-3 py-4 sm:px-5 lg:px-6">
+      {unsyncedItems.length > 0 && (
+        <InventorySyncIssues items={unsyncedItems} onResync={handleResyncInventoryItem} canResync={canAct} />
+      )}
+
+      <POSummary po={selectedPO} />
+
+      {canAct && (
+        <GRNEntryForm
+          key={`${selectedPO.po_basic_sno}:${activeDraftId ?? ''}`}
+          po={selectedPO}
+          onSubmit={handleSubmitGRN}
+          submitting={submitting}
+          initialForm={resumedForm}
+          initialItems={resumedItems}
+          onSaveDraft={handleSaveDraft}
+          savingDraft={savingDraft}
+          isDraft={!!activeDraftId}
+        />
+      )}
+
+      <GRNListView
+        grns={grnList}
+        loading={loadingGRNs}
+        onRefresh={() => {
+          if (selectedPO?.po_basic_sno) fetchGRNs(selectedPO.po_basic_sno);
+        }}
+        debitNotesByGrn={debitNotesByGrn}
+        canRaiseDebitNote={canAct}
+        onRaiseDebitNote={setDebitNoteTargetGRN}
+      />
+    </div>
+  ) : null;
+
   return (
-    <TwoPaneLayout
-      icon={PackageCheck}
-      title="Goods Receipt Note"
-      description="Receive goods against gate entries — GRN can only be raised after a delivery has cleared the gate"
-      sidebarOpen={sidebarOpen}
-      onSidebarOpenChange={setSidebarOpen}
-      sidebar={
-        <div className="flex flex-col h-full min-h-0">
-          <GRNDraftList
-            drafts={drafts}
-            loading={loadingDrafts}
-            activeDraftId={activeDraftId}
-            onResume={(d) => { handleResumeDraft(d); setSidebarOpen(false); }}
-            onDelete={handleDeleteDraft}
-          />
-          <div className="flex-1 min-h-0 overflow-hidden">
+    <>
+      <SidebarDetailLayout
+        sidebarTitle="Goods Receipt Note"
+        sidebarCount={poList.length}
+        sidebarCountLabel="gate entry"
+        sidebarCountLabelPlural="gate entries"
+        sidebarCountQualifier="pending"
+        listItems={(closeSheet) => (
+          <>
+            <GRNDraftList
+              drafts={drafts}
+              loading={loadingDrafts}
+              activeDraftId={activeDraftId}
+              onResume={(d) => { handleResumeDraft(d); closeSheet(); }}
+              onDelete={handleDeleteDraft}
+            />
             <POListSidebar
               poList={poList}
               loading={loadingPO}
               selectedPO={selectedPO}
-              onSelectPO={(po) => { handleSelectPO(po); setSidebarOpen(false); }}
+              onSelectPO={(po) => { handleSelectPO(po); closeSheet(); }}
+              onRefresh={fetchPOs}
+            />
+          </>
+        )}
+        hasSelection={!!selectedPO}
+        detailContent={detailContent}
+        emptyContent={
+          <div className="space-y-4 px-3 py-4 sm:px-5">
+            {unsyncedItems.length > 0 && (
+              <InventorySyncIssues items={unsyncedItems} onResync={handleResyncInventoryItem} canResync={canAct} />
+            )}
+            <DetailEmptyState
+              icon={PackageCheck}
+              title="Select a gate entry"
+              description="Choose a gate entry from the list to create a Goods Receipt Note against it."
             />
           </div>
-        </div>
-      }
-      headerChildren={
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="lg:hidden bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <Menu size={16} className="mr-1" /> Gate Entries
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
-            onClick={fetchPOs}
-            disabled={loadingPO}
-          >
-            <RefreshCw size={16} className={loadingPO ? 'animate-spin mr-1' : 'mr-1'} />
-            Refresh
-          </Button>
-        </div>
-      }
-    >
-      {unsyncedItems.length > 0 && (
-        <div className="px-4 sm:px-6 pt-4">
-          <InventorySyncIssues
-            items={unsyncedItems}
-            onResync={handleResyncInventoryItem}
-            canResync={canCreate("GRNPage") || canEdit("GRNPage")}
-          />
-        </div>
-      )}
-
-      {!selectedPO ? (
-        <EmptyState
-          message="Select a Gate Entry"
-          description="Choose a gate entry from the left panel to create a Goods Receipt Note against it"
-          icon={PackageCheck}
-        />
-      ) : (
-        <div className="px-4 sm:px-6 py-4 space-y-4">
-          <POSummaryCard po={selectedPO} />
-
-          {(canCreate("GRNPage") || canEdit("GRNPage")) && (
-            <GRNEntryForm
-              key={`${selectedPO.po_basic_sno}:${activeDraftId ?? ''}`}
-              po={selectedPO}
-              onSubmit={handleSubmitGRN}
-              submitting={submitting}
-              initialForm={resumedForm}
-              initialItems={resumedItems}
-              onSaveDraft={handleSaveDraft}
-              savingDraft={savingDraft}
-              isDraft={!!activeDraftId}
-            />
-          )}
-
-          <GRNListView
-            grns={grnList}
-            loading={loadingGRNs}
-            onRefresh={() => {
-              if (selectedPO?.po_basic_sno) fetchGRNs(selectedPO.po_basic_sno);
-            }}
-            debitNotesByGrn={debitNotesByGrn}
-            canRaiseDebitNote={canCreate("GRNPage") || canEdit("GRNPage")}
-            onRaiseDebitNote={setDebitNoteTargetGRN}
-          />
-        </div>
-      )}
+        }
+        mobileListLabel="Gate entries"
+        mobileSelectionTitle={selectedPO ? getPODisplayNo(selectedPO) : undefined}
+      />
 
       <DebitNoteForm
         open={!!debitNoteTargetGRN}
@@ -543,7 +507,7 @@ console.log(selectedPO);
         onClose={() => setDebitNoteTargetGRN(null)}
         onSubmit={handleSubmitDebitNote}
       />
-    </TwoPaneLayout>
+    </>
   );
 };
 

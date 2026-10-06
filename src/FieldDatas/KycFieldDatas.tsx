@@ -12,6 +12,14 @@ import type { FieldType, OptionType } from "./fieldType/fieldType";
 
 export type { FieldType, OptionType };
 
+// Stored in kyc_basic_info.supplier_cat_code (VARCHAR(20)) — replaces the old
+// free-form Supplier Category master as the KYC "category" answer.
+export const SUPPLIER_TYPE_OPTIONS: OptionType[] = [
+  { label: "Product Supplier", value: "PRODUCT" },
+  { label: "Service Supplier", value: "SERVICE" },
+  { label: "Product & Service Supplier", value: "BOTH" },
+];
+
 // Builds ONE company -> division -> branch -> department chain at a time (single-select,
 // cascading). A KYC record can still be linked to several such chains — see
 // `OrgMapping` / the "add mapping" list in KycEntry.tsx — but each chain is picked as a
@@ -186,7 +194,8 @@ export const useBasicInfoFields = (basicInfo: any, masterOptionsUrl?: string) =>
         require: true,
         type: "select",
         placeholder: "Select supplier category",
-        options: options?.SupplierCatagoryMaster,
+        // Supplier Category master: label = supp_cat_name, value = supp_cat_code
+        options: options?.SupplierCatagoryMaster ?? [],
         input: true,
         view: true,
       },
@@ -399,20 +408,20 @@ export const useBankFields = (masterOptionsUrl?: string): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
       {
-        field: "ac_holder_name",
-        label: "Account Holder Name",
-        require: true,
-        type: "text",
-        placeholder: "As per bank records",
-        input: true,
-        view: true,
-      },
-      {
         field: "ac_number",
         label: "Account Number",
         require: true,
         type: "text",
         placeholder: "1234567890",
+        input: true,
+        view: true,
+      },
+      {
+        field: "ifsc",
+        label: "IFSC Code",
+        require: true,
+        type: "text",
+        placeholder: "SBIN0001234",
         input: true,
         view: true,
       },
@@ -427,11 +436,11 @@ export const useBankFields = (masterOptionsUrl?: string): FieldType[] => {
         view: true,
       },
       {
-        field: "ifsc",
-        label: "IFSC Code",
+        field: "ac_holder_name",
+        label: "Account Holder Name",
         require: true,
         type: "text",
-        placeholder: "SBIN0001234",
+        placeholder: "As per bank records",
         input: true,
         view: true,
       },

@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, CheckCircle2 } from "lucide-react";
+import { ChevronDown, CheckCircle2, Eye, FileText, RefreshCw, Trash2 } from "lucide-react";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -125,9 +125,24 @@ export function CustomInputField({
       onFileChange(file);
     };
 
-    return (
-      <div className="space-y-2">
-       
+    // Opens the chosen file (or an already-stored URL) in a new tab.
+    const viewFile = () => {
+      if (fileValue instanceof File) {
+        const url = URL.createObjectURL(fileValue);
+        window.open(url, "_blank", "noopener");
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      } else if (typeof fileValue === "string" && fileValue) {
+        window.open(fileValue, "_blank", "noopener,noreferrer");
+      }
+    };
+
+    const hasFile = fileValue instanceof File || (typeof fileValue === "string" && Boolean(fileValue));
+    const fileName =
+      fileValue instanceof File ? fileValue.name : String(fileValue ?? "").split("/").pop() || "Document";
+    const fileSize = fileValue instanceof File ? `${Math.max(1, Math.round(fileValue.size / 1024))} KB · uploaded` : "Fetched automatically — no upload needed";
+
+    if (!hasFile) {
+      return (
         <div className="flex items-center gap-2">
           <Input
             id={name}
@@ -137,13 +152,40 @@ export function CustomInputField({
             onChange={handleFileChange}
             className="flex-1"
           />
-          {fileValue && (
-            <Badge variant="secondary" className="whitespace-nowrap">
-              <CheckCircle2 className="h-3 w-3 mr-1" />
-              {fileValue.name.length > 15 ? `${fileValue.name.slice(0, 15)}...` : fileValue.name}
-            </Badge>
-          )}
         </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+        <FileText className="h-4 w-4 shrink-0 text-primary" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium" title={fileName}>{fileName}</p>
+          {fileSize && <p className="text-xs text-muted-foreground">{fileSize}</p>}
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={viewFile}>
+          <Eye className="mr-1.5 h-3.5 w-3.5" /> View
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="text-destructive hover:text-destructive"
+          onClick={() => onFileChange(null)}
+        >
+          <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+        </Button>
+        <label className="inline-flex h-8 cursor-pointer items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-accent">
+          <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Re-upload
+          <input
+            id={name}
+            type="file"
+            name={name}
+            accept="application/pdf,image/*"
+            className="sr-only"
+            onChange={handleFileChange}
+          />
+        </label>
       </div>
     );
   };

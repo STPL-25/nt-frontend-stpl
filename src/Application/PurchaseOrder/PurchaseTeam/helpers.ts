@@ -109,9 +109,13 @@ export function prToFieldRecord(pr: PRRecord): Record<string, any> {
   };
 }
 
-/** Get quotation total */
-export function getQuotationTotal(items: QuotationItem[]): number {
-  return items.reduce((s, it) => s + (it.total_amount || it.qty * it.unit_price), 0);
+/** Get quotation total (items incl. GST, plus quotation-level freight / other charges when given) */
+export function getQuotationTotal(
+  items: QuotationItem[],
+  charges?: { freight_charges?: number | string | null; other_charges?: number | string | null },
+): number {
+  const itemsTotal = items.reduce((s, it) => s + (it.total_amount || it.qty * it.unit_price), 0);
+  return itemsTotal + Number(charges?.freight_charges ?? 0) + Number(charges?.other_charges ?? 0);
 }
 
 /** Calculate quotation totals breakdown */

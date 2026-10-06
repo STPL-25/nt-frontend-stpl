@@ -5,6 +5,7 @@ import useFetch from '@/hooks/useFetchHook';
 import usePost from '@/hooks/usePostHook';
 import { getServicePoCyclesForApproval, approveServicePoCycle } from '@/Services/Api';
 import { useAppState } from '@/imports';
+import { ACTION_DONE_LABEL, type ApprovalAction } from '@/CustomComponent/ServiceComponents/serviceUtils';
 import {
   socket, SOCKET_JOIN_SERVICE_PO_APPROVAL, SOCKET_LEAVE_SERVICE_PO_APPROVAL,
   SOCKET_SERVICE_PO_APPROVAL_UPDATED,
@@ -44,7 +45,8 @@ async function downloadServicePoPdfs(poDetailsRaw: unknown): Promise<void> {
 const ServicePoApprovalScreen: React.FC = () => {
   const [selectedCycle, setSelectedCycle] = useState<any | null>(null);
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
-  const [actionType, setActionType] = useState<'approve' | 'reject'>('approve');
+  const [actionType, setActionType] = useState<ApprovalAction>('approve');
+  const [sendBackTarget, setSendBackTarget] = useState('');
   const [comments, setComments] = useState('');
   const [cycleList, setCycleList] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -90,7 +92,8 @@ const ServicePoApprovalScreen: React.FC = () => {
   const handleCycleSelect = (cycle: any) => setSelectedCycle(cycle);
 
   const handleAction = (action: string) => {
-    setActionType(action as 'approve' | 'reject');
+    setActionType(action as ApprovalAction);
+    setSendBackTarget('');
     setComments('');
     setShowApprovalDialog(true);
   };
@@ -104,6 +107,7 @@ const ServicePoApprovalScreen: React.FC = () => {
         ecno: userData[0]?.ecno,
         action: actionType,
         comments: comments.trim(),
+        ...(actionType === 'send_back' ? { send_back_to: sendBackTarget } : {}),
         approval_stages: (() => {
           try {
             const raw = selectedCycle.stage_order_json;
@@ -121,7 +125,7 @@ const ServicePoApprovalScreen: React.FC = () => {
       setSelectedCycle(null);
       setShowApprovalDialog(false);
       setComments('');
-      setToast({ message: `Service PO cycle ${actionType === 'approve' ? 'approved' : 'rejected'} successfully`, type: 'success' });
+      setToast({ message: `Service PO cycle ${ACTION_DONE_LABEL[actionType]} successfully`, type: 'success' });
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Action failed';
       setToast({ message, type: 'error' });
@@ -150,6 +154,8 @@ const ServicePoApprovalScreen: React.FC = () => {
       handleSubmit={handleSubmit}
       loading={loading}
       actionType={actionType}
+      sendBackTarget={sendBackTarget}
+      setSendBackTarget={setSendBackTarget}
       toast={toast}
     />
   );

@@ -3,16 +3,17 @@ import {
   CalendarClock, ChevronRight, FileSignature, FileText, ExternalLink, GitCompare, Landmark, Layers,
   RotateCcw, ScrollText, StickyNote, Users, Wallet,
 } from 'lucide-react';
+import { getAuthFileUrl } from '@/Services/authUrl';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { useAppState } from '@/imports';
 import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
 import {
-  ApprovalDecisionDialog, ApprovalStepper, Callout, DecisionButtons, DetailEmptyState,
+  ApprovalActivity, ApprovalDecisionDialog, ApprovalStepper, Callout, DecisionButtons, DetailEmptyState,
   DetailHero, Fact, FactGrid, Panel, SelectableCard, StatusPill, StickyActionBar, SupplierSplitTable, SupplierSummary, TypeBadge,
 } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import {
-  AGREEMENT_STATUS, DAY_COUNT_LABEL, diffTerms, entersAmountPerCycle, facilityLabel, formatDate, formatINR, ordinalDay, parseStages,
-  statusMeta, termsFromRow,
+  AGREEMENT_STATUS, DAY_COUNT_LABEL, approvalRoutes, diffTerms, entersAmountPerCycle, facilityLabel, formatDate, formatINR, ordinalDay, parseStages,
+  statusMeta, termsFromRow, type ApprovalAction,
 } from '@/CustomComponent/ServiceComponents/serviceUtils';
 
 // ─── SP response mapping (sp_nt_GetServiceAgreementsForApproval) ───────────
@@ -45,7 +46,9 @@ interface ServiceAgreementApprovalScreenLayoutProps {
   setComments: (comments: string) => void;
   handleSubmit: () => void;
   loading: boolean;
-  actionType: 'approve' | 'reject';
+  actionType: ApprovalAction;
+  sendBackTarget: string;
+  setSendBackTarget: (ecno: string) => void;
   toast?: { message: string; type: 'success' | 'error' } | null;
 }
 
@@ -115,6 +118,9 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
   const isCurrentApprover = agreement.current_approver_id && userEcno && String(agreement.current_approver_id).trim() === String(userEcno).trim();
   const canAct = canEdit('ServiceAgreementApprovalScreen') && !!isCurrentApprover;
   const stages = useMemo(() => parseStages(agreement), [agreement]);
+  const routes = useMemo(() => approvalRoutes(stages, userEcno), [stages, userEcno]);
+  const onForward = canAct && routes.canForward ? () => handleAction('forward') : undefined;
+  const onSendBack = canAct && routes.canSendBack ? () => handleAction('send_back') : undefined;
   const status = statusMeta(AGREEMENT_STATUS, agreement.status);
   const isStatutory = agreement.service_type_code === 'STATUTORY';
   const perCycleEntry = entersAmountPerCycle(agreement.service_type_code);
@@ -254,7 +260,7 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
 
             {agreement.agreement_doc_url && (
               <a
-                href={agreement.agreement_doc_url}
+                href={getAuthFileUrl(agreement.agreement_doc_url)}
                 target="_blank"
                 rel="noreferrer"
                 className="group flex items-center gap-3 rounded-xl border bg-card p-3.5 shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5 sm:p-4"
@@ -271,6 +277,8 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
             )}
 
             <ApprovalStepper stages={stages} currentApproverId={agreement.current_approver_id} currentUserEcno={userEcno} />
+
+            <ApprovalActivity history={agreement.history} />
           </div>
 
           {/* Actions — a card beside the content when the pane is wide, a sticky bar below it otherwise */}
@@ -284,6 +292,8 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
                     rejectLabel="Reject agreement"
                     onApprove={() => handleAction('approve')}
                     onReject={() => handleAction('reject')}
+                    onForward={onForward}
+                    onSendBack={onSendBack}
                   />
                 ) : (
                   <p className="rounded-lg bg-muted/60 px-3 py-2.5 text-center text-xs text-muted-foreground">
@@ -311,11 +321,13 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
       <StickyActionBar>
         {canAct ? (
           <DecisionButtons
-            className="@md:justify-end @md:[&>button]:min-w-44 @md:[&>button]:flex-none"
+            className="flex-wrap @md:justify-end @md:[&>button]:min-w-40 @md:[&>button]:flex-none"
             approveLabel="Approve"
             rejectLabel="Reject"
             onApprove={() => handleAction('approve')}
             onReject={() => handleAction('reject')}
+            onForward={onForward}
+            onSendBack={onSendBack}
           />
         ) : (
           <p className="py-1 text-center text-xs text-muted-foreground">View only — you are not the current approver</p>
@@ -330,8 +342,11 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
 export default function ServiceAgreementApprovalScreenLayout({
   approvalName, agreementList, selectedAgreement, handleAgreementSelect, handleAction,
   showApprovalDialog, setShowApprovalDialog, comments, setComments,
-  handleSubmit, loading, actionType, toast,
+  handleSubmit, loading, actionType, sendBackTarget, setSendBackTarget, toast,
 }: ServiceAgreementApprovalScreenLayoutProps) {
+  const { userData } = useAppState();
+  const userEcno = userData[0]?.ecno ?? userData[0]?.login_id;
+  const routes = useMemo(() => approvalRoutes(parseStages(selectedAgreement), userEcno), [selectedAgreement, userEcno]);
   return (
     <>
       <SidebarDetailLayout
@@ -381,6 +396,10 @@ export default function ServiceAgreementApprovalScreenLayout({
         onSubmit={handleSubmit}
         loading={loading}
         entityName="agreement"
+        forwardTo={routes.forwardTo}
+        sendBackOptions={routes.sendBackOptions}
+        sendBackTarget={sendBackTarget}
+        setSendBackTarget={setSendBackTarget}
         approveNote="If this is the final stage, the agreement goes live and its first Service PO cycle is scheduled."
         summary={selectedAgreement ? [
           { label: 'Agreement', value: selectedAgreement.agreement_no },
