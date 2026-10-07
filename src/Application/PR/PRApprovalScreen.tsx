@@ -170,6 +170,7 @@ const PRApprovalScreen: React.FC = () => {
         po_date: autoPo.po_date,
         required_date: autoPo.required_date,
         purpose: autoPo.purpose,
+        terms_conditions: autoPo.terms_conditions,
         company_name: autoPo.company_name,
         pr_no: selectedPR?.pr_no,
         items,

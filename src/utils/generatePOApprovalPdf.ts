@@ -352,22 +352,51 @@ function splitTermsText(text: unknown): string[] | null {
   return lines.length > 0 ? lines : null;
 }
 
-function drawTermsBlock(doc: jsPDF, y: number, terms: string[]): number {
-  const height = 8 + terms.length * 4;
-  doc.setFillColor(...LIGHT_BG);
-  doc.setDrawColor(...BORDER);
-  doc.roundedRect(PAGE_MARGIN, y, CONTENT_WIDTH, height, 1.5, 1.5, 'FD');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(...NAVY);
-  doc.text('TERMS & CONDITIONS', PAGE_MARGIN + 3, y + 5);
+// Draws the T&C box, wrapping long clauses and flowing onto new pages when
+// the clauses don't fit in the space left on the current one.
+function drawTermsBlock(doc: jsPDF, startY: number, terms: string[]): number {
+  const LINE_H = 3.6;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.2);
-  doc.setTextColor(55, 65, 81);
-  terms.forEach((line, i) => {
-    doc.text(`\u2022 ${line}`, PAGE_MARGIN + 3, y + 9 + i * 4);
+  const wrapped = terms.map(t => doc.splitTextToSize(`\u2022 ${t}`, CONTENT_WIDTH - 6) as string[]);
+
+  let y = ensurePageSpace(doc, startY, 8 + (wrapped[0]?.length ?? 1) * LINE_H);
+  let boxTop = y;
+  let cursor = y + 9;
+
+  const closeBox = () => {
+    const h = cursor - boxTop;
+    doc.setFillColor(...LIGHT_BG);
+    doc.setDrawColor(...BORDER);
+    doc.roundedRect(PAGE_MARGIN, boxTop, CONTENT_WIDTH, h, 1.5, 1.5, 'S');
+  };
+  const header = (top: number, continued: boolean) => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(...NAVY);
+    doc.text(continued ? 'TERMS & CONDITIONS (contd.)' : 'TERMS & CONDITIONS', PAGE_MARGIN + 3, top + 5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.2);
+    doc.setTextColor(55, 65, 81);
+  };
+  header(boxTop, false);
+
+  wrapped.forEach(lines => {
+    lines.forEach((ln, idx) => {
+      if (cursor + LINE_H > PAGE_HEIGHT - 17) {
+        closeBox();
+        doc.addPage();
+        boxTop = 15;
+        cursor = boxTop + 9;
+        header(boxTop, true);
+      }
+      doc.text(idx === 0 ? ln : `  ${ln}`, PAGE_MARGIN + 3, cursor);
+      cursor += LINE_H;
+    });
   });
-  return y + height + 6;
+  cursor += 1.5;
+  closeBox();
+  return cursor + 6;
 }
 
 // function drawSignatureBlock(doc: jsPDF, y: number): number {
@@ -536,7 +565,10 @@ export async function createPOApprovalPdfDocument(
   terms?: string[],
 ): Promise<{ doc: jsPDF; fileName: string }> {
   const poHeader = parseJSON<AnyRecord>(approvalData?.po_header, {});
-  const resolvedTerms = terms  ;
+  // Caller-supplied clauses win; otherwise use the PO's own terms_conditions
+  // (already resolved server-side from the T&C master for the PO's
+  // company/division/branch/department scope when the buyer left it blank).
+  const resolvedTerms = terms ?? splitTermsText(poHeader.terms_conditions);
   const vendor = parseJSON<AnyRecord>(approvalData?.vendor, {});
   const approvedItems = parseJSON<AnyRecord[]>(approvalData?.po_items, []);
   const quotationItems = parseJSON<AnyRecord[]>(
@@ -736,8 +768,9 @@ export async function createPOApprovalPdfDocument(
   doc.text(formatMoney(grandTotal), totalsX + totalsWidth - 3, grandY + 5.5, { align: 'right' });
 
   cursorY = grandY + 14;
-  cursorY = ensurePageSpace(doc, cursorY, 40);
-  // cursorY = drawTermsBlock(doc, cursorY, resolvedTerms);
+  if (resolvedTerms && resolvedTerms.length > 0) {
+    cursorY = drawTermsBlock(doc, cursorY, resolvedTerms);
+  }
   cursorY = ensurePageSpace(doc, cursorY, 25);
     // drawSignatureBlock(doc, cursorY);
 

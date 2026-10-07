@@ -16,6 +16,7 @@ export interface VendorDrivenPOPdfInput {
   po_date?: string;
   required_date?: string;
   purpose?: string;
+  terms_conditions?: string | null;
   company_name?: string;
   pr_no?: string;
   items: VendorDrivenPOItem[];
@@ -53,6 +54,7 @@ export function buildVendorDrivenPOPdfBlob({
   po_date,
   required_date,
   purpose,
+  terms_conditions,
   company_name,
   pr_no,
   items,
@@ -137,6 +139,37 @@ export function buildVendorDrivenPOPdfBlob({
   doc.setTextColor(255, 255, 255);
   doc.text('Grand Total', totalsX, y);
   doc.text(formatINR(grandTotal), 196, y, { align: 'right' });
+
+  // Terms & Conditions resolved for the PO's company/division/branch/department scope.
+  const termLines = String(terms_conditions ?? '')
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean);
+  if (termLines.length > 0) {
+    let ty = y + 14;
+    const ensure = (h: number) => {
+      if (ty + h > 280) {
+        doc.addPage();
+        ty = 18;
+      }
+    };
+    ensure(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(30, 30, 30);
+    doc.text('Terms & Conditions', 14, ty);
+    ty += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(55, 65, 81);
+    termLines.forEach(line => {
+      (doc.splitTextToSize(`• ${line}`, 182) as string[]).forEach((part, i) => {
+        ensure(5);
+        doc.text(i === 0 ? part : `  ${part}`, 14, ty);
+        ty += 4.5;
+      });
+    });
+  }
 
   return doc.output('blob');
 }
