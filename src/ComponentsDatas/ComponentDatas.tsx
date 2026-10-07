@@ -25,6 +25,7 @@ export const StoreInchargeApprovalPage = lazy(() => import("../Application/Store
  export const GRNPage = lazy(() => import("../Application/GRN/GRNPage"));
  export const POAmendmentPage = lazy(() => import("../Application/POAmendment/POAmendmentPage"));
  export const InventoryPage = lazy(() => import("../Application/Inventory/InventoryPage"));
+ export const AssetManagementPage = lazy(() => import("../Application/AssetManagement/AssetManagementPage"));
  export const StockRequestPage = lazy(() => import("../Application/StockRequest/StockRequestPage"));
  export const StockIssuePage = lazy(() => import("../Application/StockRequest/StockIssuePage"));
 //  export const AccountEntryPage = lazy(() => import("../Application/AccountEntry/AccountEntryPage"));
@@ -76,6 +77,7 @@ export const sectionComponents: SectionComponentsMap = {
   GRNPage,
   POAmendmentPage,
   InventoryPage,
+  AssetManagementPage,
   StockRequestPage,
   StockIssuePage,
   // AccountEntryPage,

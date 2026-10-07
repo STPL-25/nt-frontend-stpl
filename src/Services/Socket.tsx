@@ -128,6 +128,8 @@ export const SOCKET_LEAVE_INVENTORY = "leave-inventory";
 export const SOCKET_INVENTORY_UPDATED = "inventory:updated";
 // Stock requests share the inventory room (issuing changes stock)
 export const SOCKET_STOCK_REQUEST_UPDATED = "stockrequest:updated";
+// Asset Management (return / service requests) also rides the inventory room
+export const SOCKET_ASSET_UPDATED = "asset:updated";
 
 // ── User / permission events ──────────────────────────────────────────────────
 export const SOCKET_PERMISSIONS_UPDATED          = "permissions:updated";
