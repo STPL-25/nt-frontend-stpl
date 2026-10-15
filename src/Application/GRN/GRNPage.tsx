@@ -7,7 +7,7 @@ import { usePermissions } from '@/globalState/hooks/usePermissions';
 import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
 import { DetailEmptyState, DetailHero, Fact, FactGrid, Panel, StatusPill } from '@/CustomComponent/ServiceComponents/ServiceParts';
 
-import type { PORecord, GRNRecord, GRNFormState, GRNItemEntry, DebitNoteRecord, DebitNoteItemEntry } from './GRN/types';
+import type { PORecord, GRNRecord, GRNFormState, GRNItemEntry, DebitNoteRecord, DebitNoteItemEntry, ExcessRequest, CreditNoteRecord } from './GRN/types';
 import { getPODisplayNo, formatDate, formatINR, getGRNStatus, normalisePORows, normaliseGRNRows, normaliseDebitNoteRows } from './GRN/helpers';
 import {
   grnSvcGetPendingGateEntries,
@@ -19,6 +19,11 @@ import {
   grnSvcDeleteDraft,
   grnSvcGetUnsyncedInventoryItems,
   grnSvcResyncInventoryItem,
+  grnSvcGetExcessRequests,
+  grnSvcDecideExcess,
+  grnSvcGetGRNApprovals,
+  grnSvcDecideGRN,
+  grnSvcGetCreditNotesByGRN,
   type GRNDraft,
   type UnsyncedInventoryItem,
 } from '@/Services/GrnService/grnApi';
@@ -35,6 +40,8 @@ import {
   SOCKET_GRN_DRAFT_DELETED,
   SOCKET_GRN_DRAFT_SUBMITTED,
   SOCKET_DEBIT_NOTE_CREATED,
+  SOCKET_GRN_EXCESS_DECIDED,
+  SOCKET_GRN_APPROVAL_DECIDED,
 } from '@/Services/Socket';
 
 import POListSidebar, { GRN_STATUS_TONE } from './GRN/POListSidebar';
@@ -43,6 +50,8 @@ import GRNListView from './GRN/GRNListView';
 import GRNDraftList from './GRN/GRNDraftList';
 import DebitNoteForm from './GRN/DebitNoteForm';
 import InventorySyncIssues from './GRN/InventorySyncIssues';
+import ExcessApprovalPanel from './GRN/ExcessApprovalPanel';
+import GRNApprovalPanel, { type GRNApprovalRow } from './GRN/GRNApprovalPanel';
 
 // ── PO Summary ────────────────────────────────────────────────────────────────
 
@@ -94,6 +103,13 @@ const GRNPage: React.FC = () => {
 
   // Debit notes — raised against a submitted GRN for damage/shortage/return
   const [debitNotesByGrn, setDebitNotesByGrn] = useState<Record<number, DebitNoteRecord[]>>({});
+  const [creditNotesByGrn, setCreditNotesByGrn] = useState<Record<number, CreditNoteRecord[]>>({});
+
+  // Qty received above the PO, waiting for THIS user to accept / reject
+  const [excessToApprove, setExcessToApprove] = useState<ExcessRequest[]>([]);
+  const [excessBusyId, setExcessBusyId] = useState<number | null>(null);
+  const [grnsToApprove, setGrnsToApprove] = useState<GRNApprovalRow[]>([]);
+  const [grnBusyId, setGrnBusyId] = useState<number | null>(null);
   const [debitNoteTargetGRN, setDebitNoteTargetGRN] = useState<GRNRecord | null>(null);
   const [submittingDebitNote, setSubmittingDebitNote] = useState(false);
 
@@ -140,6 +156,40 @@ const GRNPage: React.FC = () => {
     setDebitNotesByGrn(Object.fromEntries(entries));
   }, []);
 
+  const fetchCreditNotesForGRNs = useCallback(async (grns: GRNRecord[]) => {
+    const entries = await Promise.all(
+      grns
+        .filter(g => g.grn_basic_sno)
+        .map(async g => {
+          try {
+            const res = await axios.get(grnSvcGetCreditNotesByGRN(g.grn_basic_sno as number));
+            return [g.grn_basic_sno as number, (res.data?.data ?? []) as CreditNoteRecord[]] as const;
+          } catch {
+            return [g.grn_basic_sno as number, [] as CreditNoteRecord[]] as const;
+          }
+        })
+    );
+    setCreditNotesByGrn(Object.fromEntries(entries));
+  }, []);
+
+  const fetchGrnsToApprove = useCallback(async () => {
+    try {
+      const res = await axios.get(grnSvcGetGRNApprovals({ mine: true }));
+      setGrnsToApprove(res.data?.data?.grns ?? []);
+    } catch {
+      // silent - only approvers have anything here
+    }
+  }, []);
+
+  const fetchExcessToApprove = useCallback(async () => {
+    try {
+      const res = await axios.get(grnSvcGetExcessRequests({ mine: true, status: 'Pending' }));
+      setExcessToApprove(res.data?.data ?? []);
+    } catch {
+      // silent — only approvers have anything here
+    }
+  }, []);
+
   const fetchGRNs = useCallback(async (po_basic_sno: number) => {
     setLoadingGRNs(true);
     try {
@@ -147,12 +197,13 @@ const GRNPage: React.FC = () => {
       const grns = normaliseGRNRows(res.data?.data ?? []);
       setGRNList(grns);
       fetchDebitNotesForGRNs(grns);
+      fetchCreditNotesForGRNs(grns);
     } catch (err: any) {
       toast.error(err?.response?.data?.error ?? 'Failed to load GRNs for this PO');
     } finally {
       setLoadingGRNs(false);
     }
-  }, [fetchDebitNotesForGRNs]);
+  }, [fetchDebitNotesForGRNs, fetchCreditNotesForGRNs]);
 
   const fetchDrafts = useCallback(async () => {
     setLoadingDrafts(true);
@@ -175,7 +226,7 @@ const GRNPage: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => { fetchPOs(); fetchDrafts(); fetchUnsyncedItems(); }, [fetchPOs, fetchDrafts, fetchUnsyncedItems]);
+  useEffect(() => { fetchPOs(); fetchDrafts(); fetchUnsyncedItems(); fetchExcessToApprove(); fetchGrnsToApprove(); }, [fetchPOs, fetchDrafts, fetchUnsyncedItems, fetchExcessToApprove, fetchGrnsToApprove]);
 
   useEffect(() => {
     if (selectedPO?.po_basic_sno) fetchGRNs(selectedPO.po_basic_sno);
@@ -193,6 +244,8 @@ const GRNPage: React.FC = () => {
     const onGRNCreated = (grn: any) => {
       fetchPOs();
       fetchUnsyncedItems();
+      fetchExcessToApprove();
+      fetchGrnsToApprove();
       if (grn?.po_basic_sno && selectedPO?.po_basic_sno === grn.po_basic_sno) {
         fetchGRNs(grn.po_basic_sno);
       }
@@ -211,11 +264,24 @@ const GRNPage: React.FC = () => {
     socket.on(SOCKET_GRN_DRAFT_DELETED, fetchDrafts);
     socket.on(SOCKET_GRN_DRAFT_SUBMITTED, fetchDrafts);
     socket.on(SOCKET_DEBIT_NOTE_CREATED, onDebitNoteCreated);
+    const onExcessDecided = (r: any) => {
+      fetchExcessToApprove();
+      if (r?.po_basic_sno && selectedPO?.po_basic_sno === r.po_basic_sno) fetchGRNs(r.po_basic_sno);
+    };
+    socket.on(SOCKET_GRN_EXCESS_DECIDED, onExcessDecided);
+    const onApprovalDecided = (r: any) => {
+      fetchGrnsToApprove();
+      fetchPOs();
+      if (r?.po_basic_sno && selectedPO?.po_basic_sno === r.po_basic_sno) fetchGRNs(r.po_basic_sno);
+    };
+    socket.on(SOCKET_GRN_APPROVAL_DECIDED, onApprovalDecided);
 
     return () => {
       socket.emit(SOCKET_LEAVE_GRN);
       socket.off(SOCKET_GRN_CREATED, onGRNCreated);
       socket.off(SOCKET_DEBIT_NOTE_CREATED, onDebitNoteCreated);
+      socket.off(SOCKET_GRN_EXCESS_DECIDED, onExcessDecided);
+      socket.off(SOCKET_GRN_APPROVAL_DECIDED, onApprovalDecided);
       socket.off(SOCKET_GATE_ENTRY_CREATED, refreshPending);
       socket.off(SOCKET_GATE_ENTRY_STATUS_UPDATED, refreshPending);
       socket.off(SOCKET_GRN_DRAFT_NEW, fetchDrafts);
@@ -309,6 +375,11 @@ console.log(selectedPO);
       return;
     }
 
+    if (items.some(it => it.invoice_qty === '' || Number.isNaN(Number(it.invoice_qty)) || Number(it.invoice_qty) < 0)) {
+      toast.error('Enter the supplier invoice quantity for every selected item');
+      return;
+    }
+
     setSubmitting(true);
     try {
       // use a loose type here to avoid mismatches between GRNRecord and
@@ -346,6 +417,8 @@ console.log(selectedPO);
           hsn_code: it.hsn_code || undefined,
           remarks: it.remarks,
           warehouse_location_sno: it.warehouse_location_sno || undefined,
+          invoice_qty: Number(it.invoice_qty),
+          invoice_uom: it.invoice_uom || it.unit_name,
         })),
       };
 
@@ -371,6 +444,39 @@ console.log(selectedPO);
       toast.error(err?.response?.data?.error ?? 'Failed to submit GRN');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDecideGRN = async (row: GRNApprovalRow, action: 'approve' | 'reject', comments: string) => {
+    setGrnBusyId(row.grn_basic_sno);
+    try {
+      const res = await axios.post(grnSvcDecideGRN, { grn_basic_sno: row.grn_basic_sno, action, comments });
+      const result = res.data?.data?.result;
+      toast.success(action === 'reject' ? `${row.grn_no} rejected`
+        : result === 'FINAL' ? `${row.grn_no} approved - stock posted` : `${row.grn_no} approved - sent to next approver`);
+      setGrnsToApprove(prev => prev.filter(r => r.grn_basic_sno !== row.grn_basic_sno));
+      fetchPOs();
+      if (selectedPO?.po_basic_sno) fetchGRNs(selectedPO.po_basic_sno);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to record the decision');
+    } finally {
+      setGrnBusyId(null);
+    }
+  };
+
+  const handleDecideExcess = async (req: ExcessRequest, action: 'ACCEPT' | 'REJECT', remarks: string) => {
+    setExcessBusyId(req.excess_sno);
+    try {
+      await axios.post(grnSvcDecideExcess, { excess_sno: req.excess_sno, action, remarks });
+      toast.success(action === 'ACCEPT'
+        ? `${req.excess_qty} ${req.unit_name ?? ''} of ${req.prod_name} accepted into stock`
+        : `${req.prod_name}: excess rejected — return it to the supplier`);
+      setExcessToApprove(prev => prev.filter(r => r.excess_sno !== req.excess_sno));
+      if (selectedPO?.po_basic_sno) fetchGRNs(selectedPO.po_basic_sno);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error ?? 'Failed to record the decision');
+    } finally {
+      setExcessBusyId(null);
     }
   };
 
@@ -427,6 +533,9 @@ console.log(selectedPO);
         <InventorySyncIssues items={unsyncedItems} onResync={handleResyncInventoryItem} canResync={canAct} />
       )}
 
+      <GRNApprovalPanel rows={grnsToApprove} busyId={grnBusyId} onDecide={handleDecideGRN} />
+      <ExcessApprovalPanel requests={excessToApprove} busyId={excessBusyId} onDecide={handleDecideExcess} />
+
       <POSummary po={selectedPO} />
 
       {canAct && (
@@ -450,6 +559,7 @@ console.log(selectedPO);
           if (selectedPO?.po_basic_sno) fetchGRNs(selectedPO.po_basic_sno);
         }}
         debitNotesByGrn={debitNotesByGrn}
+        creditNotesByGrn={creditNotesByGrn}
         canRaiseDebitNote={canAct}
         onRaiseDebitNote={setDebitNoteTargetGRN}
       />
@@ -486,6 +596,7 @@ console.log(selectedPO);
         detailContent={detailContent}
         emptyContent={
           <div className="space-y-4 px-3 py-4 sm:px-5">
+            <ExcessApprovalPanel requests={excessToApprove} busyId={excessBusyId} onDecide={handleDecideExcess} />
             {unsyncedItems.length > 0 && (
               <InventorySyncIssues items={unsyncedItems} onResync={handleResyncInventoryItem} canResync={canAct} />
             )}

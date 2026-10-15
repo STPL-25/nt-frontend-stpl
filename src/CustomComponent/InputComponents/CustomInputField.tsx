@@ -22,7 +22,7 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, Command
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
-type Option = { label: string; value: string | number };
+type Option = { label: string; value: string | number; /** shown below the label, e.g. "(TCS · Coimbatore)" */ sublabel?: string };
 
 export interface CustomInputFieldProps {
   field: string;
@@ -219,12 +219,22 @@ export function CustomInputField({
             required={require}
           >
             <SelectTrigger className={cn(className, error && "border-red-500")}>
-              <SelectValue placeholder={`Select ${label}`} />
+              <SelectValue placeholder={`Select ${label}`}>
+                {(() => {
+                  const sel = optionsArray.find((o) => String(o.value) === String(value));
+                  return sel ? (sel.sublabel ? `${sel.label} ${sel.sublabel}` : sel.label) : undefined;
+                })()}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {optionsArray.map((option) => (
                 <SelectItem key={option.value} value={String(option.value)}>
-                  {option.label}
+                  {option.sublabel ? (
+                    <span className="flex flex-col items-start leading-tight">
+                      <span>{option.label}</span>
+                      <span className="text-xs text-muted-foreground">{option.sublabel}</span>
+                    </span>
+                  ) : option.label}
                 </SelectItem>
               ))}
             </SelectContent>

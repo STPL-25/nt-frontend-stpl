@@ -16,7 +16,7 @@ import { buildPOPdfBlob } from './generatePOPdfBlob';
 
 /** createPOFromQuotation's response is either a single `{data:[row]}` payload
  * or (split-group case) an array of such payloads — pull the first result row. */
-function extractPOResultRow(response: unknown): { po_no?: string; vendor_sno?: number } | null {
+function extractPOResultRow(response: unknown): { po_no?: string; vendor_sno?: number; po_basic_sno?: number } | null {
   const payload = Array.isArray(response) ? response[0] : response;
   const row = (payload as any)?.data?.[0] ?? (payload as any)?.decrypted?.data?.[0];
   return row ?? null;
@@ -164,6 +164,9 @@ const CreatePODialog: React.FC<CreatePODialogProps> = ({
       fd.append('terms_conditions', poForm.terms_conditions ?? '');
       fd.append('delivery_address', poForm.delivery_address ?? '');
       fd.append('items', JSON.stringify(selectedQuotation.items));
+      // Lets the backend store the emailed PDF so the supplier portal serves
+      // that exact file instead of regenerating one.
+      if (resultRow?.po_basic_sno) fd.append('po_basic_sno', String(resultRow.po_basic_sno));
       fd.append('po_pdf', pdfBlob, `${poNo}.pdf`);
 
       await postSendPOEmail(purchaseTeamSendPOEmail, fd, {

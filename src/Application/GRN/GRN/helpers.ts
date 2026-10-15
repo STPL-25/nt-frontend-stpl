@@ -88,8 +88,23 @@ export const buildGRNItems = (po: PORecord): GRNItemEntry[] => {
       remarks: '',
       selected: pending > 0,
       warehouse_location_sno: undefined,
+      invoice_qty: '',
+      invoice_uom: item.unit_name ?? item.uom_name ?? '',
     };
   });
+};
+
+/** Shortage / excess of a line against its supplier invoice. Only comparable
+ *  when the invoice UOM matches the received UOM; `aboveOrdered` is the part of
+ *  the accepted qty beyond what the PO still allows (needs approval). */
+export const lineVariance = (it: GRNItemEntry) => {
+  const inv = it.invoice_qty === '' ? null : Number(it.invoice_qty);
+  const sameUom = !it.invoice_uom || !it.unit_name
+    || it.invoice_uom.trim().toLowerCase() === it.unit_name.trim().toLowerCase();
+  const shortage = inv != null && sameUom ? Math.max(inv - it.received_qty, 0) : 0;
+  const excess = inv != null && sameUom ? Math.max(it.received_qty - inv, 0) : 0;
+  const aboveOrdered = Math.max((it.received_qty - (it.rejected_qty || 0)) - it.pending_qty, 0);
+  return { inv, sameUom, shortage, excess, aboveOrdered };
 };
 
 export const normaliseDebitNoteRows = (rows: any[]): any[] => {

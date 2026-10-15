@@ -11,10 +11,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { PackageCheck, Send, RotateCcw, Info, Save, MapPin } from 'lucide-react';
+import { PackageCheck, Send, RotateCcw, Info, Save, MapPin, AlertTriangle } from 'lucide-react';
 import type { PORecord, GRNFormState, GRNItemEntry, WarehouseLocationOption } from './types';
-import { today, formatINR, getPODisplayNo, buildGRNItems } from './helpers';
-import { grnSvcGetWarehouseLocations } from '@/Services/GrnService/grnApi';
+import { today, formatINR, getPODisplayNo, buildGRNItems, lineVariance } from './helpers';
+import { grnSvcGetWarehouseLocations, grnSvcGetUoms } from '@/Services/GrnService/grnApi';
 
 interface GRNEntryFormProps {
   po: PORecord;
@@ -40,6 +40,13 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
   const [items, setItems] = useState<GRNItemEntry[]>(() => initialItems ?? buildGRNItems(po));
 
   const [locations, setLocations] = useState<WarehouseLocationOption[]>([]);
+  const [uoms, setUoms] = useState<string[]>([]);
+
+  useEffect(() => {
+    axios.get(grnSvcGetUoms)
+      .then(res => setUoms((res.data?.data ?? []).map((u: { uom_name: string }) => u.uom_name)))
+      .catch(() => setUoms([]));
+  }, []);
   // Location chosen in the bulk bar above the table, before it is applied to the ticked items.
   const [bulkLocation, setBulkLocation] = useState('');
 
@@ -87,6 +94,8 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
     // Clear the picker so a second batch needs a deliberate choice, not a stale one.
     setBulkLocation('');
   };
+
+  const aboveOrderedItems = selectedItems.filter(it => lineVariance(it).aboveOrdered > 0);
 
   const handleSubmit = () => {
     onSubmit(form, selectedItems);
@@ -221,7 +230,10 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
                     <TableHead className="text-xs">Item</TableHead>
                     <TableHead className="text-xs text-center">Ordered</TableHead>
                     <TableHead className="text-xs text-center">Pending</TableHead>
+                    <TableHead className="text-xs text-center w-24">Invoice Qty *</TableHead>
+                    <TableHead className="text-xs w-28">Invoice UOM</TableHead>
                     <TableHead className="text-xs text-center w-24">Received *</TableHead>
+                    <TableHead className="text-xs w-36">Difference</TableHead>
                     <TableHead className="text-xs text-center w-24">Rejected</TableHead>
                     <TableHead className="text-xs w-28">Condition</TableHead>
                     <TableHead className="text-xs w-32">Location</TableHead>
@@ -263,12 +275,52 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
                         <Input
                           type="number"
                           min={0}
-                          max={item.pending_qty}
+                          placeholder="Qty"
+                          value={item.invoice_qty}
+                          disabled={!item.selected}
+                          onChange={e => updateItem(idx, { invoice_qty: e.target.value === '' ? '' : Number(e.target.value) })}
+                          className="h-7 w-20 text-sm text-center mx-auto"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={item.invoice_uom || undefined}
+                          onValueChange={v => updateItem(idx, { invoice_uom: v })}
+                          disabled={!item.selected}
+                        >
+                          <SelectTrigger className="h-7 text-xs w-24">
+                            <SelectValue placeholder="UOM" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from(new Set([item.unit_name, ...uoms].filter(Boolean))).map(u => (
+                              <SelectItem key={u} value={u} className="text-xs">{u}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Input
+                          type="number"
+                          min={0}
                           value={item.received_qty}
                           disabled={!item.selected}
                           onChange={e => updateItem(idx, { received_qty: Number(e.target.value) })}
                           className="h-7 w-20 text-sm text-center mx-auto"
                         />
+                      </TableCell>
+                      <TableCell>
+                        {item.selected && (() => {
+                          const v = lineVariance(item);
+                          return (
+                            <div className="space-y-0.5 text-[11px] leading-tight">
+                              {v.inv != null && !v.sameUom && <p className="text-amber-700">UOM differs — not compared</p>}
+                              {v.shortage > 0 && <p className="font-medium text-red-600">Shortage {v.shortage} → debit note</p>}
+                              {v.excess > 0 && <p className="font-medium text-blue-600">Excess {v.excess} → credit note</p>}
+                              {v.aboveOrdered > 0 && <p className="font-medium text-amber-700">{v.aboveOrdered} above PO — needs approval</p>}
+                              {v.inv != null && v.sameUom && v.shortage === 0 && v.excess === 0 && v.aboveOrdered === 0 && <p className="text-green-600">Matches invoice</p>}
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="text-center">
                         <Input
@@ -339,6 +391,16 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
                 </TableBody>
               </Table>
             </div>
+
+            {aboveOrderedItems.length > 0 && (
+              <div className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-3">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>
+                  {aboveOrderedItems.length} item(s) are received above the PO quantity. The excess is held and sent to the
+                  approver — it is added to stock only if accepted; if rejected it goes back to the supplier.
+                </span>
+              </div>
+            )}
 
             {/* Summary + Actions */}
             <div className="flex items-center justify-between pt-1">

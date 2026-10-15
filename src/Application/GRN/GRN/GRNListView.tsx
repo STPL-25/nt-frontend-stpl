@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronUp, ReceiptText } from 'lucide-react';
-import type { GRNRecord, DebitNoteRecord } from './types';
+import type { GRNRecord, DebitNoteRecord, CreditNoteRecord } from './types';
 import { formatDate, formatINR, hasGRNDiscrepancy } from './helpers';
 
 interface GRNListViewProps {
@@ -12,6 +12,7 @@ interface GRNListViewProps {
   loading: boolean;
   onRefresh: () => void;
   debitNotesByGrn?: Record<number, DebitNoteRecord[]>;
+  creditNotesByGrn?: Record<number, CreditNoteRecord[]>;
   canRaiseDebitNote?: boolean;
   onRaiseDebitNote?: (grn: GRNRecord) => void;
 }
@@ -29,9 +30,10 @@ const conditionColor: Record<string, string> = {
 const GRNCard: React.FC<{
   grn: GRNRecord;
   debitNotes?: DebitNoteRecord[];
+  creditNotes?: CreditNoteRecord[];
   canRaiseDebitNote?: boolean;
   onRaiseDebitNote?: (grn: GRNRecord) => void;
-}> = ({ grn, debitNotes = [], canRaiseDebitNote, onRaiseDebitNote }) => {
+}> = ({ grn, debitNotes = [], creditNotes = [], canRaiseDebitNote, onRaiseDebitNote }) => {
   const [expanded, setExpanded] = useState(false);
   const items = Array.isArray(grn?.items) ? grn.items : [];
   const totalReceived = items.reduce((s, it) => s + it.received_qty, 0);
@@ -136,6 +138,21 @@ const GRNCard: React.FC<{
           </div>
         )}
 
+        {creditNotes.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {creditNotes.map(cn => (
+              <Badge
+                key={cn.credit_note_sno}
+                variant="outline"
+                className="text-xs bg-blue-100 text-blue-700 border-blue-200"
+              >
+                <ReceiptText size={11} className="mr-1" />
+                {cn.credit_note_no} · {formatINR(cn.total_amount)} · excess accepted
+              </Badge>
+            ))}
+          </div>
+        )}
+
         {/* Item details (expandable) */}
         {expanded && items.length > 0 && (
           <div className="mt-3 border rounded overflow-x-auto">
@@ -145,7 +162,9 @@ const GRNCard: React.FC<{
                   <TableHead className="text-xs">#</TableHead>
                   <TableHead className="text-xs">Item</TableHead>
                   <TableHead className="text-xs text-center">Ordered</TableHead>
+                  <TableHead className="text-xs text-center">Invoice</TableHead>
                   <TableHead className="text-xs text-center">Received</TableHead>
+                  <TableHead className="text-xs">Variance</TableHead>
                   <TableHead className="text-xs text-center">Rejected</TableHead>
                   <TableHead className="text-xs">Condition</TableHead>
                   <TableHead className="text-xs">Remarks</TableHead>
@@ -164,8 +183,21 @@ const GRNCard: React.FC<{
                     <TableCell className="text-xs text-center text-muted-foreground">
                       {item.ordered_qty} {item.unit_name}
                     </TableCell>
+                    <TableCell className="text-xs text-center text-muted-foreground">
+                      {item.invoice_qty != null ? `${item.invoice_qty} ${item.invoice_uom ?? ''}` : '—'}
+                    </TableCell>
                     <TableCell className="text-xs text-center font-medium text-green-700">
                       {item.received_qty}
+                    </TableCell>
+                    <TableCell className="text-[11px] leading-tight space-y-0.5">
+                      {Number(item.shortage_qty) > 0 && <p className="font-medium text-red-600">Short {item.shortage_qty}</p>}
+                      {Number(item.excess_qty) > 0 && <p className="font-medium text-blue-600">Excess {item.excess_qty}</p>}
+                      {item.excess_status === 'Pending Approval' && (
+                        <p className="font-medium text-amber-700">{item.hold_qty} above PO — awaiting approval</p>
+                      )}
+                      {item.excess_status === 'Accepted' && <p className="text-green-700">Excess over PO accepted</p>}
+                      {item.excess_status === 'Rejected' && <p className="font-medium text-red-600">Excess over PO rejected — return to supplier</p>}
+                      {!Number(item.shortage_qty) && !Number(item.excess_qty) && !item.excess_status && '—'}
                     </TableCell>
                     <TableCell className="text-xs text-center font-medium text-red-600">
                       {item.rejected_qty || '—'}
@@ -188,7 +220,7 @@ const GRNCard: React.FC<{
 };
 
 const GRNListView: React.FC<GRNListViewProps> = ({
-  grns, loading, onRefresh, debitNotesByGrn = {}, canRaiseDebitNote, onRaiseDebitNote,
+  grns, loading, onRefresh, debitNotesByGrn = {}, creditNotesByGrn = {}, canRaiseDebitNote, onRaiseDebitNote,
 }) => {
   return (
     <Card>
@@ -229,6 +261,7 @@ const GRNListView: React.FC<GRNListViewProps> = ({
                 key={grn.grn_basic_sno ?? grn.grn_no}
                 grn={grn}
                 debitNotes={grn.grn_basic_sno ? debitNotesByGrn[grn.grn_basic_sno] : undefined}
+                creditNotes={grn.grn_basic_sno ? creditNotesByGrn[grn.grn_basic_sno] : undefined}
                 canRaiseDebitNote={canRaiseDebitNote}
                 onRaiseDebitNote={onRaiseDebitNote}
               />

@@ -81,6 +81,14 @@ export interface GRNItem {
   /** Warehouse Location master row this receipt was placed into. */
   warehouse_location_sno?: number;
   warehouse_location_name?: string;
+  /** Supplier invoice qty / UOM and the differences against what was received. */
+  invoice_qty?: number | null;
+  invoice_uom?: string | null;
+  shortage_qty?: number | null;
+  excess_qty?: number | null;
+  /** Qty above the PO held until the approver accepts/rejects it. */
+  hold_qty?: number;
+  excess_status?: 'Pending Approval' | 'Accepted' | 'Rejected' | null;
 }
 
 export interface GRNRecord {
@@ -206,4 +214,44 @@ export interface GRNItemEntry {
   selected: boolean;
   /** Warehouse Location master row this receipt is being placed into. */
   warehouse_location_sno?: number;
+  /** Quantity printed on the supplier's invoice ('' until keyed in) and its UOM. */
+  invoice_qty: number | '';
+  invoice_uom: string;
+}
+
+// ── Excess-over-PO approval + Credit Note ─────────────────────────────────────
+
+export interface ExcessRequest {
+  excess_sno: number;
+  grn_basic_sno: number;
+  grn_item_sno: number;
+  grn_no?: string;
+  po_no?: string;
+  vendor_name?: string;
+  prod_name?: string;
+  unit_name?: string;
+  po_qty?: number;
+  po_pending_qty?: number;
+  received_qty?: number;
+  excess_qty: number;
+  invoice_qty?: number | null;
+  invoice_uom?: string | null;
+  status: 'Pending' | 'Accepted' | 'Rejected';
+  reissue_status?: string | null;
+  approver_ecno: string;
+  approver_name?: string;
+  requested_by_name?: string;
+  requested_at?: string;
+  acted_at?: string;
+  remarks?: string;
+}
+
+export interface CreditNoteRecord {
+  credit_note_sno: number;
+  credit_note_no: string;
+  grn_basic_sno: number;
+  total_qty: number;
+  total_amount: number;
+  status: string;
+  remarks?: string;
 }

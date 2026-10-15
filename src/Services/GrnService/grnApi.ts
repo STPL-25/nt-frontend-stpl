@@ -17,6 +17,25 @@ export const grnSvcGetPendingGateEntries = `${base}/getPendingGateEntries`;
 export const grnSvcGetGRNsByPO = (po_basic_sno: number) => `${base}/getGRNsByPO/${po_basic_sno}`;
 export const grnSvcCreateGRN = `${base}/createGRN`;
 export const grnSvcGetAllGRNs = `${base}/getAllGRNs`;
+export const grnSvcGetUoms = `${base}/getUoms`;
+// Qty received above the PO is held until the approver decides (accept / reject).
+export const grnSvcGetExcessRequests = (params: { mine?: boolean; status?: string; grn_basic_sno?: number } = {}) => {
+  const q = new URLSearchParams();
+  if (params.mine) q.set('mine', '1');
+  if (params.status) q.set('status', params.status);
+  if (params.grn_basic_sno != null) q.set('grn_basic_sno', String(params.grn_basic_sno));
+  return `${base}/excessRequests?${q.toString()}`;
+};
+export const grnSvcDecideExcess = `${base}/decideExcess`;
+// GRN approval gate: stock is posted only after final approval.
+export const grnSvcGetGRNApprovals = (params: { mine?: boolean; grn_basic_sno?: number } = {}) => {
+  const q = new URLSearchParams();
+  if (params.mine) q.set('mine', '1');
+  if (params.grn_basic_sno != null) q.set('grn_basic_sno', String(params.grn_basic_sno));
+  return `${base}/grnApprovals?${q.toString()}`;
+};
+export const grnSvcDecideGRN = `${base}/decideGRN`;
+export const grnSvcGetCreditNotesByGRN = (grn_basic_sno: number) => `${base}/creditNotesByGRN/${grn_basic_sno}`;
 // Locations scoped to a GRN's company/division/branch (from the Warehouse
 // Location master) — populates the per-item Location dropdown in
 // GRNEntryForm so a received item can be assigned exactly where it went.

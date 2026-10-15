@@ -91,6 +91,12 @@ export const apiGetWorkflows        = baseUrl + "/api/workflow_approval/getWorkf
 export const apiGetEntityTypes      = baseUrl + "/api/workflow_approval/getEntityTypes";
 // Which values a stage condition can test for a kind of workflow (field registry, sql/99) — pass ?entity_type=
 export const apiGetConditionFields  = baseUrl + "/api/workflow_approval/getConditionFields";
+// Approval routing (sql/124): request variant -> approval type (entity_type) matrix
+export const apiGetApprovalRoutes   = baseUrl + "/api/workflow_approval/getApprovalRoutes";
+export const apiSaveApprovalRoute   = baseUrl + "/api/workflow_approval/saveApprovalRoute";
+export const apiSaveApprovalModule  = baseUrl + "/api/workflow_approval/saveApprovalModule";
+export const apiSaveApprovalVariant = baseUrl + "/api/workflow_approval/saveApprovalVariant";
+export const apiCreateApprovalVariantEntity = baseUrl + "/api/workflow_approval/createApprovalVariantEntity";
 export const apiUpdateWorkflow      = baseUrl + "/api/workflow_approval/updateWorkflow";
 export const apiGetWorkflowByEntity = (entityType: string) =>
   `${baseUrl}/api/workflow_approval/getWorkflowByEntity/${entityType}`;
@@ -207,6 +213,8 @@ export const purchaseTeamGetQuotationSupplyInfo = baseUrl + "/api/purchase_team/
 export const purchaseTeamSelectQuotation = baseUrl + "/api/purchase_team/selectQuotation";
 export const purchaseTeamCreatePO = baseUrl + "/api/purchase_team/createPOFromQuotation";
 export const purchaseTeamSendPOEmail = baseUrl + "/api/purchase_team/sendPOEmail";
+export const purchaseTeamGetVendorBankDetails = (vendorSno: number | string) =>
+  baseUrl + `/api/purchase_team/getVendorBankDetails/${vendorSno}`;
 export const purchaseTeamUpdateItemQty = baseUrl + "/api/purchase_team/updateItemQuantity";
 export const purchaseTeamSaveQuotationDraft = baseUrl + "/api/purchase_team/saveQuotationDraft";
 export const purchaseTeamGetQuotationDrafts = baseUrl + "/api/purchase_team/getQuotationDrafts";

@@ -19,8 +19,12 @@ const ENTITY_SHORT: Record<string, string> = {
 
 const MAX_BRANCHES_SHOWN = 2;
 
+// "ServiceAgreement_FIXED_RECURRING" (a dedicated approval type for one variant) -> "Service Agreement · Fixed recurring"
 const humanize = (s: string) =>
-  s.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+  s.split("_").map((part, i) => {
+    const spaced = part.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+    return i === 0 ? spaced : spaced.charAt(0) + spaced.slice(1).toLowerCase();
+  }).join(" · ");
 
 const shortEntity = (entityType: string) =>
   ENTITY_SHORT[entityType] ?? humanize(entityType);
@@ -56,6 +60,48 @@ export const workflowShortLabel = (
     parts.push(extra > 0 ? `${shown} +${extra}` : shown);
   }
   return parts.join(" · ");
+};
+
+/**
+ * The dropdown form of a workflow label: a short title ("PR") and, shown below it in brackets, its scope
+ * ("(TCS · TCS-Coimbatore +2)"). KYC has no scope line unless several KYC workflows exist.
+ */
+export const workflowLabelParts = (wf: WorkflowMasterRow, collapseKyc = true): { title: string; scope: string } => {
+  if (!wf.entity_type) return { title: wf.workflow_name, scope: "" };
+  const title = shortEntity(wf.entity_type);
+  if (collapseKyc && isKyc(wf)) return { title, scope: "" };
+  const divisions = splitList(wf.division_short);
+  const branches = splitList(wf.branch_names);
+  const parts: string[] = [];
+  if (divisions.length) parts.push(divisions.join("/"));
+  if (branches.length) {
+    const shown = branches.slice(0, MAX_BRANCHES_SHOWN).join(", ");
+    const extra = branches.length - MAX_BRANCHES_SHOWN;
+    parts.push(extra > 0 ? `${shown} +${extra}` : shown);
+  }
+  return { title, scope: parts.join(" · ") };
+};
+
+/** Title + scope per workflow, unique as a pair (identical pairs get " #id" on the title). */
+export const buildWorkflowOptionParts = (rows: WorkflowMasterRow[]): Map<number, { title: string; scope: string }> => {
+  const key = (p: { title: string; scope: string }) => `${p.title}|${p.scope}`;
+  const tally = (m: Map<number, { title: string; scope: string }>) => {
+    const c = new Map<string, number>();
+    for (const p of m.values()) c.set(key(p), (c.get(key(p)) ?? 0) + 1);
+    return c;
+  };
+  const out = new Map<number, { title: string; scope: string }>();
+  for (const wf of rows) out.set(wf.workflow_id, workflowLabelParts(wf));
+  let c = tally(out);
+  for (const wf of rows) {
+    if (isKyc(wf) && (c.get(key(out.get(wf.workflow_id)!)) ?? 0) > 1) out.set(wf.workflow_id, workflowLabelParts(wf, false));
+  }
+  c = tally(out);
+  for (const wf of rows) {
+    const p = out.get(wf.workflow_id)!;
+    if ((c.get(key(p)) ?? 0) > 1) out.set(wf.workflow_id, { ...p, title: `${p.title} #${wf.workflow_id}` });
+  }
+  return out;
 };
 
 const duplicated = (labels: Map<number, string>) => {

@@ -121,6 +121,8 @@ export const SOCKET_GATE_ENTRY_CREATED        = "gate_entry:created";
 export const SOCKET_GATE_ENTRY_UPDATED        = "gate_entry:updated";
 export const SOCKET_GATE_ENTRY_STATUS_UPDATED = "gate_entry:status_updated";
 export const SOCKET_DEBIT_NOTE_CREATED         = "debit_note:created";
+export const SOCKET_GRN_EXCESS_DECIDED         = "grn:excess_decided";
+export const SOCKET_GRN_APPROVAL_DECIDED       = "grn:approval_decided";
 
 // ── Inventory room + real-time events ─────────────────────────────────────────
 export const SOCKET_JOIN_INVENTORY  = "join-inventory";

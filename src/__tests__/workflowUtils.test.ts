@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildWorkflowLabels,
+  buildWorkflowOptionParts,
   planTypeRowSync,
   workflowShortLabel,
   serializeStages,
@@ -214,5 +215,26 @@ describe("stage routing (conditions + alternates), driven by the field registry"
     expect(
       validateStageRouting([stage({ alternates: ["B1"] }), stage({ approver_ecno: "GM", stage: "GM", condition: gt(50000) })], PR_FIELDS)
     ).toBeNull();
+  });
+});
+
+describe("buildWorkflowOptionParts", () => {
+  it("puts the scope in its own part so the dropdown can show it below the title", () => {
+    const parts = buildWorkflowOptionParts([
+      wf({ workflow_id: 3, division_short: "TCS", branch_names: "TCS-Coimbatore" }),
+      wf({ workflow_id: 4, entity_type: "KYC", division_short: "S", branch_names: "School" }),
+    ]);
+    expect(parts.get(3)).toEqual({ title: "PR", scope: "TCS · TCS-Coimbatore" });
+    expect(parts.get(4)).toEqual({ title: "KYC", scope: "" });
+  });
+
+  it("only identical title+scope pairs get the id appended", () => {
+    const parts = buildWorkflowOptionParts([
+      wf({ workflow_id: 5, division_short: "TCS", branch_names: "A" }),
+      wf({ workflow_id: 6, division_short: "TCS", branch_names: "A" }),
+      wf({ workflow_id: 7, division_short: "TCS", branch_names: "B" }),
+    ]);
+    expect(parts.get(5)!.title).toBe("PR #5");
+    expect(parts.get(7)!.title).toBe("PR");
   });
 });

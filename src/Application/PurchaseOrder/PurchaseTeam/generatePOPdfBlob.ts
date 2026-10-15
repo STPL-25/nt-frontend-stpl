@@ -103,26 +103,47 @@ export function buildPOPdfBlob({ pr, quotation, form, poNo }: POPdfInput): Blob 
   doc.setTextColor(30, 30, 30);
 
   y += 16;
-  if (form.terms_conditions) {
+  const pageH = doc.internal.pageSize.getHeight();
+  const ensureSpace = (needed: number) => {
+    if (y + needed > pageH - 15) { doc.addPage(); y = 18; }
+  };
+  const sectionTitle = (title: string) => {
+    ensureSpace(14);
+    doc.setFillColor(238, 242, 255);
+    doc.rect(14, y - 5, 182, 7, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
-    doc.text('Terms & Conditions', 14, y);
-    y += 6;
+    doc.setTextColor(79, 70, 229);
+    doc.text(title, 16, y);
+    doc.setTextColor(30, 30, 30);
+    y += 7;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    const termLines = doc.splitTextToSize(form.terms_conditions, 180) as string[];
-    doc.text(termLines, 14, y);
-    y += termLines.length * 4 + 6;
-  }
+  };
+
   if (form.delivery_address) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.text('Delivery Address', 14, y);
-    y += 6;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    const addrLines = doc.splitTextToSize(form.delivery_address, 180) as string[];
-    doc.text(addrLines, 14, y);
+    sectionTitle('Delivery Address');
+    const addrParts = form.delivery_address.split(/\r?\n|,\s*/).map((l) => l.trim()).filter(Boolean);
+    addrParts.forEach((part) => {
+      ensureSpace(5);
+      doc.text(part, 16, y);
+      y += 4.5;
+    });
+    y += 5;
+  }
+  if (form.terms_conditions) {
+    sectionTitle('Terms & Conditions');
+    const terms = form.terms_conditions
+      .split(/\r?\n/)
+      .map((l) => l.replace(/^\s*(\d+[.)]|[-•*])\s*/, '').trim())
+      .filter(Boolean);
+    terms.forEach((term, i) => {
+      const wrapped = doc.splitTextToSize(term, 170) as string[];
+      ensureSpace(wrapped.length * 4.5 + 1);
+      doc.text(`${i + 1}.`, 16, y);
+      doc.text(wrapped, 23, y);
+      y += wrapped.length * 4.5 + 1.5;
+    });
   }
 
   return doc.output('blob');

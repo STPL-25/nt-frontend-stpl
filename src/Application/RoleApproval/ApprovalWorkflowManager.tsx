@@ -62,6 +62,7 @@ import {
 } from "./types/ApprovalWorkflowManagerTypes";
 import {
   buildWorkflowLabels,
+  buildWorkflowOptionParts,
   planTypeRowSync,
   serializeStages,
   validateStageRouting,
@@ -627,12 +628,17 @@ export default function ApprovalFlowDynamic() {
   // Short "PR · TCS · TCS-Coimbatore" labels (just "KYC" for KYC) instead of the
   // full "<name> (<code>)" — the full name and code stay in the details card.
   const workflowLabels = useMemo(() => buildWorkflowLabels(workflows), [workflows]);
+  const workflowOptionParts = useMemo(() => buildWorkflowOptionParts(workflows), [workflows]);
   const workflowOptions = useMemo(
-    () => workflows.map((wf) => ({
-      label: workflowLabels.get(wf.workflow_id) ?? wf.workflow_name,
-      value: String(wf.workflow_id),
-    })),
-    [workflows, workflowLabels]
+    () => workflows.map((wf) => {
+      const parts = workflowOptionParts.get(wf.workflow_id);
+      return {
+        label: parts?.title ?? workflowLabels.get(wf.workflow_id) ?? wf.workflow_name,
+        sublabel: parts?.scope ? `(${parts.scope})` : undefined,
+        value: String(wf.workflow_id),
+      };
+    }),
+    [workflows, workflowLabels, workflowOptionParts]
   );
 
   // ── Branch parent lookup ──────────────────────────────────────────────────
@@ -655,17 +661,23 @@ export default function ApprovalFlowDynamic() {
   // nonsensical combinations when a workflow type spans multiple branches/departments
   // that don't actually belong together (e.g. same-named departments under different
   // companies/branches).
+  // The department's branch comes from the department master, but company/division come from that
+  // branch's real parent in the hierarchy. dept_master.div_sno can disagree with the branch's division
+  // (e.g. dept says SKJ, branch sits under SKTM); saving the dept's value wrote rows that PR routing
+  // (exact com/div/brn/dept match) never found, and that the list label showed under the wrong division.
   const buildDeptParent = useCallback((): Record<string, { com_sno: string; div_sno: string; brn_sno: string }> => {
+    const bp = buildBranchParent();
     const map: Record<string, { com_sno: string; div_sno: string; brn_sno: string }> = {};
     for (const d of allDepartments) {
+      const brn = String(d.brn_sno ?? "");
       map[String(d.value)] = {
-        com_sno: String(d.com_sno ?? ""),
-        div_sno: String(d.div_sno ?? ""),
-        brn_sno: String(d.brn_sno ?? ""),
+        com_sno: bp[brn]?.com_sno ?? String(d.com_sno ?? ""),
+        div_sno: bp[brn]?.div_sno ?? String(d.div_sno ?? ""),
+        brn_sno: brn,
       };
     }
     return map;
-  }, [allDepartments]);
+  }, [allDepartments, buildBranchParent]);
 
   // ── Type/stage handlers factory ───────────────────────────────────────────
   const makeHandlers = (
@@ -1245,7 +1257,8 @@ export default function ApprovalFlowDynamic() {
               <div className="text-center">
                 <p className="text-base font-medium text-foreground/60">Select a Workflow</p>
                 <p className="text-sm mt-1">
-                  Choose a workflow from the left panel to view and edit its configuration
+                  Choose a workflow from the left panel to view and edit its configuration.
+                  Which request uses which approval type is set on the Approval Routing screen.
                 </p>
               </div>
             </div>
@@ -1313,7 +1326,8 @@ export default function ApprovalFlowDynamic() {
                           if (mode === "create") {
                             setCreateWorkflow((prev) => {
                               const next = { ...prev, [fc.field]: v };
-                              if (fc.field === "entity_type" && v && !prev.workflow_name)
+                              // keep the suggested name in step with the entity until the user types their own
+                              if (fc.field === "entity_type" && v && (!prev.workflow_name || prev.workflow_name === `${prev.entity_type} Approval Workflow`))
                                 next.workflow_name = `${v} Approval Workflow`;
                               return next;
                             });

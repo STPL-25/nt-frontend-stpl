@@ -95,19 +95,36 @@ export const useApprovalFlowHierarchy = (
         ? allDepartments
         : allDepartments.filter((d) => d.brn_sno != null && selectedBranch.includes(Number(d.brn_sno)));
     const seen = new Set<string>();
-    const multiBranch = selectedBranch.length > 1;
-    const out: Option[] = [];
+    const unique: CascadeOption[] = [];
     for (const d of filtered) {
       const key = String(d.value);
       if (seen.has(key)) continue;
       seen.add(key);
-      const brnName = d.brn_sno != null ? branchNameById.get(String(d.brn_sno)) : undefined;
-      out.push({
-        value: d.value,
-        label: multiBranch && brnName ? `${d.label} (${brnName})` : d.label,
-      });
+      unique.push(d);
     }
-    return out;
+    // Same-named departments (e.g. EDP in SKTM-Coimbatore and EDP in TCS-Coimbatore) are different
+    // rows; label them with their branch whenever several branches are selected OR the name repeats,
+    // so they can never look like one duplicated entry. If the name still repeats inside one branch
+    // (same dept under two companies), the dept id is the last tiebreaker.
+    const multiBranch = selectedBranch.length > 1;
+    const nameCount = new Map<string, number>();
+    for (const d of unique) {
+      const n = d.label.trim().toLowerCase();
+      nameCount.set(n, (nameCount.get(n) ?? 0) + 1);
+    }
+    const branchLabel = (d: CascadeOption) =>
+      d.brn_sno != null ? branchNameById.get(String(d.brn_sno)) ?? `Branch #${d.brn_sno}` : undefined;
+    const withBranch = unique.map((d) => {
+      const dup = (nameCount.get(d.label.trim().toLowerCase()) ?? 0) > 1;
+      const brnName = branchLabel(d);
+      return { d, text: (multiBranch || dup) && brnName ? `${d.label} (${brnName})` : d.label };
+    });
+    const textCount = new Map<string, number>();
+    for (const x of withBranch) textCount.set(x.text, (textCount.get(x.text) ?? 0) + 1);
+    return withBranch.map(({ d, text }) => ({
+      value: d.value,
+      label: (textCount.get(text) ?? 0) > 1 ? `${text} #${d.value}` : text,
+    }));
   }, [allDepartments, selectedBranch, branchNameById]);
 
   const entityTypeOptions: Option[] = useMemo(() => {

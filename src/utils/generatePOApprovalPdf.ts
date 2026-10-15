@@ -2,6 +2,8 @@
 import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
 import QRCode from 'qrcode';
+import axios from 'axios';
+import { purchaseTeamGetVendorBankDetails } from '@/Services/Api';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -176,6 +178,21 @@ function formatVendorAddress(vendor: AnyRecord, quotation: AnyRecord): string {
     'address',
   ]));
 }
+
+// Internal branch/division codes that the PO should show under their trading name.
+const BRANCH_DISPLAY_NAMES: Record<string, string> = {
+  'SKTM-CBE': 'Sree Kumaran Thangamaligai',
+};
+
+function displayBranchName(name: string): string {
+  return BRANCH_DISPLAY_NAMES[name.trim().toUpperCase()] ?? name;
+}
+
+export type VendorBankDetails = {
+  ac_holder_name?: string | null;
+  ac_number?: string | null;
+  ifsc?: string | null;
+};
 
 function formatDate(value?: unknown): string {
   if (!value) return '-';
@@ -563,6 +580,7 @@ export async function createPOApprovalPdfDocument(
   approvalData?: AnyRecord,
   logoDataUrl?: string,
   terms?: string[],
+  bankDetails?: VendorBankDetails | null,
 ): Promise<{ doc: jsPDF; fileName: string }> {
   const poHeader = parseJSON<AnyRecord>(approvalData?.po_header, {});
   // Caller-supplied clauses win; otherwise use the PO's own terms_conditions
@@ -590,7 +608,7 @@ export async function createPOApprovalPdfDocument(
     ?? `${String(pr?.pr_no ?? '').replace(/^PR-?/, '')}-${Date.now().toString().slice(-4)}`);
   const poDate = poHeader.po_date ?? approvalData?.final_approved_on ?? new Date().toISOString();
   const companyName = String(poHeader.com_name ?? pr?.com_name ?? 'Company Name');
-  const branchName = String(poHeader.brn_name ?? pr?.brn_name ?? poHeader.div_name ?? '-');
+  const branchName = displayBranchName(String(poHeader.brn_name ?? pr?.brn_name ?? poHeader.div_name ?? '-'));
   const companyAddress = formatCompanyAddress(pr ?? {}, poHeader);
   const branchAddress = formatBranchAddress(pr ?? {}, poHeader);
   const vendorAddress = formatVendorAddress(vendor, quotation ?? {});
@@ -758,6 +776,22 @@ export async function createPOApprovalPdfDocument(
     doc.setTextColor(31, 41, 55);
     doc.text(value, totalsX + totalsWidth - 3, rowY, { align: 'right' });
   });
+  // Supplier bank account, left of the totals.
+  if (bankDetails && (bankDetails.ac_number || bankDetails.ac_holder_name || bankDetails.ifsc)) {
+    drawDetailBox(
+      doc,
+      PAGE_MARGIN,
+      cursorY,
+      totalsX - PAGE_MARGIN - 6,
+      32,
+      'Supplier Bank Details',
+      [
+        { label: 'Account Name', value: String(bankDetails.ac_holder_name ?? '-') },
+        { label: 'Account No.', value: String(bankDetails.ac_number ?? '-') },
+        { label: 'IFSC', value: String(bankDetails.ifsc ?? '-') },
+      ],
+    );
+  }
   const grandY = cursorY + 4.5 + totalRows.length * 5;
   doc.setFillColor(...ACCENT);
   doc.rect(totalsX, grandY, totalsWidth, 8, 'F');
@@ -874,7 +908,19 @@ export async function buildPOApprovalPdf(
   const poHeader = parseJSON<AnyRecord>(approvalData?.po_header, {});
   const logoUrl = String(firstValue([poHeader, pr ?? {}], ['com_logo', 'company_logo']));
   const logoDataUrl = await loadLogoDataUrl(logoUrl);
-  return createPOApprovalPdfDocument(pr, quotation, approvalData, logoDataUrl);
+  const vendor = parseJSON<AnyRecord>(approvalData?.vendor, {});
+  const vendorSno = firstValue([vendor, quotation ?? {}], ['vendor_sno', 'kyc_basic_info_sno']);
+  let bankDetails: VendorBankDetails | null = null;
+  if (vendorSno) {
+    try {
+      const res = await axios.get(purchaseTeamGetVendorBankDetails(String(vendorSno)));
+      bankDetails = res.data?.data ?? null;
+    } catch (error) {
+      // The PO is still valid without the bank block.
+      console.warn('Unable to load supplier bank details for the PO PDF:', error);
+    }
+  }
+  return createPOApprovalPdfDocument(pr, quotation, approvalData, logoDataUrl, undefined, bankDetails);
 }
 
 /**

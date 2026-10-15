@@ -12,7 +12,8 @@ import {
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
-import { Gauge, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Gauge, Plus, Pencil, Trash2, Loader2, ArrowLeft } from "lucide-react";
+import { useAppState } from "@/globalState/hooks/useAppState";
 import { useApprovalFlowHierarchy } from "@/FieldDatas/ApprovalWorkFlow";
 import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
 import useFetch from "@/hooks/useFetchHook";
@@ -61,6 +62,8 @@ const emptyForm = (): FormState => ({
 });
 
 const ProductStockLevelMaster: React.FC = () => {
+  const { setCurrentScreen, setSelectedMaster } = useAppState() as any;
+  const goBackToMasters = () => { setCurrentScreen("main"); setSelectedMaster?.(null); };
   const [refreshKey, setRefreshKey] = useState(0);
   const { data: listResponse, loading: listLoading } = useFetch<{ success: boolean; data: StockLevelRow[] }>(
     apiGetProductStockLevels, "", null, refreshKey
@@ -209,7 +212,10 @@ const ProductStockLevelMaster: React.FC = () => {
       />
 
       <div className="flex-1 lg:overflow-y-auto p-5 space-y-4">
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground -ml-1" onClick={goBackToMasters}>
+            <ArrowLeft className="h-4 w-4" /> Back to Masters
+          </Button>
           <Button onClick={openCreate} className="bg-primary hover:bg-primary/90">
             <Plus size={16} className="mr-1" /> Add Stock Level
           </Button>
