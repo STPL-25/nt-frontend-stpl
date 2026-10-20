@@ -17,7 +17,11 @@ import {
   selectThemeColor,
   selectThemeMode,
   selectThemeRadius,
+  selectThemeFont,
+  selectThemeFontSize,
+  THEME_FONT_SIZES,
   THEME_COLORS,
+  THEME_FONTS,
 } from "./globalState/features/themeSlice";
 import { selectSessionExpired, setSessionExpired, clearUserData } from "./globalState/features/decodeSlice";
 import { clearSidebarData } from "./globalState/features/fetchSidebarDataSlice";
@@ -45,6 +49,29 @@ function ThemeApplier() {
     };
     if (map[radius]) root.classList.add(map[radius]);
   }, [radius]);
+
+  const fontId = useSelector(selectThemeFont);
+  useEffect(() => {
+    const root = document.documentElement;
+    const font = THEME_FONTS.find((f) => f.id === fontId) ?? THEME_FONTS[0];
+    if (font.google) {
+      const linkId = `gfont-${font.id}`;
+      if (!document.getElementById(linkId)) {
+        const link = document.createElement("link");
+        link.id = linkId;
+        link.rel = "stylesheet";
+        link.href = `https://fonts.googleapis.com/css2?family=${font.google}&display=swap`;
+        document.head.appendChild(link);
+      }
+    }
+    root.style.setProperty("--font-sans", font.stack);
+  }, [fontId]);
+
+  const fontSizeId = useSelector(selectThemeFontSize);
+  useEffect(() => {
+    const size = THEME_FONT_SIZES.find((f) => f.id === fontSizeId) ?? THEME_FONT_SIZES[1];
+    document.documentElement.style.fontSize = `${size.percent}%`;
+  }, [fontSizeId]);
 
   return null;
 }

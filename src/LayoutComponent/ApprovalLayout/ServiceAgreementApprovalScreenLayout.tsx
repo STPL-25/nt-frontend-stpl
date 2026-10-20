@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import {
-  CalendarClock, ChevronRight, FileSignature, FileText, ExternalLink, GitCompare, Landmark, Layers,
+  CalendarClock, ChevronRight, FileSignature, FileText, ExternalLink, GitCompare, Layers,
   RotateCcw, ScrollText, StickyNote, Users, Wallet,
 } from 'lucide-react';
 import { getAuthFileUrl } from '@/Services/authUrl';
@@ -12,7 +12,7 @@ import {
   DetailHero, Fact, FactGrid, Panel, SelectableCard, StatusPill, StickyActionBar, SupplierSplitTable, SupplierSummary, TypeBadge,
 } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import {
-  AGREEMENT_STATUS, DAY_COUNT_LABEL, approvalRoutes, diffTerms, entersAmountPerCycle, facilityLabel, formatDate, formatINR, ordinalDay, parseStages,
+  AGREEMENT_STATUS, approvalRoutes, diffTerms, entersAmountPerCycle, formatDate, formatINR, parseStages,
   statusMeta, termsFromRow, type ApprovalAction,
 } from '@/CustomComponent/ServiceComponents/serviceUtils';
 
@@ -81,7 +81,7 @@ function AgreementListCard({ agreement, isSelected, onClick }: { agreement: any;
       <span className="mt-3 block space-y-1 text-xs">
         {(agreement.vendors?.length > 0 || agreement.vendor_name) && (
           <span className="flex justify-between gap-3">
-            <span className="text-muted-foreground">{agreement.service_type_code === 'STATUTORY' ? 'Lender' : agreement.vendors?.length > 1 ? 'Suppliers' : 'Supplier'}</span>
+            <span className="text-muted-foreground">{agreement.vendors?.length > 1 ? 'Suppliers' : 'Supplier'}</span>
             <SupplierSummary suppliers={agreement.vendors} fallback={agreement.vendor_name} className="justify-end text-right font-medium" />
           </span>
         )}
@@ -100,9 +100,9 @@ function AgreementListCard({ agreement, isSelected, onClick }: { agreement: any;
       </span>
 
       <span className="mt-3 flex items-baseline justify-between gap-2 border-t pt-2.5">
-        <span className="text-xs font-medium text-muted-foreground">{agreement.service_type_code === 'STATUTORY' ? 'Sanctioned' : 'Rate'}</span>
+        <span className="text-xs font-medium text-muted-foreground">Rate</span>
         <span className="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-          {agreement.service_type_code === 'STATUTORY' ? formatINR(agreement.sanctioned_amount) : rateLabel(agreement)}
+          {rateLabel(agreement)}
         </span>
       </span>
     </SelectableCard>
@@ -122,7 +122,6 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
   const onForward = canAct && routes.canForward ? () => handleAction('forward') : undefined;
   const onSendBack = canAct && routes.canSendBack ? () => handleAction('send_back') : undefined;
   const status = statusMeta(AGREEMENT_STATUS, agreement.status);
-  const isStatutory = agreement.service_type_code === 'STATUTORY';
   const perCycleEntry = entersAmountPerCycle(agreement.service_type_code);
   const vendors: any[] = agreement.vendors ?? [];
   const isRevision = agreement.submit_action === 'RENEWED' || agreement.submit_action === 'RESUBMITTED';
@@ -142,11 +141,7 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
               title={agreement.agreement_no}
               subtitle={[agreement.service_name, vendors.length > 1 ? `${vendors.length} suppliers` : agreement.vendor_name].filter(Boolean).join(' · ')}
               badges={<><TypeBadge type={agreement.service_type_code} /><StatusPill tone={status.tone}>{status.label}</StatusPill></>}
-              metrics={isStatutory ? [
-                { label: 'Sanctioned', value: formatINR(agreement.sanctioned_amount), hint: agreement.disbursed_amount != null ? `${formatINR(agreement.disbursed_amount)} disbursed` : undefined, accent: true },
-                { label: 'Interest rate', value: agreement.interest_rate_pct != null ? `${agreement.interest_rate_pct}%` : '—', hint: agreement.rate_type === 'FLOATING' ? `${agreement.benchmark_name ?? 'Repo'}-linked` : 'Fixed' },
-                { label: 'Interest paid on', value: agreement.interest_payment_day ? `${ordinalDay(agreement.interest_payment_day)} of the month` : '—' },
-              ] : [
+              metrics={[
                 { label: perCycleEntry ? 'Baseline rate' : 'Rate', value: agreement.rate_amount ? formatINR(agreement.rate_amount) : '—', hint: agreement.rate_uom_name ? `per ${agreement.rate_uom_name}` : undefined, accent: true },
                 { label: 'Quantity', value: agreement.qty ?? '—' },
                 { label: 'Cadence', value: agreement.cadence_name ?? '—' },
@@ -180,19 +175,13 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
               </Panel>
             )}
 
-            {isStatutory && (
-              <Callout tone="info" icon={Landmark}>
-                Loan agreement — approving it does <b>not</b> raise any purchase orders. It moves to <b>Loan Payments</b>, where interest is
-                calculated on the outstanding principal (split at each rate change) and paid through a Bank Payment Voucher on every interest date.
-              </Callout>
-            )}
             {perCycleEntry && (
               <Callout tone="warning" icon={Wallet}>
                 Unfixed agreement — the rate and quantity above are the baseline entered at creation. The actual amount for each billing cycle is entered separately in Service PO when that cycle is due.
               </Callout>
             )}
 
-            {vendors.length > 0 && !isStatutory && (
+            {vendors.length > 0 && (
               <Panel
                 icon={Users}
                 title={vendors.length > 1 ? `Suppliers (${vendors.length})` : 'Supplier'}
@@ -205,32 +194,13 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
               </Panel>
             )}
 
-            {isStatutory && agreement.facility_type && (
-              <Panel icon={Landmark} title="Loan details">
-                <FactGrid>
-                  <Fact label="Lender">{agreement.vendor_name ?? '—'}</Fact>
-                  <Fact label="Facility">{facilityLabel(agreement.facility_type)}</Fact>
-                  {agreement.facility_ref_no && <Fact label="Loan / account no.">{agreement.facility_ref_no}</Fact>}
-                  <Fact label="Sanctioned">{formatINR(agreement.sanctioned_amount)}</Fact>
-                  {agreement.drawing_power != null && <Fact label="Drawing power">{formatINR(agreement.drawing_power)}</Fact>}
-                  <Fact label="Disbursed">{agreement.disbursed_amount != null ? formatINR(agreement.disbursed_amount) : '—'}</Fact>
-                  <Fact label="Interest starts">{formatDate(agreement.disbursement_date)}</Fact>
-                  <Fact label="Rate type">{agreement.rate_type === 'FLOATING' ? `Floating (${agreement.benchmark_name ?? 'Repo'}-linked)` : 'Fixed'}</Fact>
-                  {agreement.rate_type === 'FLOATING' && <Fact label={`${agreement.benchmark_name ?? 'Repo'} + spread`}>{agreement.benchmark_rate_pct}% + {agreement.spread_pct}%</Fact>}
-                  <Fact label="Interest rate">{agreement.interest_rate_pct}%</Fact>
-                  <Fact label="Interest paid on">{agreement.interest_payment_day ? `${ordinalDay(agreement.interest_payment_day)} of every month` : '—'}</Fact>
-                  <Fact label="Day-count basis">{DAY_COUNT_LABEL[String(agreement.day_count_basis)] ?? '—'}</Fact>
-                </FactGrid>
-              </Panel>
-            )}
-
-            <Panel icon={CalendarClock} title={isStatutory ? 'Loan term' : 'Schedule'}>
+            <Panel icon={CalendarClock} title="Schedule">
               <FactGrid>
-                <Fact label={isStatutory ? 'Term from' : 'Duration from'}>{formatDate(agreement.period_start_date)}</Fact>
-                <Fact label={isStatutory ? 'Term to' : 'Duration to'}>{formatDate(agreement.period_end_date)}</Fact>
-                {!isStatutory && <Fact label="Recurrence">{agreement.cadence_name ?? '—'}</Fact>}
-                {!isStatutory && <Fact label="PO generation day">{agreement.po_generation_day ?? '—'}</Fact>}
-                {!isStatutory && <Fact label="Notify before">{agreement.notify_days_before != null ? `${agreement.notify_days_before} day${Number(agreement.notify_days_before) === 1 ? '' : 's'}` : '—'}</Fact>}
+                <Fact label="Duration from">{formatDate(agreement.period_start_date)}</Fact>
+                <Fact label="Duration to">{formatDate(agreement.period_end_date)}</Fact>
+                <Fact label="Recurrence">{agreement.cadence_name ?? '—'}</Fact>
+                <Fact label="PO generation day">{agreement.po_generation_day ?? '—'}</Fact>
+                <Fact label="Notify before">{agreement.notify_days_before != null ? `${agreement.notify_days_before} day${Number(agreement.notify_days_before) === 1 ? '' : 's'}` : '—'}</Fact>
                 <Fact label="Submitted by">{agreement.created_by ?? '—'}</Fact>
               </FactGrid>
             </Panel>

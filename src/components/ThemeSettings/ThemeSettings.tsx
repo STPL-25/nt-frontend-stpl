@@ -15,6 +15,12 @@ import {
   setThemeColor,
   setThemeMode,
   setThemeRadius,
+  setThemeFont,
+  selectThemeFont,
+  setThemeFontSize,
+  selectThemeFontSize,
+  THEME_FONT_SIZES,
+  THEME_FONTS,
   selectThemeColor,
   selectThemeMode,
   selectThemeRadius,
@@ -80,6 +86,8 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({ open, onOpenChange }) => 
   const currentColor  = useSelector(selectThemeColor);
   const currentMode   = useSelector(selectThemeMode);
   const currentRadius = useSelector(selectThemeRadius);
+  const currentFont   = useSelector(selectThemeFont);
+  const currentFontSize = useSelector(selectThemeFontSize);
 
   const handleColorChange = (color: ThemeColor) => {
     dispatch(setThemeColor(color));
@@ -96,7 +104,13 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({ open, onOpenChange }) => 
     applyRadiusClass(radius);
   };
 
+  const handleFontChange = (font: string) => {
+    dispatch(setThemeFont(font));
+  };
+
   const handleReset = () => {
+    handleFontChange("default");
+    dispatch(setThemeFontSize("default"));
     handleColorChange("blue");
     handleModeChange("light");
     handleRadiusChange(0.625);
@@ -263,6 +277,44 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({ open, onOpenChange }) => 
                     }}
                   />
                   <span className="text-[9px] font-semibold">{label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {/* ── Font ──────────────────────────────────────────────────── */}
+          <section>
+            <SectionLabel>Font</SectionLabel>
+            <select
+              value={currentFont}
+              onChange={(e) => handleFontChange(e.target.value)}
+              className="h-9 w-full rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {THEME_FONTS.map((f) => (
+                <option key={f.id} value={f.id}>{f.label}</option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-muted-foreground">
+              The quick brown fox jumps over the lazy dog 0123456789
+            </p>
+          </section>
+
+          {/* ── Font size ─────────────────────────────────────────────── */}
+          <section>
+            <SectionLabel>Font size</SectionLabel>
+            <div className="flex gap-1 rounded-xl bg-muted p-1">
+              {THEME_FONT_SIZES.map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => dispatch(setThemeFontSize(id))}
+                  className={cn(
+                    "flex-1 rounded-lg py-2 text-[11px] font-medium transition-all duration-150 focus-visible:outline-none",
+                    currentFontSize === id
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground/80"
+                  )}
+                >
+                  {label}
                 </button>
               ))}
             </div>

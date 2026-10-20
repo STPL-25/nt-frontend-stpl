@@ -27,6 +27,7 @@ import {
   type GRNDraft,
   type UnsyncedInventoryItem,
 } from '@/Services/GrnService/grnApi';
+import { downloadGRNPdf } from '@/utils/generateGRNPdf';
 import { debitNoteSvcGetByGRN, debitNoteSvcCreate } from '@/Services/GrnService/debitNoteApi';
 import {
   socket,
@@ -346,7 +347,7 @@ const GRNPage: React.FC = () => {
         gate_entry_no: selectedPO.gate_entry_no,
         vendor_sno: selectedPO.vendor_sno,
         vendor_name: selectedPO.vendor_name,
-        form,
+        form: { ...form, invoice_file: undefined },
         items,
       };
       if (activeDraftId) {
@@ -369,6 +370,10 @@ console.log(selectedPO);
     if (!selectedPO) return;
     if (!selectedPO.gate_entry_sno) { toast.error('This PO has no linked Gate Entry'); return; }
     if (!form.received_date) { toast.error('Received date is required'); return; }
+    if (!form.doc_ref_no.trim()) { toast.error('Invoice number is required'); return; }
+    if (!form.invoice_date) { toast.error('Invoice date is required'); return; }
+    if (!(Number(form.invoice_amount) > 0)) { toast.error('Invoice amount is required'); return; }
+    if (!form.invoice_file) { toast.error('Upload the supplier invoice document'); return; }
     if (items.length === 0) { toast.error('Select at least one item to receive'); return; }
     if (items.some(it => it.received_qty <= 0)) {
       toast.error('Received quantity must be greater than 0 for selected items');
@@ -399,7 +404,9 @@ console.log(selectedPO);
         dept_sno: selectedPO.dept_sno,
         dept_name: selectedPO.dept_name,
         received_date: form.received_date,
-        doc_ref_no: form.doc_ref_no,
+        doc_ref_no: form.doc_ref_no.trim(),
+        invoice_date: form.invoice_date,
+        invoice_amount: Number(form.invoice_amount),
         vehicle_no: form.vehicle_no,
         challan_no: form.challan_no,
         remarks: form.remarks,
@@ -422,7 +429,14 @@ console.log(selectedPO);
         })),
       };
 
-      const res = await axios.post(grnSvcCreateGRN, payload);
+      // multipart: invoice file + fields; items travel as a JSON string
+      const fd = new FormData();
+      Object.entries(payload).forEach(([k, v]) => {
+        if (k === 'items') fd.append(k, JSON.stringify(v));
+        else if (v !== undefined && v !== null) fd.append(k, String(v));
+      });
+      fd.append('invoice_document', form.invoice_file);
+      const res = await axios.post(grnSvcCreateGRN, fd);
       const created = res.data?.data?.[0];
       toast.success(`GRN ${created?.grn_no ?? ''} submitted successfully — gate entry marked GRN Done`.trim());
 
@@ -455,6 +469,9 @@ console.log(selectedPO);
       toast.success(action === 'reject' ? `${row.grn_no} rejected`
         : result === 'FINAL' ? `${row.grn_no} approved - stock posted` : `${row.grn_no} approved - sent to next approver`);
       setGrnsToApprove(prev => prev.filter(r => r.grn_basic_sno !== row.grn_basic_sno));
+      if (action === 'approve' && result === 'FINAL') {
+        await downloadGRNPdf(row.grn_basic_sno, row.po_basic_sno);
+      }
       fetchPOs();
       if (selectedPO?.po_basic_sno) fetchGRNs(selectedPO.po_basic_sno);
     } catch (err: any) {

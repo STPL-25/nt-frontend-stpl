@@ -133,12 +133,42 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Doc / Invoice Ref</Label>
+            <Label className="text-xs text-muted-foreground">Invoice No *</Label>
             <Input
               placeholder="INV-2024-001"
               value={form.doc_ref_no}
               onChange={e => setFormField('doc_ref_no', e.target.value)}
               className="h-8 text-sm"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Invoice Date *</Label>
+            <Input
+              type="date"
+              value={form.invoice_date ?? ''}
+              onChange={e => setFormField('invoice_date', e.target.value)}
+              className="h-8 text-sm"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Invoice Amount *</Label>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="0.00"
+              value={form.invoice_amount ?? ''}
+              onChange={e => setFormField('invoice_amount', e.target.value)}
+              className="h-8 text-sm"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Invoice Document *</Label>
+            <Input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={e => setForm(prev => ({ ...prev, invoice_file: e.target.files?.[0] ?? null }))}
+              className="h-8 text-xs"
             />
           </div>
           <div className="space-y-1">

@@ -35,6 +35,10 @@ export const grnSvcGetGRNApprovals = (params: { mine?: boolean; grn_basic_sno?: 
   return `${base}/grnApprovals?${q.toString()}`;
 };
 export const grnSvcDecideGRN = `${base}/decideGRN`;
+// Per-unit asset tags (QR labels) for approved GRNs.
+export const grnSvcAssetTagGRNs = `${base}/assetTagGRNs`;
+export const grnSvcGenerateAssetTags = `${base}/generateAssetTags`;
+export const grnSvcAssetTagsPrinted = `${base}/assetTagsPrinted`;
 export const grnSvcGetCreditNotesByGRN = (grn_basic_sno: number) => `${base}/creditNotesByGRN/${grn_basic_sno}`;
 // Locations scoped to a GRN's company/division/branch (from the Warehouse
 // Location master) — populates the per-item Location dropdown in
@@ -82,4 +86,21 @@ export interface GRNDraft extends Partial<GRNRecord> {
   ecno: string;
   savedAt: string;
   updatedAt: string;
+}
+
+// -- Accounting journal / account heads (sql/41, sql/42) --
+export const grnSvcAccountHeads = `${base}/accountHeads`;
+export const grnSvcSubcategoryAccountMap = `${base}/subcategoryAccountMap`;
+export const grnSvcSetSubcategoryAccountHead = `${base}/setSubcategoryAccountHead`;
+export const grnSvcJournals = `${base}/journals`;
+
+export interface AccountHead { head_sno: number; head_code: string; head_name: string; head_type: string; system_key: string | null }
+export interface SubcategoryAccountRow {
+  subcat_sno: number; subcat_name: string; cat_name: string | null; subcat_stock_type: string | null;
+  account_head_sno: number | null; head_code: string | null; head_name: string | null; suspense_amount: number;
+}
+export interface JournalLine {
+  journal_sno: number; journal_no: string; journal_date: string; source_type: string; source_sno: number;
+  narration: string | null; status: string; line_sno: number; head_code: string; head_name: string;
+  debit: number; credit: number; vendor_sno: number | null; subcat_sno: number | null; is_suspense: boolean;
 }

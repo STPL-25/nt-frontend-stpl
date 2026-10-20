@@ -102,6 +102,9 @@ export interface GRNRecord {
   received_by?: string;
   received_by_name?: string;
   doc_ref_no?: string;
+  invoice_date?: string;
+  invoice_amount?: number;
+  invoice_doc_url?: string;
   vehicle_no?: string;
   challan_no?: string;
   remarks?: string;
@@ -113,6 +116,10 @@ export interface GRNRecord {
 export interface GRNFormState {
   received_date: string;
   doc_ref_no: string;
+  invoice_date?: string;
+  invoice_amount?: string;
+  /** Mandatory supplier invoice file; never persisted in a draft (not JSON-serialisable). */
+  invoice_file?: File | null;
   vehicle_no: string;
   challan_no: string;
   remarks: string;

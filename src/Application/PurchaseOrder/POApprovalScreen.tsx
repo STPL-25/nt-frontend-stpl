@@ -3,7 +3,8 @@ import { AlertCircle, Clock } from 'lucide-react';
 import POApprovalScreenLayout from '@/LayoutComponent/ApprovalLayout/POApprovalScreenLayout';
 import useFetch from '@/hooks/useFetchHook';
 import usePost from '@/hooks/usePostHook';
-import { getPoRecords, poApproveAction, purchaseTeamSendPOEmail } from '@/Services/Api';
+import { getPoRecords, poApproveAction, purchaseTeamSelectQuotation, purchaseTeamSendPOEmail } from '@/Services/Api';
+import { getErrorMessage } from '@/lib/errors';
 import { useAppState } from '@/imports';
 import { buildPOApprovalPdf } from '@/utils/generatePOApprovalPdf';
 import { usePoApprovalSideCardDatas } from '@/FieldDatas/PoApprovalData';
@@ -47,7 +48,10 @@ const POApprovalScreen: React.FC = () => {
 
   useEffect(() => {
     if (data && !fetchLoading) {
-      setPrList(data.data ?? []);
+      const list = data.data ?? [];
+      setPrList(list);
+      // Keep the open PR in step with the refetch (e.g. right after a quotation was selected).
+      setSelectedPR((prev: any) => (prev ? list.find((p: any) => p.pr_no === prev.pr_no) ?? prev : prev));
     }
   }, [data, fetchLoading]);
 
@@ -77,6 +81,42 @@ const POApprovalScreen: React.FC = () => {
 
   const handlePRSelect = (pr: any) => {
     setSelectedPR(pr);
+  };
+
+  // Quotation Selection: an approver whose workflow stage has can_select_quotation = 'Y' picks the winner here
+  // (the Purchase screen no longer does). The server re-checks the stage, so this is only the UI path.
+  const [selectingSno, setSelectingSno] = useState<number | null>(null);
+  const { postData: postSelectQuotation } = usePost();
+  const handleSelectQuotation = async (q: any) => {
+    if (!selectedPR || !q?.sq_basic_sno) return;
+    setSelectingSno(q.sq_basic_sno);
+    try {
+      await postSelectQuotation(
+        purchaseTeamSelectQuotation,
+        {
+          selectedQuotation: {
+            sq_basic_sno: q.sq_basic_sno,
+            pr_basic_sno: selectedPR.pr_basic_sno,
+            pr_no: selectedPR.pr_no,
+            workflow_types_id: q.workflow_types_id,
+            approver_ecno: q.approver_ecno,
+          },
+        },
+        { withCredentials: true }
+      );
+      // Reflect the pick straight away; the refetch below then replaces the row with the server's copy.
+      const quotations: any[] = parseJSON(selectedPR.quotations, []);
+      setSelectedPR({
+        ...selectedPR,
+        quotations: quotations.map((x: any) => ({ ...x, is_selected: x.sq_basic_sno === q.sq_basic_sno })),
+      });
+      setRefreshKey(k => k + 1);
+      setToast({ message: 'Quotation selected', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: getErrorMessage(err, 'Failed to select quotation'), type: 'error' });
+    } finally {
+      setSelectingSno(null);
+    }
   };
 
   const handleAction = (action: string) => {
@@ -247,6 +287,8 @@ const POApprovalScreen: React.FC = () => {
       toast={toast}
       backwardTarget={backwardTarget}
       setBackwardTarget={setBackwardTarget}
+      onSelectQuotation={handleSelectQuotation}
+      selectingSno={selectingSno}
     />
   );
 };

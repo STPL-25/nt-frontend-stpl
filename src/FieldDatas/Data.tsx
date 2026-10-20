@@ -1,7 +1,7 @@
 import React, { ReactElement, useMemo, useState, useEffect } from "react";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import {  Building, MapPin, FileCheck, IndianRupee, Package, FolderOpen,
-  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck, Landmark, Warehouse, Wrench, UserCog, FileText, Repeat, Link2, Gauge,} from "lucide-react";
+  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck, Landmark, Warehouse, Wrench, UserCog, FileText, Repeat, Link2, Gauge, BookOpen,} from "lucide-react";
 import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
 import usePost from "@/hooks/usePostHook";
 import { apiGetSignEmployee } from "@/Services/Api";
@@ -49,11 +49,13 @@ const masterItems: MasterItemType[] = [
   { icon: <UserCog className="w-5 h-5" />, name: "Designation Master", category: "administration", color: "bg-fuchsia-600", id: "DesignationMaster" },
   { icon: <FileText className="w-5 h-5" />, name: "Terms & Conditions", category: "compliance", color: "bg-sky-600", id: "TermsConditionsMaster", staffOnly: true },
   { icon: <Gauge className="w-5 h-5" />, name: "Product Stock Level", category: "inventory", color: "bg-pink-600", id: "ProductStockLevelMaster", staffOnly: true },
+  { icon: <Receipt className="w-5 h-5" />, name: "TDS Section", category: "finance", color: "bg-rose-600", id: "TdsSectionMaster" },
   { icon: <FolderOpen className="w-5 h-5" />, name: "Supplier Category", category: "compliance", color: "bg-lime-600", id: "SupplierCatagoryMaster" },
   { icon: <Landmark className="w-5 h-5" />, name: "Payment Mode", category: "compliance", color: "bg-emerald-500", id: "PaymentModeMaster" },
   { icon: <Repeat className="w-5 h-5" />, name: "Service Type", category: "services", color: "bg-violet-500", id: "ServiceTypeMaster" },
   { icon: <Wrench className="w-5 h-5" />, name: "Service", category: "services", color: "bg-indigo-600", id: "ServiceMaster" },
   { icon: <Gauge className="w-5 h-5" />, name: "Recurrence Cadence", category: "services", color: "bg-teal-600", id: "RecurrenceCadenceMaster" },
+  { icon: <BookOpen className="w-5 h-5" />, name: "Account Head", category: "finance", color: "bg-emerald-700", id: "AccountHeadMaster" },
 
   // { icon: <FileText className="w-5 h-5" />, name: "KYC", category: "compliance", color: "bg-teal-500", id: "kyc_master" },
   // { icon: <Tag className="w-5 h-5" />, name: "Product Rate and Discount", category: "inventory", color: "bg-cyan-500", id: "product_rate_discount" },
@@ -315,6 +317,36 @@ const usePaymentTermsFieldsMaster = (formData?: any): FieldType[] => {
   );
 };
 
+const YES_NO_OPTIONS: OptionType[] = [
+  { label: "Yes", value: "Y" },
+  { label: "No", value: "N" },
+];
+
+const useTdsSectionFieldsMaster = (formData?: any): FieldType[] => {
+  const applies_to_options: OptionType[] = useMemo(() => ([
+    { label: "Services", value: "Service" },
+    { label: "Products", value: "Product" },
+    { label: "Services & Products", value: "Both" },
+  ]), []);
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "tds_section_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "section_code", label: "Section", require: true, view: true, type: "text", input: true, placeholder: "e.g. 194C" },
+      { field: "description", label: "Description", require: true, view: true, type: "text", input: true },
+      { field: "applies_to", label: "Applies To", require: true, view: true, type: "select", options: applies_to_options, input: true },
+      { field: "rate_individual", label: "Individual / HUF Rate (%)", require: true, view: true, type: "number", input: true },
+      { field: "rate_other", label: "Company / Others Rate (%)", require: true, view: true, type: "number", input: true },
+      { field: "rate_no_pan", label: "No PAN Rate (%)", require: false, view: true, type: "number", input: true, placeholder: "Default 20" },
+      { field: "single_threshold", label: "Single Payment Limit", require: false, view: true, type: "number", input: true, placeholder: "0 = none" },
+      { field: "annual_threshold", label: "Annual Limit", require: false, view: true, type: "number", input: true, placeholder: "0 = none" },
+      { field: "excess_only", label: "Tax Only Above Annual Limit", require: false, view: true, type: "select", options: YES_NO_OPTIONS, input: true },
+      { field: "is_goods_default", label: "Default Goods Section", require: false, view: true, type: "select", options: YES_NO_OPTIONS, input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    [applies_to_options]
+  );
+};
+
 const usePaymentModeFieldsMaster =(formData?: any): FieldType[] => {
   return useMemo<FieldType[]>(
     () => [
@@ -486,7 +518,7 @@ const useWorkflowMasterFields = (): FieldType[] => {
 
 const useProductFieldsMaster = (): FieldType[] => {
   const { formData } = useAppState();
-  const {options, loading} = useMasterOptions(['ProductCategoryMaster','ProductSubCategoryMaster','UomMaster','TaxMaster']);
+  const {options, loading} = useMasterOptions(['ProductCategoryMaster','ProductSubCategoryMaster','UomMaster','TaxMaster','AccountLedgerMaster']);
 
   // The selected UOM's own base/conversion flags (uom_base_uom_flag,
   // uom_con_factor, uom_class) ride along as `extra` on each UomMaster option
@@ -547,6 +579,10 @@ const useProductFieldsMaster = (): FieldType[] => {
       },
       { field: "con_uom_name", label: "In Unit", require: false, view: true, type: "text", input: false },
       { field: "tax_sno", label: "Tax", require: true, view: false, type: "select", options: options?.TaxMaster, input: false },
+      // Ledger the purchase of this product is booked to (Tally trial balance). Optional: blank falls back to the sub-category, then Suspense.
+      { field: "account_head_sno", label: "Account Head", require: false, view: false, type: "search-select", options: options?.AccountLedgerMaster, input: true,
+        placeholder: "Ledger this product is booked to" },
+      { field: "account_head_name", label: "Account Head", require: false, view: true, type: "text", input: false },
       { field: "sku", label: "SKU", require: false, view: false, type: "text", input: false },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
       { field: "prod_description", label: "Description", require: false, view: true, type: "textarea", input: true },
@@ -636,8 +672,43 @@ const useRecurrenceCadenceFieldsMaster = (formData?: any): FieldType[] => {
   );
 };
 
+const HEAD_TYPE_OPTIONS: OptionType[] = [
+  { label: "Asset", value: "ASSET" },
+  { label: "Liability", value: "LIABILITY" },
+  { label: "Expense", value: "EXPENSE" },
+  { label: "Income", value: "INCOME" },
+  { label: "Equity", value: "EQUITY" },
+];
+
+const useAccountHeadFieldsMaster = (formData?: any): FieldType[] => {
+  const { options } = useMasterOptions(['AccountHeadMaster']);
+  // only groups can be a parent
+  const groupOptions = useMemo<OptionType[]>(
+    () => (options?.AccountHeadMaster ?? []).filter((o: any) => o.is_group === 'Y'),
+    [options?.AccountHeadMaster]
+  );
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "head_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "head_code", label: "Code", require: false, view: true, type: "text", input: true, placeholder: "Auto if left blank" },
+      { field: "head_name", label: "Account Head / Ledger Name", require: true, view: true, type: "text", input: true },
+      { field: "head_type", label: "Type", require: true, view: true, type: "select", options: HEAD_TYPE_OPTIONS, input: true },
+      { field: "parent_head_sno", label: "Under Group", require: false, view: false, type: "search-select", options: groupOptions, input: true },
+      { field: "parent_name", label: "Under Group", require: false, view: true, type: "text", input: false },
+      { field: "is_group", label: "Is a Group (holds other heads)", require: false, view: true, type: "select",
+        options: [{ label: "No - ledger", value: "N" }, { label: "Yes - group", value: "Y" }], input: true },
+      { field: "gst_rate", label: "GST Rate %", require: false, view: true, type: "number", input: true },
+      { field: "product_count", label: "Products", require: false, view: true, type: "text", input: false },
+      { field: "source", label: "Source", require: false, view: true, type: "text", input: false },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    [groupOptions]
+  );
+};
+
 export {
   masterItems,
+  useAccountHeadFieldsMaster,
   useCompanyMasterFields,
   useDivisionMasterFields,
   useBranchMasterFields,
@@ -650,6 +721,7 @@ export {
   usePrefixFieldsMaster,
   usePriorityFieldsMaster,
   useBankAccountTypeFieldsMaster,
+  useTdsSectionFieldsMaster,
   usePaymentTermsFieldsMaster,
   useWarehouseLocationFieldsMaster,
   useDesignationMasterFields,

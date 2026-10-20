@@ -11,6 +11,7 @@ import {
   usePrefixFieldsMaster,
   usePriorityFieldsMaster,
   useBankAccountTypeFieldsMaster,
+  useTdsSectionFieldsMaster,
   usePaymentTermsFieldsMaster,
   useWarehouseLocationFieldsMaster,
   useDesignationMasterFields,
@@ -18,6 +19,7 @@ import {
   usePermissionFieldsMaster,
   useProductCatagoryMaster,
   useProductFieldsMaster,
+  useAccountHeadFieldsMaster,
   useProductSubCatagoryMaster,
   useSupplierCatagoryFieldsMaster,
   usePaymentModeFieldsMaster,
@@ -43,6 +45,7 @@ export const useMasterDataFields = () => {
     PrefixMaster: usePrefixFieldsMaster(),
     PriorityMaster: usePriorityFieldsMaster(),
     BankAccountTypeMaster: useBankAccountTypeFieldsMaster(),
+    TdsSectionMaster: useTdsSectionFieldsMaster(),
     PaymentTermsMaster: usePaymentTermsFieldsMaster(),
     WarehouseLocationMaster: useWarehouseLocationFieldsMaster(),
     DesignationMaster: useDesignationMasterFields(),
@@ -57,6 +60,7 @@ export const useMasterDataFields = () => {
     ServiceTypeMaster: useServiceTypeFieldsMaster(),
     ServiceMaster: useServiceFieldsMaster(),
     RecurrenceCadenceMaster: useRecurrenceCadenceFieldsMaster(),
+    AccountHeadMaster: useAccountHeadFieldsMaster(),
   };
 
   return { fields };

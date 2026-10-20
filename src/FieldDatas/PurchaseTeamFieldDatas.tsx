@@ -54,7 +54,9 @@ export const useQuotationHeaderFields = (): FieldType[] => {
     { field: 'delivery_days',    label: 'Delivery Days',    type: 'number', require: false, input: true, view: true, placeholder: 'e.g. 15' },
     { field: 'currency_code',    label: 'Currency',         type: 'text',   require: false, input: true, view: true  },
     { field: 'freight_charges',  label: 'Freight Charges (Extra)', type: 'number', require: false, input: true, view: true, placeholder: '0' },
+    { field: 'freight_gst_pct',  label: 'Freight GST %',           type: 'number', require: false, input: true, view: true, placeholder: '0' },
     { field: 'other_charges',    label: 'Other Charges (Extra)',   type: 'number', require: false, input: true, view: true, placeholder: '0' },
+    { field: 'other_charges_gst_pct', label: 'Other Charges GST %', type: 'number', require: false, input: true, view: true, placeholder: '0' },
     { field: 'remarks',          label: 'Remarks',          type: 'textarea', require: false, input: true, view: true, placeholder: 'Additional notes...' },
   ], [paymentTermOptions]);
 };

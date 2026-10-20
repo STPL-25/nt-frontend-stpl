@@ -77,14 +77,14 @@ export const SOCKET_KYC_APPROVAL_UPDATED = "kyc:approval:updated";
 export const SOCKET_JOIN_SERVICE_AGREEMENT_APPROVAL    = "join-service-agreement-approval";
 export const SOCKET_LEAVE_SERVICE_AGREEMENT_APPROVAL   = "leave-service-agreement-approval";
 export const SOCKET_SERVICE_AGREEMENT_APPROVAL_UPDATED = "service_agreement:approval:updated";
+export const SOCKET_JOIN_SPECIAL_AGREEMENT_APPROVAL    = "join-special-agreement-approval";
+export const SOCKET_LEAVE_SPECIAL_AGREEMENT_APPROVAL   = "leave-special-agreement-approval";
+export const SOCKET_SPECIAL_AGREEMENT_APPROVAL_UPDATED = "special_agreement:approval:updated";
 
 export const SOCKET_JOIN_SERVICE_PO_APPROVAL    = "join-service-po-approval";
 export const SOCKET_LEAVE_SERVICE_PO_APPROVAL   = "leave-service-po-approval";
 export const SOCKET_SERVICE_PO_APPROVAL_UPDATED = "service_po:approval:updated";
 
-export const SOCKET_JOIN_LOAN_VOUCHER_APPROVAL    = "join-loan-voucher-approval";
-export const SOCKET_LEAVE_LOAN_VOUCHER_APPROVAL   = "leave-loan-voucher-approval";
-export const SOCKET_LOAN_VOUCHER_APPROVAL_UPDATED = "loan_voucher:approval:updated";
 
 // ── Service Vendor KYC room + real-time events ────────────────────────────────
 export const SOCKET_JOIN_SERVICE_VENDOR_KYC_APPROVAL    = "join-service-vendor-kyc-approval";

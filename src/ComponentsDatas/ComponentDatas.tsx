@@ -23,9 +23,13 @@ export const StoreInchargeApprovalPage = lazy(() => import("../Application/Store
  export const PurchaseRequisitionReview = lazy(() => import("../Application/PR/PurchaseRequisitionReview"));
  export const GateEntryPage = lazy(() => import("../Application/GateEntry/GateEntryPage"));
  export const GRNPage = lazy(() => import("../Application/GRN/GRNPage"));
+ export const GRNApprovalScreen = lazy(() => import("../Application/GRN/GRNApprovalScreen"));
+ export const GRNAssetTagsPage = lazy(() => import("../Application/GRN/GRNAssetTagsPage"));
  export const POAmendmentPage = lazy(() => import("../Application/POAmendment/POAmendmentPage"));
  export const InventoryPage = lazy(() => import("../Application/Inventory/InventoryPage"));
  export const AssetManagementPage = lazy(() => import("../Application/AssetManagement/AssetManagementPage"));
+ export const JournalsPage = lazy(() => import("../Application/Journals/JournalsPage"));
+ export const Gstr2bPage = lazy(() => import("../Application/Gstr2b/Gstr2bPage"));
  export const StockRequestPage = lazy(() => import("../Application/StockRequest/StockRequestPage"));
  export const StockIssuePage = lazy(() => import("../Application/StockRequest/StockIssuePage"));
 //  export const AccountEntryPage = lazy(() => import("../Application/AccountEntry/AccountEntryPage"));
@@ -39,12 +43,12 @@ export const StoreInchargeApprovalPage = lazy(() => import("../Application/Store
  export const NonStaffUserManagement = lazy(() => import("../Application/NonStaffPortal/NonStaffUserManagement"));
  export const ServiceAgreementPage = lazy(() => import("../Application/ServiceAgreement/ServiceAgreementPage"));
  export const ServiceAgreementApprovalScreen = lazy(() => import("../Application/ServiceAgreement/ServiceAgreementApprovalScreen"));
+ export const SpecialAgreementPage = lazy(() => import("../Application/SpecialAgreement/SpecialAgreementPage"));
+ export const SpecialAgreementApprovalScreen = lazy(() => import("../Application/SpecialAgreement/SpecialAgreementApprovalScreen"));
  export const ServiceGrnPage = lazy(() => import("../Application/ServiceAgreement/ServiceGrnPage"));
  export const ServicePoPage = lazy(() => import("../Application/ServiceAgreement/ServicePoPage"));
  export const ServicePoApprovalScreen = lazy(() => import("../Application/ServiceAgreement/ServicePoApprovalScreen"));
  export const ApprovalRoutingPage = lazy(() => import("../Application/RoleApproval/ApprovalRoutingPage"));
- export const LoanVoucherPage = lazy(() => import("../Application/LoanVoucher/LoanVoucherPage"));
- export const LoanVoucherApprovalScreen = lazy(() => import("../Application/LoanVoucher/LoanVoucherApprovalScreen"));
  export const ServiceVendorKycPage = lazy(() => import("../Application/ServiceVendorKyc/ServiceVendorKycPage"));
  export const ServiceVendorKycApprovalScreen = lazy(() => import("../Application/ServiceVendorKyc/ServiceVendorKycApprovalScreen"));
 // Interface for the component map
@@ -75,9 +79,13 @@ export const sectionComponents: SectionComponentsMap = {
   PurchaseRequisitionReview,
   GateEntryPage,
   GRNPage,
+  GRNApprovalScreen,
+  GRNAssetTagsPage,
   POAmendmentPage,
   InventoryPage,
   AssetManagementPage,
+  JournalsPage,
+  Gstr2bPage,
   StockRequestPage,
   StockIssuePage,
   // AccountEntryPage,
@@ -90,12 +98,12 @@ export const sectionComponents: SectionComponentsMap = {
   NonStaffUserManagement,
   ServiceAgreementPage,
   ServiceAgreementApprovalScreen,
+  SpecialAgreementPage,
+  SpecialAgreementApprovalScreen,
   ServiceGrnPage,
   ServicePoPage,
   ServicePoApprovalScreen,
   ApprovalRoutingPage,
-  LoanVoucherPage,
-  LoanVoucherApprovalScreen,
   ServiceVendorKycPage,
   ServiceVendorKycApprovalScreen,
 };

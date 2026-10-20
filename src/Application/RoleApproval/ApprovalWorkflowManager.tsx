@@ -251,6 +251,7 @@ const WorkflowTypeCard: React.FC<{
    * null = not known yet (loading / failed) · [] = this kind of workflow has no conditions.
    */
   conditionFields: ConditionFieldDef[] | null;
+  entityType?: string;
   lookups: ConditionLookups;
   onChange: (i: number, field: keyof WorkflowType, value: any) => void;
   onStageChange: (
@@ -271,6 +272,7 @@ const WorkflowTypeCard: React.FC<{
     employeeOptions,
     allDepartments,
     conditionFields,
+    entityType,
     lookups,
     onChange,
     onStageChange,
@@ -282,6 +284,7 @@ const WorkflowTypeCard: React.FC<{
   }) => {
     const [stagesOpen, setStagesOpen] = useState(true);
     const routing = !!conditionFields && conditionFields.length > 0;
+    const isPurchaseOrder = entityType === "PurchaseOrder";
     const { workflowTypeFields: rawTypeFields } = useApprovalFlowHierarchy(
       type.com_snos.map(Number),
       type.div_snos.map(Number),
@@ -447,13 +450,16 @@ const WorkflowTypeCard: React.FC<{
                             <CustomInputField field="escalation_hours" label={routing ? "Alternate can act after (hours)" : "Escalation Hours"} type="number" min="1" input={true} view={true} value={stage.escalation_hours} onChange={(v) => onStageChange(typeIndex, si, "escalation_hours", v)} />
                             <CustomInputField field="next_approver_ecno" label="Next Approver" type="select" placeholder="Select (optional)" input={true} view={true} options={[{ label: "None", value: "0" }, ...employeeOptions]} value={stage.next_approver_ecno} onChange={(v) => onStageChange(typeIndex, si, "next_approver_ecno", v)} />
                           </div>
-                          <div className={`grid grid-cols-2 gap-3 ${routing ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
+                          <div className={`grid grid-cols-2 gap-3 ${routing ? (isPurchaseOrder ? "sm:grid-cols-4" : "sm:grid-cols-3") : (isPurchaseOrder ? "sm:grid-cols-5" : "sm:grid-cols-4")}`}>
                             {!routing && (
                               <CustomInputField field="approver_condition" label="Approver Condition" type="text" placeholder="e.g., amount > 50000" input={true} view={true} value={stage.approver_condition} onChange={(v) => onStageChange(typeIndex, si, "approver_condition", v)} />
                             )}
                             <CustomInputField field="can_forward" label="Can Forward" type="select" input={true} view={true} options={YN_OPTIONS} value={stage.can_forward} onChange={(v) => onStageChange(typeIndex, si, "can_forward", v)} />
                             <CustomInputField field="can_backward" label="Can Backward" type="select" input={true} view={true} options={YN_OPTIONS} value={stage.can_backward} onChange={(v) => onStageChange(typeIndex, si, "can_backward", v)} />
                             <CustomInputField field="can_edit_data" label="Can Edit Data" type="select" input={true} view={true} options={YN_OPTIONS} value={stage.can_edit_data} onChange={(v) => onStageChange(typeIndex, si, "can_edit_data", v)} />
+                            {isPurchaseOrder && (
+                              <CustomInputField field="can_select_quotation" label="Quotation Selection" type="select" input={true} view={true} options={YN_OPTIONS} value={stage.can_select_quotation === "Y" ? "Y" : "N"} onChange={(v) => onStageChange(typeIndex, si, "can_select_quotation", v)} />
+                            )}
                           </div>
                           {routing && (
                             <div className="space-y-3 border-t pt-3" data-testid="stage-routing">
@@ -1395,6 +1401,7 @@ export default function ApprovalFlowDynamic() {
                     employeeOptions={approverOptions}
                     allDepartments={allDepartments}
                     conditionFields={conditionFields}
+                    entityType={activeEntityType}
                     lookups={conditionLookups}
                     onChange={mode === "create" ? ch.updateType : eh.updateType}
                     onStageChange={mode === "create" ? ch.updateStage : eh.updateStage}

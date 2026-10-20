@@ -9,7 +9,7 @@ import {
   DetailHero, Fact, FactGrid, Panel, SelectableCard, StatusPill, StickyActionBar, SupplierSplitTable, SupplierSummary, TypeBadge,
 } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import {
-  CYCLE_STATUS, approvalRoutes, facilityLabel, formatDate, formatINR, parseStages, statusMeta, type ApprovalAction,
+  CYCLE_STATUS, approvalRoutes, formatDate, formatINR, parseStages, statusMeta, type ApprovalAction,
 } from '@/CustomComponent/ServiceComponents/serviceUtils';
 
 // ─── SP response mapping (sp_nt_GetServicePoCyclesForApproval) ────────────
@@ -23,7 +23,7 @@ import {
 //
 // Unlike the agreement approval screen, there's nothing left to enter here
 // — Fixed cycles arrive with rate/net_cost pre-filled from the agreement,
-// Unfixed and Statutory cycles arrive already filled in by the entry step.
+// Unfixed cycles arrive already filled in by the entry step.
 // The approver only reviews and approves/rejects. When the agreement has
 // several suppliers, approving raises one PO per supplier.
 
@@ -129,7 +129,6 @@ function CycleDetailPanel({ cycle, handleAction }: { cycle: any; handleAction: (
   const invoices: any[] = cycle.invoices ?? [];
   const status = statusMeta(CYCLE_STATUS, cycle.status);
   const isFixed = cycle.service_type_code === 'FIXED_RECURRING';
-  const isStatutory = cycle.service_type_code === 'STATUTORY';
   const vendors: any[] = cycle.vendors ?? [];
 
   return (
@@ -150,14 +149,10 @@ function CycleDetailPanel({ cycle, handleAction }: { cycle: any; handleAction: (
               ]}
             />
 
-            <Callout tone={isFixed ? 'primary' : isStatutory ? 'info' : 'violet'} icon={isFixed ? Repeat : isStatutory ? Landmark : Wallet}>
+            <Callout tone={isFixed ? 'primary' : 'violet'} icon={isFixed ? Repeat : Wallet}>
               {isFixed
                 ? 'Fixed — the amount is pre-filled from the approved agreement; there was nothing to enter for this cycle.'
-                : `${isStatutory ? 'Statutory' : 'Unfixed'} — the amount was entered for this cycle${cycle.entered_by ? ` by ${cycle.entered_by}` : ''}${cycle.entered_at ? ` on ${formatDate(cycle.entered_at)}` : ''}.`}
-              {isStatutory && cycle.facility_type && (
-                <> {facilityLabel(cycle.facility_type)}{cycle.interest_rate_pct != null && <> at <b>{cycle.interest_rate_pct}%</b></>}
-                  {cycle.sanctioned_amount != null && <> on a sanctioned <b>{formatINR(cycle.sanctioned_amount)}</b></>}.</>
-              )}
+                : `Unfixed — the amount was entered for this cycle${cycle.entered_by ? ` by ${cycle.entered_by}` : ''}${cycle.entered_at ? ` on ${formatDate(cycle.entered_at)}` : ''}.`}
             </Callout>
 
             <CycleAmountBreakdown cycle={cycle} />

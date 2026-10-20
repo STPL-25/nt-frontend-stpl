@@ -17,7 +17,7 @@ import { downloadQuotationItemsExcel, parseQuotationItemsExcel } from '@/utils/e
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { useQuotationHeaderFields, useQuotationItemFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
 import type { QuotationItem, QuotationFormState, AdvancePaymentData, Vendor } from './types';
-import { formatINR, calcQuotationTotals, recalcItemTotal, today } from './helpers';
+import { formatINR, calcQuotationTotals, calcChargesTotal, recalcItemTotal, today } from './helpers';
 import AdvancePaymentDialog from './AdvancePaymentDialog';
 
 interface QuotationDialogProps {
@@ -48,6 +48,8 @@ const INITIAL_FORM: QuotationFormState = {
   advance_payment_pct: 0,
   freight_charges: 0,
   other_charges: 0,
+  freight_gst_pct: 0,
+  other_charges_gst_pct: 0,
 };
 
 interface SupplyInfo {
@@ -193,9 +195,11 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
   const totals = useMemo(() => calcQuotationTotals(selectedItems), [selectedItems]);
 
   // Quotation-level extras (not per item)
-  const freight = Math.max(0, Number(form.freight_charges) || 0);
-  const otherCharges = Math.max(0, Number(form.other_charges) || 0);
-  const grandWithCharges = totals.grandTotal + freight + otherCharges;
+  const charges = calcChargesTotal(form);
+  const freight = charges.freight;
+  const otherCharges = charges.other;
+  const totalGst = totals.tax + charges.gst; // item GST + GST on freight / other charges
+  const grandWithCharges = totals.grandTotal + charges.total;
   const intrastate = supply?.is_intrastate === true;
 
   // Global buyback from form state
@@ -686,17 +690,17 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
               <>
                 <div className="flex justify-between text-muted-foreground">
                   <span>CGST</span>
-                  <span className="font-medium">{formatINR(totals.tax / 2)}</span>
+                  <span className="font-medium">{formatINR(totalGst / 2)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
                   <span>SGST</span>
-                  <span className="font-medium">{formatINR(totals.tax / 2)}</span>
+                  <span className="font-medium">{formatINR(totalGst / 2)}</span>
                 </div>
               </>
             ) : (
               <div className="flex justify-between text-muted-foreground">
                 <span>IGST</span>
-                <span className="font-medium">{formatINR(totals.tax)}</span>
+                <span className="font-medium">{formatINR(totalGst)}</span>
               </div>
             )}
             {freight > 0 && (

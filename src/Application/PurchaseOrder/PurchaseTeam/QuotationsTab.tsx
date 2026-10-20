@@ -242,13 +242,13 @@ const QuotationCard: React.FC<{
               {Number(q.freight_charges) > 0 && (
                 <div className="min-w-0">
                   <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Freight (Extra)</dt>
-                  <dd className="text-xs font-medium text-foreground truncate">{formatINR(Number(q.freight_charges))}</dd>
+                  <dd className="text-xs font-medium text-foreground truncate">{formatINR(Number(q.freight_charges))}{Number(q.freight_gst_pct) > 0 && ` + ${Number(q.freight_gst_pct)}% GST`}</dd>
                 </div>
               )}
               {Number(q.other_charges) > 0 && (
                 <div className="min-w-0">
                   <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Other Charges (Extra)</dt>
-                  <dd className="text-xs font-medium text-foreground truncate">{formatINR(Number(q.other_charges))}</dd>
+                  <dd className="text-xs font-medium text-foreground truncate">{formatINR(Number(q.other_charges))}{Number(q.other_charges_gst_pct) > 0 && ` + ${Number(q.other_charges_gst_pct)}% GST`}</dd>
                 </div>
               )}
               {q.is_msme && (

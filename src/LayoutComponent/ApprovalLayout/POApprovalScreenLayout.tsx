@@ -38,6 +38,9 @@ interface POApprovalScreenLayoutProps {
   toast?: { message: string; type: 'success' | 'error' } | null;
   backwardTarget: string;
   setBackwardTarget: (ecno: string) => void;
+  /** Picks the winning quotation; only offered to an approver whose stage has can_select_quotation = 'Y'. */
+  onSelectQuotation?: (quotation: any) => void;
+  selectingSno?: number | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -190,7 +193,9 @@ function PRItemsPanel({ prItems }: { prItems: any[] }) {
   );
 }
 
-function QuotationPanel({ quotation, index }: { quotation: any; index: number }) {
+function QuotationPanel({ quotation, index, onSelect, selecting }: {
+  quotation: any; index: number; onSelect?: (q: any) => void; selecting?: boolean;
+}) {
   const items = useMemo(() => parseQuotationItems(quotation), [quotation]);
   const advanceDetails = quotation.advance_details;
   const kycAddresses = useMemo(() => parseJSON(quotation.kyc_address, []), [quotation.kyc_address]);
@@ -213,6 +218,11 @@ function QuotationPanel({ quotation, index }: { quotation: any; index: number })
         <div className="flex shrink-0 flex-col items-end gap-1">
           {isSelected && <StatusPill tone="success">Selected</StatusPill>}
           <span className="text-sm font-bold tabular-nums text-primary">{formatINR(grandTotal)}</span>
+          {onSelect && !isSelected && (
+            <Button size="sm" variant="outline" className="mt-1 h-7 text-xs" disabled={selecting} onClick={() => onSelect(quotation)}>
+              {selecting ? 'Selecting…' : 'Select quotation'}
+            </Button>
+          )}
         </div>
       }
     >
@@ -362,13 +372,23 @@ function HistoryPanel({ history }: { history: any[] }) {
 
 // ─── Detail panel ─────────────────────────────────────────────────────────────
 
-function PRDetailPanel({ pr, handleAction }: { pr: any; handleAction: (a: string) => void }) {
+function PRDetailPanel({ pr, handleAction, onSelectQuotation, selectingSno }: {
+  pr: any; handleAction: (a: string) => void; onSelectQuotation?: (q: any) => void; selectingSno?: number | null;
+}) {
   const { userData } = useAppState();
   const userEcno = userData[0]?.ecno ?? userData[0]?.login_id;
   const quotations = useMemo(() => parseQuotations(pr), [pr]);
   const prItems = useMemo(() => parsePRItems(pr), [pr]);
   const selectedQ = useMemo(() => quotations.find((q: any) => q.is_selected), [quotations]);
+  // Before anyone has picked a quotation every quotation of the PR sits in the same workflow, so the
+  // first one tells us which stages (and whether this approver may select) apply.
+  const stagesSource = selectedQ ?? quotations[0];
   const stages = useMemo(() => (selectedQ ? parseStages(selectedQ) : []), [selectedQ]);
+  const canSelectQuotation = useMemo(() => {
+    if (!onSelectQuotation || !stagesSource) return false;
+    const stage = parseStages(stagesSource).find((s: any) => s.approver_ecno === userEcno);
+    return stage?.can_select_quotation === 'Y' && quotations.some((q: any) => q.approver_ecno === userEcno);
+  }, [onSelectQuotation, stagesSource, quotations, userEcno]);
   const history = useMemo(() => (selectedQ ? parseHistory(selectedQ) : []), [selectedQ]);
   const total = useMemo(() => (selectedQ ? calcQuotationTotal(selectedQ) : 0), [selectedQ]);
   const currentStage = useMemo(() => stages.find((s: any) => s.approver_ecno === userEcno) ?? null, [stages, userEcno]);
@@ -438,7 +458,24 @@ function PRDetailPanel({ pr, handleAction }: { pr: any; handleAction: (a: string
             {quotations.length === 0 ? (
               <Panel icon={ShoppingCart} title="Quotations"><p className="text-sm text-muted-foreground">No quotations found.</p></Panel>
             ) : (
-              quotations.map((q: any, idx: number) => <QuotationPanel key={q.sq_basic_sno ?? idx} quotation={q} index={idx} />)
+              <>
+                {!selectedQ && (
+                  <Callout tone="warning" icon={ShoppingCart}>
+                    {canSelectQuotation
+                      ? 'No quotation has been selected yet. Select the quotation to proceed with, then approve.'
+                      : 'No quotation has been selected yet, and your stage cannot select one. Approval can continue once a quotation is selected.'}
+                  </Callout>
+                )}
+                {quotations.map((q: any, idx: number) => (
+                  <QuotationPanel
+                    key={q.sq_basic_sno ?? idx}
+                    quotation={q}
+                    index={idx}
+                    onSelect={canSelectQuotation ? onSelectQuotation : undefined}
+                    selecting={selectingSno === q.sq_basic_sno}
+                  />
+                ))}
+              </>
             )}
 
             {selectedQ && (
@@ -530,6 +567,7 @@ export default function POApprovalScreenLayout({
   approvalName, prList, selectedPR, handlePRSelect, handleAction,
   showApprovalDialog, setShowApprovalDialog, comments, setComments,
   handleSubmit, loading, actionType, toast, backwardTarget, setBackwardTarget,
+  onSelectQuotation, selectingSno,
 }: POApprovalScreenLayoutProps) {
   const [search, setSearch] = useState('');
   const selectedQ = useMemo(() => (selectedPR ? getSelectedQuotation(selectedPR) : null), [selectedPR]);
@@ -584,7 +622,7 @@ export default function POApprovalScreenLayout({
           </>
         )}
         hasSelection={!!selectedPR}
-        detailContent={selectedPR ? <PRDetailPanel pr={selectedPR} handleAction={handleAction} /> : null}
+        detailContent={selectedPR ? <PRDetailPanel pr={selectedPR} handleAction={handleAction} onSelectQuotation={onSelectQuotation} selectingSno={selectingSno} /> : null}
         emptyContent={
           <DetailEmptyState
             icon={ShoppingCart}

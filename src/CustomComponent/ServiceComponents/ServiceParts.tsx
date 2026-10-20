@@ -40,7 +40,6 @@ export function StatusPill({ tone = 'neutral', children, className }: {
 const TYPE_BADGE: Record<AgreementType, { Icon: LucideIcon; tone: Tone }> = {
   FIXED_RECURRING: { Icon: Repeat, tone: 'primary' },
   VARIABLE_RECURRING: { Icon: Wallet, tone: 'violet' },
-  STATUTORY: { Icon: Landmark, tone: 'info' },
 };
 
 export function TypeBadge({ type, className }: { type?: string; className?: string }) {

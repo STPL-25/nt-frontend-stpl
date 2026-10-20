@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronUp, ReceiptText } from 'lucide-react';
+import { ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronUp, ReceiptText, FileDown } from 'lucide-react';
+import { downloadGRNPdf } from '@/utils/generateGRNPdf';
 import type { GRNRecord, DebitNoteRecord, CreditNoteRecord } from './types';
 import { formatDate, formatINR, hasGRNDiscrepancy } from './helpers';
 
@@ -105,6 +106,16 @@ const GRNCard: React.FC<{
                 onClick={() => onRaiseDebitNote?.(grn)}
               >
                 <ReceiptText size={13} className="mr-1" /> Raise Debit Note
+              </Button>
+            )}
+            {(grn.status === 'Approved' || grn.status === 'Received') && grn.grn_basic_sno && grn.po_basic_sno && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs h-7"
+                onClick={() => downloadGRNPdf(grn.grn_basic_sno!, grn.po_basic_sno!)}
+              >
+                <FileDown size={13} className="mr-1" /> PDF
               </Button>
             )}
             <Button

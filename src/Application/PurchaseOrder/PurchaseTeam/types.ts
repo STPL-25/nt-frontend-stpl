@@ -115,6 +115,8 @@ export interface Quotation {
   sq_quotation_file?: string;
   freight_charges?: number;
   other_charges?: number;
+  freight_gst_pct?: number;
+  other_charges_gst_pct?: number;
   is_msme?: string | null;        // Y / N
   msme_type?: string | null;      // Micro / Small / Medium
   is_intrastate?: boolean | number | null;
@@ -181,6 +183,8 @@ export interface QuotationFormState {
   advance_payment_data?: AdvancePaymentData;
   freight_charges: number;
   other_charges: number;
+  freight_gst_pct: number;
+  other_charges_gst_pct: number;
 }
 
 export interface POFormState {

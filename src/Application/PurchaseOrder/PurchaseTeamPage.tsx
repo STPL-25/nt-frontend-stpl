@@ -386,6 +386,7 @@ const PurchaseTeamPage: React.FC = () => {
     if (items.length === 0) { toast.error('Select at least one item for this quotation'); return; }
     if (items.some(it => it.unit_price <= 0)) { toast.error('Enter unit price for all selected items'); return; }
     if (Number(form.freight_charges) < 0 || Number(form.other_charges) < 0) { toast.error('Freight / other charges cannot be negative'); return; }
+    if ([form.freight_gst_pct, form.other_charges_gst_pct].some(p => Number(p) < 0 || Number(p) > 100)) { toast.error('Charges GST % must be between 0 and 100'); return; }
 
     const prBasicSno = selectedPR?.pr_basic_sno ?? poGroups[0]?.sourcePRs[0];
     if (!prBasicSno) return;
@@ -434,18 +435,20 @@ const PurchaseTeamPage: React.FC = () => {
     }
   };
 
-  const handleSelectQuotation = async (q: Quotation) => {
-    if (!q.sq_basic_sno) return;
-    try {
-      q.pr_no = selectedPR?.pr_no ?? q.pr_no; // ensure pr_no is sent for legacy quotations created without a PR context
-
-      await postSelectQuotation(purchaseTeamSelectQuotation, { selectedQuotation: q }, { withCredentials: true });
-      toast.success('Quotation selected');
-      setQuotationsRefreshKey(k => k + 1);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error ?? 'Failed to select quotation');
-    }
-  };
+  // QUOTATION-SELECTION: selecting a quotation moved to PO Approvals (stage flag can_select_quotation).
+  // Kept for re-enabling the Purchase-side Select button later.
+  // const handleSelectQuotation = async (q: Quotation) => {
+  //   if (!q.sq_basic_sno) return;
+  //   try {
+  //     q.pr_no = selectedPR?.pr_no ?? q.pr_no; // ensure pr_no is sent for legacy quotations created without a PR context
+  // 
+  //     await postSelectQuotation(purchaseTeamSelectQuotation, { selectedQuotation: q }, { withCredentials: true });
+  //     toast.success('Quotation selected');
+  //     setQuotationsRefreshKey(k => k + 1);
+  //   } catch (err: any) {
+  //     toast.error(err?.response?.data?.error ?? 'Failed to select quotation');
+  //   }
+  // };
 
   const handleOpenCreatePO = async (q: Quotation) => {
     if (!q.sq_basic_sno) {
@@ -712,7 +715,10 @@ const PurchaseTeamPage: React.FC = () => {
                     existingQuotations={existingQuotations}
                     loadingQuotations={loadingQuotations}
                     onOpenQuotation={canCreate("PurchaseTeamPage") ? handleOpenQuotation : undefined}
+                    /* QUOTATION-SELECTION (now done at PO Approvals via the stage's can_select_quotation flag):
+                        re-enable to let Purchase pick the quotation again.
                     onSelectQuotation={handleSelectQuotation}
+                    */
                     onCreatePO={canCreate("PurchaseTeamPage") || canEdit("PurchaseTeamPage") ? handleOpenCreatePO : undefined}
                     onCompare={() => setShowCompareDialog(true)}
                     onRefreshQuotations={() => setQuotationsRefreshKey(k => k + 1)}
@@ -743,7 +749,7 @@ const PurchaseTeamPage: React.FC = () => {
         onOpenChange={setShowCompareDialog}
         quotations={existingQuotations}
         selectedPR={selectedPR}
-        onSelectQuotation={handleSelectQuotation}
+        /* QUOTATION-SELECTION (see above): onSelectQuotation={handleSelectQuotation} */
       />
 
       <CreatePODialog

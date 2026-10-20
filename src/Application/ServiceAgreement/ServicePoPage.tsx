@@ -18,7 +18,7 @@ import {
   AmountBreakdown, Callout, Panel, SearchInput, StatusPill, SupplierSplitTable, SupplierSummary,
 } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import {
-  CYCLE_STATUS, TONE, facilityLabel, formatDate, formatINR, previewSupplierSplit, statusMeta,
+  CYCLE_STATUS, TONE, formatDate, formatINR, previewSupplierSplit, statusMeta,
   type AgreementType,
 } from '@/CustomComponent/ServiceComponents/serviceUtils';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
@@ -31,10 +31,10 @@ import useFetch from '@/hooks/useFetchHook';
 import { useServiceLive } from '@/hooks/useServiceLive';
 import { cn } from '@/lib/utils';
 
-// Every recurring PO cycle (Fixed, Unfixed and Statutory) lands here instead
+// Every recurring PO cycle (Fixed and Unfixed) lands here instead
 // of issuing silently — see backend-stpl/sql/83_service_po_screen.sql. Fixed
 // rows never show an action (nothing to enter, they go straight to Pending
-// Approval); Unfixed and Statutory rows in Pending Entry get an "Enter
+// Approval); Unfixed rows in Pending Entry get an "Enter
 // Details" button. All then move to the ServicePoApprovalScreen for approval.
 // A cycle on an agreement with several suppliers is split between them
 // (sql/88) and raises one PO per supplier when finally approved.
@@ -79,8 +79,8 @@ const cycleInvoiceTargets = (c: CycleRow): InvoiceTargetPo[] => {
   return c.po_basic_sno ? [{ po_basic_sno: c.po_basic_sno, po_no: c.po_no, vendor_name: c.vendor_name, amount: c.net_cost }] : [];
 };
 
-type PoTab = 'fixed' | 'variable' | 'statutory';
-const TAB_FOR_TYPE: Record<AgreementType, PoTab> = { FIXED_RECURRING: 'fixed', VARIABLE_RECURRING: 'variable', STATUTORY: 'statutory' };
+type PoTab = 'fixed' | 'variable';
+const TAB_FOR_TYPE: Record<AgreementType, PoTab> = { FIXED_RECURRING: 'fixed', VARIABLE_RECURRING: 'variable' };
 
 /** Suppliers to show for a cycle: its real split once it exists, else the agreement's configured suppliers. */
 const cycleSuppliers = (c: CycleRow) =>
@@ -170,11 +170,6 @@ const EntryDialog: React.FC<{ cycle: CycleRow; onClose: () => void; onSaved: () 
             {cycle.service_name} · {agreementSuppliers.length > 1 ? `${agreementSuppliers.length} suppliers` : (cycle.vendor_name ?? '—')}
           </DialogDescription>
           <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
-            {cycle.facility_type && (
-              <span className={cn('inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-medium', TONE.info)}>
-                <Landmark className="h-3 w-3" />{facilityLabel(cycle.facility_type)}{cycle.interest_rate_pct != null && ` · ${cycle.interest_rate_pct}%`}
-              </span>
-            )}
             <span className={cn('rounded-md border px-2 py-0.5 font-medium', TONE.neutral)}>Qty {cycle.qty ?? 1}</span>
             <span className={cn('rounded-md border px-2 py-0.5 font-medium', TONE.neutral)}>PO on {formatDate(cycle.billing_period_start)}</span>
             {cycle.ceiling_amount != null && (
@@ -284,7 +279,6 @@ const ServicePoPage: React.FC = () => {
   const rowsByTab = useMemo<Record<PoTab, CycleRow[]>>(() => ({
     fixed: filtered.filter((c) => c.service_type_code === 'FIXED_RECURRING'),
     variable: filtered.filter((c) => c.service_type_code === 'VARIABLE_RECURRING'),
-    statutory: filtered.filter((c) => c.service_type_code === 'STATUTORY'),
   }), [filtered]);
   const isFiltering = statusFilter !== 'ALL' || search.trim() !== '';
 
@@ -296,7 +290,7 @@ const ServicePoPage: React.FC = () => {
     if (next === 'ALL') return;
     const countFor = (tab: PoTab) => cycles.filter((c) => c.status === next && TAB_FOR_TYPE[c.service_type_code] === tab).length;
     if (countFor(activeTab) > 0) return;
-    const withMatches = (['fixed', 'variable', 'statutory'] as PoTab[]).find((tab) => countFor(tab) > 0);
+    const withMatches = (['fixed', 'variable'] as PoTab[]).find((tab) => countFor(tab) > 0);
     if (withMatches) setActiveTab(withMatches);
   };
 
@@ -510,11 +504,6 @@ const ServicePoPage: React.FC = () => {
               <TabsList className="w-full sm:w-fit">
                 <TabsTrigger value="fixed" className="sm:px-4"><Repeat size={14} /> Fixed ({rowsByTab.fixed.length})</TabsTrigger>
                 <TabsTrigger value="variable" className="sm:px-4"><Wallet size={14} /> Unfixed ({rowsByTab.variable.length})</TabsTrigger>
-                {/* Loans no longer raise PO cycles (they are billed through Bank Payment Vouchers), so this
-                    tab only appears for cycles that were raised before that change. */}
-                {cycles.some((c) => c.service_type_code === 'STATUTORY') && (
-                  <TabsTrigger value="statutory" className="sm:px-4"><Landmark size={14} /> Statutory ({rowsByTab.statutory.length})</TabsTrigger>
-                )}
               </TabsList>
               <div className="flex items-center gap-2">
                 {statusFilter !== 'ALL' && (
@@ -538,7 +527,6 @@ const ServicePoPage: React.FC = () => {
 
             <TabsContent value="fixed">{renderRows(rowsByTab.fixed, false)}</TabsContent>
             <TabsContent value="variable">{renderRows(rowsByTab.variable, true)}</TabsContent>
-            <TabsContent value="statutory">{renderRows(rowsByTab.statutory, true)}</TabsContent>
           </Tabs>
         </Panel>
       </div>

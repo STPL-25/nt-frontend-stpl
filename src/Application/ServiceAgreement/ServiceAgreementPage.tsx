@@ -11,7 +11,7 @@ import {
 import {
   FileText, Building2, RefreshCw, Send, Repeat, Wallet, CalendarClock, Bell, ClipboardList,
   Pencil, Loader2, Briefcase, ScrollText, Check, FilePlus2, AlertCircle, SearchX, Layers,
-  /* Landmark, */ History, RotateCcw, FileSignature,   // TEMP-DISABLED (loan/statutory): Landmark is only used by the commented-out Statutory type card / tab
+  History, RotateCcw, FileSignature,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { EmptyState, PageHeader } from '@/CustomComponent/PageComponents';
@@ -19,13 +19,12 @@ import {
   Callout, FilterChips, Panel, SearchInput, StatusPill, SupplierSummary, TypeBadge,
 } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import {
-  AGREEMENT_STATUS, buildStatutoryPayload, buildSupplierPayload, dateOnly, emptyStatutory, emptySupplierRow,
-  entersAmountPerCycle, facilityLabel, formatDate, formatINR, ordinalDay, statusMeta, statutoryFromRow, suggestRenewalTerm,
-  validateStatutory, validateSuppliers,
-  type StatutoryForm, type SupplierRowValue, type SupplierShare,
+  AGREEMENT_STATUS, buildSupplierPayload, dateOnly, emptySupplierRow,
+  entersAmountPerCycle, formatDate, formatINR, statusMeta, suggestRenewalTerm,
+  validateSuppliers,
+  type SupplierRowValue, type SupplierShare,
 } from '@/CustomComponent/ServiceComponents/serviceUtils';
 import { SupplierSplitEditor } from '@/CustomComponent/ServiceComponents/SupplierSplitEditor';
-import { StatutoryFieldsPanel } from '@/CustomComponent/ServiceComponents/StatutoryFieldsPanel';
 import { AgreementHistoryDialog } from '@/CustomComponent/ServiceComponents/AgreementHistoryDialog';
 import { DocLink, SignedAgreementDialog } from '@/CustomComponent/ServiceComponents/ServiceUploads';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
@@ -87,23 +86,16 @@ function resolveNameField(fieldName: string): string {
 const AGREEMENT_TYPES: { value: AgreementType; label: string; description: string; Icon: React.ElementType }[] = [
   { value: 'FIXED_RECURRING', label: 'Fixed', description: 'Same amount every cycle, auto-generated on a schedule', Icon: Repeat },
   { value: 'VARIABLE_RECURRING', label: 'Unfixed', description: 'Amount varies by billing cycle — entered per cycle in Service PO', Icon: Wallet },
-  // TEMP-DISABLED (loan/statutory): restore this entry (and the Landmark import) to offer loans / repo / cash credit again.
-  // { value: 'STATUTORY', label: 'Statutory', description: 'Loans, repo and cash credit — no POs; interest is worked out on the outstanding principal and paid by Bank Payment Voucher', Icon: Landmark },
 ];
 
-// A loan is priced by its own facility terms and billed through Bank Payment Vouchers, so the
-// per-cycle pricing / PO-cadence fields don't apply. The server fills them in (see
-// ServiceAgreement.controller's withLoanDefaults); the form just doesn't ask.
-const LOAN_HIDDEN_FIELDS = new Set(['qty', 'rate_amount', 'rate_uom_sno', 'recurrence_cadence_sno', 'po_generation_day', 'notify_days_before']);
-
-type ListTab = 'fixed' | 'variable' | 'statutory';
-const TAB_FOR_TYPE: Record<AgreementType, ListTab> = { FIXED_RECURRING: 'fixed', VARIABLE_RECURRING: 'variable', STATUTORY: 'statutory' };
+type ListTab = 'fixed' | 'variable';
+const TAB_FOR_TYPE: Record<AgreementType, ListTab> = { FIXED_RECURRING: 'fixed', VARIABLE_RECURRING: 'variable' };
 
 // The form's fields are grouped into sections purely by field name, so a field
 // added to useServiceAgreementFields but not listed here still renders (in a
 // trailing "More details" section) instead of silently disappearing. Suppliers
-// and the Statutory facility block are not plain fields — they are rendered by
-// dedicated editors, slotted in after the section named in `slots`.
+// are not plain fields — they are rendered by
+// a dedicated editor, slotted in after the section named in `slots`.
 interface FormSectionDef {
   key: string;
   title: string;
@@ -162,50 +154,33 @@ const scrollToFirstError = () => {
 function validateAgreementForm(args: {
   inputFields: FieldType[]; formData: Record<string, any>; agreementType: AgreementType; renewAfter?: string;
 }): FormErrors {
-  const { inputFields, formData, agreementType, renewAfter } = args;
-  const isLoan = agreementType === 'STATUTORY';
+  const { inputFields, formData, renewAfter } = args;
   const errs: FormErrors = {};
   inputFields.forEach((f) => {
-    if (isLoan && LOAN_HIDDEN_FIELDS.has(f.field)) return;
     if (f.require && !formData[f.field]) errs[f.field] = `${f.label} is required`;
   });
-  if (!isLoan) {
-    if (formData.qty && Number(formData.qty) <= 0) errs.qty = 'Quantity must be greater than 0';
-    if (formData.rate_amount && Number(formData.rate_amount) <= 0) errs.rate_amount = 'Rate must be greater than 0';
-  }
+  if (formData.qty && Number(formData.qty) <= 0) errs.qty = 'Quantity must be greater than 0';
+  if (formData.rate_amount && Number(formData.rate_amount) <= 0) errs.rate_amount = 'Rate must be greater than 0';
 
   const start = formData.period_start_date, end = formData.period_end_date;
   if (start && end && end <= start) errs.period_end_date = 'Duration To must be after Duration From';
   if (renewAfter && start && start <= renewAfter) errs.period_start_date = `A renewal must start after the previous term ended (${formatDate(renewAfter)})`;
 
-  if (isLoan) {
-    if (!formData.vendor_sno) errs.vendor_sno = 'Select the lender';
-    Object.assign(errs, validateStatutory(formData.statutory ?? emptyStatutory(), { start, end }));
-  } else {
-    const supplierError = validateSuppliers(formData.vendors ?? [], totalPerCycle(formData));
-    if (supplierError) errs.vendors = supplierError;
-  }
+  const supplierError = validateSuppliers(formData.vendors ?? [], totalPerCycle(formData));
+  if (supplierError) errs.vendors = supplierError;
   return errs;
 }
 
-/** Multipart body for create / edit / renew. Suppliers and the facility block go as JSON strings. */
+/** Multipart body for create / edit / renew. Suppliers go as a JSON string. */
 function buildAgreementFormData(formData: Record<string, any>, agreementType: AgreementType, extra?: Record<string, string>): FormData {
   const fd = new FormData();
-  const isLoan = agreementType === 'STATUTORY';
-  const skip = new Set(['agreement_document', 'vendors', 'statutory', 'vendor_sno', 'vendor_name']);
+  const skip = new Set(['agreement_document', 'vendors', 'vendor_sno', 'vendor_name']);
   Object.entries(formData).forEach(([key, value]) => {
     if (skip.has(key) || value === null || value === undefined || value === '') return;
-    if (isLoan && LOAN_HIDDEN_FIELDS.has(key)) return;
     fd.append(key, String(value));
   });
   Object.entries(extra ?? {}).forEach(([k, v]) => fd.append(k, v));
-  if (isLoan) {
-    // One lender; the server derives the rest (amount, monthly cadence, payment day).
-    fd.append('vendor_sno', String(formData.vendor_sno));
-    fd.append('statutory', JSON.stringify(buildStatutoryPayload(formData.statutory ?? emptyStatutory())));
-  } else {
-    fd.append('vendors', JSON.stringify(buildSupplierPayload(formData.vendors ?? [], totalPerCycle(formData))));
-  }
+  fd.append('vendors', JSON.stringify(buildSupplierPayload(formData.vendors ?? [], totalPerCycle(formData))));
   if (formData.agreement_document instanceof File) fd.append('agreement_document', formData.agreement_document);
   return fd;
 }
@@ -249,7 +224,6 @@ const AgreementFormSections: React.FC<{
   compact?: boolean;
 }> = ({ fields, formData, errors, onChange, agreementType, compact }) => {
   const byName = useMemo(() => new Map(fields.map((f) => [f.field, f])), [fields]);
-  const isLoan = agreementType === 'STATUTORY';
   const perCycleEntry = entersAmountPerCycle(agreementType);
   const sections = useMemo(() => {
     const placed = new Set(FORM_SECTIONS.flatMap((s) => s.fields));
@@ -257,35 +231,20 @@ const AgreementFormSections: React.FC<{
     const more: FormSectionDef = {
       key: 'more', title: 'More details', icon: Layers, fields: leftovers, grid: 'sm:grid-cols-2', compactGrid: 'sm:grid-cols-2',
     };
-    const all: FormSectionDef[] = (leftovers.length ? [...FORM_SECTIONS, more] : FORM_SECTIONS)
-      // A loan's tenure is just its start and end — the pricing / PO-cadence fields don't apply.
-      .map((s) => (isLoan && s.key === 'schedule'
-        ? { ...s, title: 'Loan term', description: 'Tenure of the facility — interest is billed monthly on the payment day set under Loan details' }
-        : s));
+    const all: FormSectionDef[] = leftovers.length ? [...FORM_SECTIONS, more] : FORM_SECTIONS;
     return all
       .map((s) => ({
         ...s,
         defs: s.fields
-          .filter((n) => !(isLoan && LOAN_HIDDEN_FIELDS.has(n)))
           .map((n) => byName.get(n))
           .filter((f): f is FieldType => !!f),
       }))
       .filter((s) => s.defs.length > 0);
-  }, [fields, byName, isLoan]);
+  }, [fields, byName]);
 
   // Dedicated editors, each placed right after the section it belongs with.
   const slots: Record<string, React.ReactNode> = {
-    service: isLoan ? (
-      <StatutoryFieldsPanel
-        value={(formData.statutory as StatutoryForm) ?? emptyStatutory()}
-        onChange={(v) => onChange('statutory', v)}
-        errors={errors}
-        lender={formData.vendor_sno ? String(formData.vendor_sno) : ''}
-        onLenderChange={(v) => onChange('vendor_sno', v)}
-        lenderError={errors.vendor_sno}
-      />
-    ) : null,
-    pricing: isLoan ? null : (
+    pricing: (
       <SupplierSplitEditor
         rows={(formData.vendors as SupplierRowValue[]) ?? [emptySupplierRow()]}
         onChange={(rows) => onChange('vendors', rows)}
@@ -306,7 +265,7 @@ const AgreementFormSections: React.FC<{
               ))}
             </div>
 
-            {s.key === 'schedule' && !isLoan && (
+            {s.key === 'schedule' && (
               <Callout tone="primary" icon={Bell}>
                 <b>PO Generation Day</b> is required for monthly, bi-monthly, quarterly and annual cadences (e.g. 5 = generate on the 5th of every eligible month).
                 {' '}<b>Notify Before</b> sends an in-app reminder that many days before each auto-generation.
@@ -362,8 +321,7 @@ const EditAgreementDialog: React.FC<{
       com_sno: row.com_sno, div_sno: row.div_sno, brn_sno: row.brn_sno, dept_sno: row.dept_sno,
       service_sno: row.service_sno, service_name: row.service_name,
       vendors,
-      vendor_sno: row.vendor_sno ? String(row.vendor_sno) : '',   // a loan has one lender
-      statutory: statutoryFromRow(row),
+      vendor_sno: row.vendor_sno ? String(row.vendor_sno) : '',
       qty: row.qty ?? 1,
       rate_amount: row.rate_amount ?? '', rate_uom_sno: row.rate_uom_sno ?? '', rate_uom_name: row.rate_uom_name ?? '',
       recurrence_cadence_sno: row.recurrence_cadence_sno ?? '',
@@ -396,10 +354,9 @@ const EditAgreementDialog: React.FC<{
       return updated;
     });
     setErrors((prev) => {
-      if (!prev[fieldName] && !(fieldName === 'statutory' && Object.keys(prev).some((k) => k.startsWith('stat_')))) return prev;
+      if (!prev[fieldName]) return prev;
       const e = { ...prev };
       delete e[fieldName];
-      if (fieldName === 'statutory') Object.keys(e).forEach((k) => { if (k.startsWith('stat_')) delete e[k]; });
       return e;
     });
   };
@@ -450,10 +407,8 @@ const EditAgreementDialog: React.FC<{
           {renewing && (
             <Callout tone="violet" icon={RotateCcw}>
               Previous term: <b>{formatDate(row.period_start_date)} – {formatDate(row.period_end_date)}</b>
-              {agreementType === 'STATUTORY'
-                ? (row.sanctioned_amount != null && <> on a sanctioned <b>{formatINR(row.sanctioned_amount)}</b></>)
-                : (row.rate_amount != null && <> at <b>{formatINR(row.rate_amount)}</b></>)}. The new term must start after it ended —
-              review the dates, {agreementType === 'STATUTORY' ? 'interest rate and lender' : 'rate and suppliers'} below, which are pre-filled from the last version.
+              {row.rate_amount != null && <> at <b>{formatINR(row.rate_amount)}</b></>}. The new term must start after it ended —
+              review the dates, rate and suppliers below, which are pre-filled from the last version.
             </Callout>
           )}
           <AgreementFormSections
@@ -517,11 +472,10 @@ const ServiceAgreementPage: React.FC = () => {
       else d[field.field] = '';
     });
     d.vendors = [emptySupplierRow()];
-    d.statutory = emptyStatutory();
     return d;
   }, []);
 
-  // Reset the form whenever the type changes — Fixed, Unfixed and Statutory
+  // Reset the form whenever the type changes — Fixed and Unfixed
   // share no required values whose meaning would still be valid across the switch.
   useEffect(() => {
     setFormData(buildInitialFormData(activeFields));
@@ -560,11 +514,9 @@ const ServiceAgreementPage: React.FC = () => {
     });
 
     setErrors((prev) => {
-      const clearsStatutory = fieldName === 'statutory' && Object.keys(prev).some((k) => k.startsWith('stat_'));
-      if (!prev[fieldName] && !clearsStatutory) return prev;
+      if (!prev[fieldName]) return prev;
       const e = { ...prev };
       delete e[fieldName];
-      if (fieldName === 'statutory') Object.keys(e).forEach((k) => { if (k.startsWith('stat_')) delete e[k]; });
       return e;
     });
   };
@@ -633,10 +585,9 @@ const ServiceAgreementPage: React.FC = () => {
   const { data: agreementsRes, loading: loadingAgreements } = useFetch<{ success: boolean; data: AgreementRow[] }>(
     getServiceAgreements, '', null, refreshKey
   );
-  // TEMP-DISABLED (loan/statutory): Statutory agreements are left out so the counts and status chips match the tabs
-  // that are shown — drop the filter to list them again.
+  // Existing Statutory (loan) agreements stay in the database but are no longer listed.
   const agreements = useMemo(
-    () => (agreementsRes?.data ?? []).filter((a) => a.service_type_code !== 'STATUTORY'),
+    () => (agreementsRes?.data ?? []).filter((a) => (a.service_type_code as string) !== 'STATUTORY'),
     [agreementsRes],
   );
 
@@ -660,7 +611,6 @@ const ServiceAgreementPage: React.FC = () => {
   const rowsByTab = useMemo<Record<ListTab, AgreementRow[]>>(() => ({
     fixed: filtered.filter((a) => a.service_type_code === 'FIXED_RECURRING'),
     variable: filtered.filter((a) => a.service_type_code === 'VARIABLE_RECURRING'),
-    statutory: filtered.filter((a) => a.service_type_code === 'STATUTORY'),
   }), [filtered]);
   const canEditAgreements = canEdit('ServiceAgreementPage');
   const isFiltering = statusFilter !== 'ALL' || search.trim() !== '';
@@ -706,15 +656,6 @@ const ServiceAgreementPage: React.FC = () => {
       ? <>v{row.version_no}{row.renewal_count ? ` · renewed ${row.renewal_count}×` : ''}</>
       : null;
 
-  const statutoryLine = (row: AgreementRow) =>
-    row.service_type_code === 'STATUTORY' && row.facility_type
-      ? [
-          facilityLabel(row.facility_type),
-          `${row.interest_rate_pct}%${row.rate_type === 'FLOATING' ? ` ${row.benchmark_name ?? 'Repo'}-linked` : ' fixed'}`,
-          row.interest_payment_day ? `interest on the ${ordinalDay(row.interest_payment_day)}` : null,
-        ].filter(Boolean).join(' · ')
-      : null;
-
   const renderRows = (rows: AgreementRow[]) => {
     if (loadingAgreements) {
       return (
@@ -754,7 +695,6 @@ const ServiceAgreementPage: React.FC = () => {
             <TableBody>
               {rows.map((row) => {
                 const status = statusMeta(AGREEMENT_STATUS, row.status);
-                const facility = statutoryLine(row);
                 return (
                   <TableRow key={row.agreement_sno} className={cn(row.status === 'X' && 'bg-muted/30')}>
                     <TableCell>
@@ -764,14 +704,11 @@ const ServiceAgreementPage: React.FC = () => {
                     <TableCell className="max-w-[18rem]">
                       <div className="truncate font-medium">{row.service_name}</div>
                       <SupplierSummary suppliers={row.vendors} fallback={row.vendor_name} className="text-xs text-muted-foreground" />
-                      {facility && <div className="truncate text-xs text-sky-700 dark:text-sky-300">{facility}</div>}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{row.service_type_code === 'STATUTORY' ? '—' : (row.qty ?? '—')}</TableCell>
+                    <TableCell className="text-right tabular-nums">{row.qty ?? '—'}</TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {row.service_type_code === 'STATUTORY'
-                        ? (row.sanctioned_amount != null ? formatINR(row.sanctioned_amount) : '—')
-                        : (row.rate_amount != null ? formatINR(row.rate_amount) : '—')}
-                      {row.service_type_code !== 'STATUTORY' && row.rate_uom_name && <span className="ml-1 text-xs text-muted-foreground">/ {row.rate_uom_name}</span>}
+                      {row.rate_amount != null ? formatINR(row.rate_amount) : '—'}
+                      {row.rate_uom_name && <span className="ml-1 text-xs text-muted-foreground">/ {row.rate_uom_name}</span>}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                       {formatDate(row.period_start_date)} – {formatDate(row.period_end_date)}
@@ -789,7 +726,6 @@ const ServiceAgreementPage: React.FC = () => {
         <ul className="space-y-3 lg:hidden">
           {rows.map((row) => {
             const status = statusMeta(AGREEMENT_STATUS, row.status);
-            const facility = statutoryLine(row);
             return (
               <li key={row.agreement_sno} className="rounded-xl border bg-card p-3.5 shadow-xs">
                 <div className="flex items-start justify-between gap-3">
@@ -800,17 +736,11 @@ const ServiceAgreementPage: React.FC = () => {
                     </p>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">{row.service_name}</p>
                     <SupplierSummary suppliers={row.vendors} fallback={row.vendor_name} className="text-xs text-muted-foreground" />
-                    {facility && <p className="truncate text-xs text-sky-700 dark:text-sky-300">{facility}</p>}
                   </div>
                   <StatusPill tone={status.tone}>{status.label}</StatusPill>
                 </div>
                 <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t pt-3 text-xs">
-                  {row.service_type_code === 'STATUTORY' ? (
-                    <div className="col-span-2">
-                      <dt className="text-muted-foreground">Sanctioned</dt>
-                      <dd className="mt-0.5 text-sm font-semibold tabular-nums">{row.sanctioned_amount != null ? formatINR(row.sanctioned_amount) : '—'}</dd>
-                    </div>
-                  ) : (
+                  {(
                     <>
                       <div>
                         <dt className="text-muted-foreground">Rate</dt>
@@ -844,8 +774,6 @@ const ServiceAgreementPage: React.FC = () => {
       <PageHeader
         icon={FileText}
         title="Service Agreements"
-        // TEMP-DISABLED (loan/statutory): original text also said "Statutory (loan / repo / cash credit) agreements are billed
-        // through Bank Payment Vouchers under Loan Payments".
         description="Fixed and Unfixed agreements raise a PO each cycle"
       />
 
@@ -866,7 +794,6 @@ const ServiceAgreementPage: React.FC = () => {
             <TabsContent value="create" className="mt-5">
               <form onSubmit={handleSubmit} noValidate className="space-y-4">
                 <Panel icon={Repeat} title="Agreement type" description="Decides how each cycle's amount is set">
-                  {/* TEMP-DISABLED (loan/statutory): two type cards for now — use md:grid-cols-3 again once Statutory is back. */}
                   <div role="radiogroup" aria-label="Agreement type" className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {AGREEMENT_TYPES.map(({ value, label, description, Icon }) => {
                       const active = agreementType === value;
@@ -963,15 +890,9 @@ const ServiceAgreementPage: React.FC = () => {
                 <TabsList className="w-full sm:w-fit">
                   <TabsTrigger value="fixed" className="sm:px-4"><Repeat size={14} /> Fixed ({rowsByTab.fixed.length})</TabsTrigger>
                   <TabsTrigger value="variable" className="sm:px-4"><Wallet size={14} /> Unfixed ({rowsByTab.variable.length})</TabsTrigger>
-                  {/* TEMP-DISABLED (loan/statutory)
-                  <TabsTrigger value="statutory" className="sm:px-4"><Landmark size={14} /> Statutory ({rowsByTab.statutory.length})</TabsTrigger>
-                  */}
                 </TabsList>
                 <TabsContent value="fixed" className="mt-4">{renderRows(rowsByTab.fixed)}</TabsContent>
                 <TabsContent value="variable" className="mt-4">{renderRows(rowsByTab.variable)}</TabsContent>
-                {/* TEMP-DISABLED (loan/statutory)
-                <TabsContent value="statutory" className="mt-4">{renderRows(rowsByTab.statutory)}</TabsContent>
-                */}
               </Tabs>
             </Panel>
           </TabsContent>

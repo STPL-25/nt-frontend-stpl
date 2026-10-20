@@ -20,6 +20,9 @@ export interface StageOrderItem {
   can_forward: string;        // "Y" | "N"
   can_backward: string;       // "Y" | "N"
   can_edit_data: string;      // "Y" | "N"
+  // PurchaseOrder workflows only: "Y" lets this stage's approver pick the winning quotation on the
+  // PO Approvals screen (Purchase no longer selects). Unset on every other workflow type.
+  can_select_quotation?: string;
   // Conditional routing + alternates (sql/99). Only PR-type workflows use them; every
   // other entity leaves them unset and behaves exactly as before.
   condition?: StageCondition | null;

@@ -280,6 +280,13 @@ export const approveServiceAgreement         = baseUrl + "/api/service_agreement
 export const getServiceAgreements            = baseUrl + "/api/service_agreement/getServiceAgreements";
 export const getServiceAgreementsForApproval = baseUrl + "/api/service_agreement/getServiceAgreementsForApproval";
 export const getServiceAgreementHistory      = baseUrl + "/api/service_agreement/getServiceAgreementHistory";
+
+// Special Agreement (product-based Fixed / Unfixed rate agreements)
+export const createSpecialAgreement          = baseUrl + "/api/special_agreement/createSpecialAgreement";
+export const updateSpecialAgreement          = baseUrl + "/api/special_agreement/updateSpecialAgreement";
+export const approveSpecialAgreement         = baseUrl + "/api/special_agreement/approveSpecialAgreement";
+export const getSpecialAgreements            = baseUrl + "/api/special_agreement/getSpecialAgreements";
+export const getSpecialAgreementsForApproval = baseUrl + "/api/special_agreement/getSpecialAgreementsForApproval";
 export const uploadSignedAgreement          = baseUrl + "/api/service_agreement/uploadSignedAgreement";
 
 // Service GRN (Unfixed agreements only — PO reference + invoice, no stock tracking)
@@ -292,21 +299,6 @@ export const approveServicePoCycle       = baseUrl + "/api/service_po/approveSer
 export const getServicePoCycles          = baseUrl + "/api/service_po/getServicePoCycles";
 export const getServicePoCyclesForApproval = baseUrl + "/api/service_po/getServicePoCyclesForApproval";
 export const uploadServicePoInvoice        = baseUrl + "/api/service_po/uploadInvoice";
-
-// Loan payments — rate history, interest calculator, bank payment vouchers
-export const getLoanAccounts                = baseUrl + "/api/loan_voucher/getLoanAccounts";
-export const getLoanDetail                  = baseUrl + "/api/loan_voucher/getLoanDetail";
-export const previewLoanInterest            = baseUrl + "/api/loan_voucher/previewLoanInterest";
-export const addLoanRatePeriod              = baseUrl + "/api/loan_voucher/addLoanRatePeriod";
-export const deleteLoanRatePeriod           = baseUrl + "/api/loan_voucher/deleteLoanRatePeriod";
-export const addLoanPrincipalTxn            = baseUrl + "/api/loan_voucher/addLoanPrincipalTxn";
-export const deleteLoanPrincipalTxn         = baseUrl + "/api/loan_voucher/deleteLoanPrincipalTxn";
-export const createBankPaymentVoucher       = baseUrl + "/api/loan_voucher/createBankPaymentVoucher";
-export const getBankPaymentVouchers         = baseUrl + "/api/loan_voucher/getBankPaymentVouchers";
-export const getBankPaymentVoucher          = baseUrl + "/api/loan_voucher/getBankPaymentVoucher";
-export const getBankPaymentVouchersForApproval = baseUrl + "/api/loan_voucher/getBankPaymentVouchersForApproval";
-export const approveBankPaymentVoucher      = baseUrl + "/api/loan_voucher/approveBankPaymentVoucher";
-export const markBankPaymentVoucherPaid     = baseUrl + "/api/loan_voucher/markBankPaymentVoucherPaid";
 
 // Service Vendor KYC — separate KYC intake + approval for service vendors
 // (electricians, AMC contractors, Statutory lenders, ...). On final approval,

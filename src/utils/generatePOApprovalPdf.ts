@@ -599,8 +599,17 @@ export async function createPOApprovalPdfDocument(
 
   const netCostTotal = items.reduce((sum, item) => sum + itemBase(item), 0);
   const totalCost = items.reduce((sum, item) => sum + itemTotalCost(item), 0);
-  const grandTotal = items.reduce((sum, item) => sum + itemNetCost(item), 0);
-  const taxTotal = grandTotal - totalCost;
+  const itemsGrandTotal = items.reduce((sum, item) => sum + itemNetCost(item), 0);
+  const taxTotal = itemsGrandTotal - totalCost;
+  // Freight / other charges (with their own GST %) agreed on the approved quotation.
+  const chargeAmount = (key: string) => toNumber(firstValue([poHeader, quotation ?? {}], [key]));
+  const freightAmount = chargeAmount('freight_charges');
+  const freightGstPct = chargeAmount('freight_gst_pct');
+  const otherAmount = chargeAmount('other_charges');
+  const otherGstPct = chargeAmount('other_charges_gst_pct');
+  const freightGst = freightAmount * (freightGstPct / 100);
+  const otherGst = otherAmount * (otherGstPct / 100);
+  const grandTotal = itemsGrandTotal + freightAmount + freightGst + otherAmount + otherGst;
   const discountTotal = items.reduce((sum, item) => sum + itemDiscount(item), 0);
 
   const poNo = String(poHeader.po_df_no
@@ -755,20 +764,31 @@ export async function createPOApprovalPdfDocument(
 
   const tableDoc = doc as jsPDF & { lastAutoTable?: { finalY: number } };
   cursorY = (tableDoc.lastAutoTable?.finalY ?? cursorY) + 7;
-  cursorY = ensurePageSpace(doc, cursorY, 30);
+  cursorY = ensurePageSpace(doc, cursorY, 55);
 
   const totalsWidth = 78;
   const totalsX = PAGE_WIDTH - PAGE_MARGIN - totalsWidth;
-  const totalRows = [
+  const totalRows: string[][] = [
     ['Net Cost', formatMoney(netCostTotal)],
     ['Discount', `- ${formatMoney(discountTotal)}`],
     ['GST', formatMoney(taxTotal)],
   ];
+  if (freightAmount > 0) {
+    totalRows.push(['Freight Charges', formatMoney(freightAmount)]);
+    if (freightGstPct > 0) totalRows.push([`GST on Freight (${formatQuantity(freightGstPct)}%)`, formatMoney(freightGst)]);
+  }
+  if (otherAmount > 0) {
+    totalRows.push(['Other Charges', formatMoney(otherAmount)]);
+    if (otherGstPct > 0) totalRows.push([`GST on Other (${formatQuantity(otherGstPct)}%)`, formatMoney(otherGst)]);
+  }
+  const ROW_H = 5;
+  const BAND_H = 8;
+  const totalsHeight = 4.5 + totalRows.length * ROW_H + BAND_H;
   doc.setDrawColor(...BORDER);
   doc.setLineWidth(0.2);
-  doc.rect(totalsX, cursorY, totalsWidth, 4.5 + totalRows.length * 5, 'S');
+  doc.rect(totalsX, cursorY, totalsWidth, totalsHeight, 'S');
   totalRows.forEach(([label, value], index) => {
-    const rowY = cursorY + 4.5 + (index * 5);
+    const rowY = cursorY + 4.5 + (index * ROW_H);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...MUTED);
@@ -776,23 +796,34 @@ export async function createPOApprovalPdfDocument(
     doc.setTextColor(31, 41, 55);
     doc.text(value, totalsX + totalsWidth - 3, rowY, { align: 'right' });
   });
-  // Supplier bank account, left of the totals.
+  // Supplier bank account, left of the totals — same boxed breakup layout as the amounts.
   if (bankDetails && (bankDetails.ac_number || bankDetails.ac_holder_name || bankDetails.ifsc)) {
-    drawDetailBox(
-      doc,
-      PAGE_MARGIN,
-      cursorY,
-      totalsX - PAGE_MARGIN - 6,
-      32,
-      'Supplier Bank Details',
-      [
-        { label: 'Account Name', value: String(bankDetails.ac_holder_name ?? '-') },
-        { label: 'Account No.', value: String(bankDetails.ac_number ?? '-') },
-        { label: 'IFSC', value: String(bankDetails.ifsc ?? '-') },
-      ],
-    );
+    const bankWidth = totalsX - PAGE_MARGIN - 6;
+    const bankRows: string[][] = [
+      ['Account Name', String(bankDetails.ac_holder_name ?? '-')],
+      ['Account No.', String(bankDetails.ac_number ?? '-')],
+      ['IFSC', String(bankDetails.ifsc ?? '-')],
+    ];
+    doc.setDrawColor(...BORDER);
+    doc.rect(PAGE_MARGIN, cursorY, bankWidth, Math.max(totalsHeight, BAND_H + 5 + bankRows.length * ROW_H), 'S');
+    doc.setFillColor(...NAVY);
+    doc.rect(PAGE_MARGIN, cursorY, bankWidth, BAND_H, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text('Supplier Bank Details', PAGE_MARGIN + 3, cursorY + 5.5);
+    bankRows.forEach(([label, value], index) => {
+      const rowY = cursorY + BAND_H + 5 + (index * ROW_H);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...MUTED);
+      doc.text(label, PAGE_MARGIN + 3, rowY);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(31, 41, 55);
+      doc.text(value, PAGE_MARGIN + bankWidth - 3, rowY, { align: 'right', maxWidth: bankWidth - 32 });
+    });
   }
-  const grandY = cursorY + 4.5 + totalRows.length * 5;
+  const grandY = cursorY + 4.5 + totalRows.length * ROW_H;
   doc.setFillColor(...ACCENT);
   doc.rect(totalsX, grandY, totalsWidth, 8, 'F');
   doc.setFont('helvetica', 'bold');

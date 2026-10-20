@@ -11,8 +11,8 @@ import {
   Callout, Fact, FactGrid, StatusPill, SupplierSplitTable, TypeBadge,
 } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import {
-  AGREEMENT_STATUS, CYCLE_STATUS, DAY_COUNT_LABEL, HISTORY_EVENT, VERSION_ACTION, VERSION_OUTCOME,
-  diffTerms, facilityLabel, formatDate, formatINR, ordinalDay, statusMeta,
+  AGREEMENT_STATUS, CYCLE_STATUS, HISTORY_EVENT, VERSION_ACTION, VERSION_OUTCOME,
+  diffTerms, formatDate, formatINR, statusMeta,
   type AgreementTerms,
 } from '@/CustomComponent/ServiceComponents/serviceUtils';
 
@@ -67,7 +67,6 @@ const VersionCard: React.FC<{
   const t = useMemo<AgreementTerms>(() => version.terms ?? {}, [version.terms]);
   const changes = useMemo(() => diffTerms(previous?.terms, t), [previous, t]);
   const suppliers = t.suppliers ?? [];
-  const stat = t.statutory ?? null;
 
   return (
     <li className="relative pl-8">
@@ -103,9 +102,9 @@ const VersionCard: React.FC<{
             </p>
           </div>
           <div className="hidden shrink-0 text-right sm:block">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{stat?.facility_type ? 'Sanctioned' : 'Rate'}</p>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rate</p>
             <p className="text-sm font-bold tabular-nums">
-              {stat?.facility_type ? formatINR(stat.sanctioned_amount) : t.rate_amount != null ? formatINR(t.rate_amount) : '—'}
+              {t.rate_amount != null ? formatINR(t.rate_amount) : '—'}
             </p>
           </div>
           <ChevronDown className={cn('mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
@@ -140,41 +139,21 @@ const VersionCard: React.FC<{
             <FactGrid>
               <Fact label="Service">{t.service_name ?? '—'}</Fact>
               <Fact label="Quantity">{t.qty ?? '—'}</Fact>
-              {!stat?.facility_type && <Fact label="Rate">{t.rate_amount != null ? `${formatINR(t.rate_amount)}${t.rate_uom_name ? ` / ${t.rate_uom_name}` : ''}` : '—'}</Fact>}
-              {!stat?.facility_type && <Fact label="Recurrence">{t.cadence_name ?? '—'}</Fact>}
-              {!stat?.facility_type && <Fact label="PO generation day">{t.po_generation_day ?? '—'}</Fact>}
-              {!stat?.facility_type && <Fact label="Notify before">{t.notify_days_before != null ? `${t.notify_days_before} day${Number(t.notify_days_before) === 1 ? '' : 's'}` : '—'}</Fact>}
+              <Fact label="Rate">{t.rate_amount != null ? `${formatINR(t.rate_amount)}${t.rate_uom_name ? ` / ${t.rate_uom_name}` : ''}` : '—'}</Fact>
+              <Fact label="Recurrence">{t.cadence_name ?? '—'}</Fact>
+              <Fact label="PO generation day">{t.po_generation_day ?? '—'}</Fact>
+              <Fact label="Notify before">{t.notify_days_before != null ? `${t.notify_days_before} day${Number(t.notify_days_before) === 1 ? '' : 's'}` : '—'}</Fact>
               {t.ceiling_amount != null && <Fact label="Ceiling per cycle">{formatINR(t.ceiling_amount)}</Fact>}
               {version.decided_at && <Fact label="Decided">{dateTime(version.decided_at)}</Fact>}
             </FactGrid>
 
-            {suppliers.length > 0 && !stat?.facility_type && (
+            {suppliers.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Suppliers</p>
                 <SupplierSplitTable
                   suppliers={suppliers.map((s) => ({ vendor_name: s.vendor_name, amount: s.share_amount, pct: s.share_pct }))}
                   amountLabel="Amount per cycle"
                 />
-              </div>
-            )}
-
-            {stat?.facility_type && (
-              <div className="space-y-1.5">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Loan details</p>
-                <FactGrid>
-                  {suppliers[0]?.vendor_name && <Fact label="Lender">{suppliers[0].vendor_name}</Fact>}
-                  <Fact label="Type">{facilityLabel(stat.facility_type)}</Fact>
-                  {stat.facility_ref_no && <Fact label="Reference">{stat.facility_ref_no}</Fact>}
-                  <Fact label="Sanctioned">{formatINR(stat.sanctioned_amount)}</Fact>
-                  {stat.drawing_power != null && <Fact label="Drawing power">{formatINR(stat.drawing_power)}</Fact>}
-                  {stat.disbursed_amount != null && <Fact label="Disbursed">{formatINR(stat.disbursed_amount)}</Fact>}
-                  {stat.disbursement_date && <Fact label="Interest starts">{formatDate(stat.disbursement_date)}</Fact>}
-                  <Fact label="Rate type">{stat.rate_type === 'FLOATING' ? `Floating (${stat.benchmark_name ?? 'Repo'}-linked)` : 'Fixed'}</Fact>
-                  {stat.rate_type === 'FLOATING' && <Fact label={`${stat.benchmark_name ?? 'Repo'} + spread`}>{stat.benchmark_rate_pct}% + {stat.spread_pct}%</Fact>}
-                  <Fact label="Interest rate">{stat.interest_rate_pct}%</Fact>
-                  {stat.interest_payment_day != null && <Fact label="Interest paid on">{ordinalDay(stat.interest_payment_day)} of the month</Fact>}
-                  {stat.day_count_basis != null && <Fact label="Day-count basis">{DAY_COUNT_LABEL[String(stat.day_count_basis)] ?? '—'}</Fact>}
-                </FactGrid>
               </div>
             )}
 
