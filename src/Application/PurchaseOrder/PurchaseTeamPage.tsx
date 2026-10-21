@@ -44,6 +44,7 @@ import PRListSidebar from './PurchaseTeam/PRListSidebar';
 import POConfirmStep from './PurchaseTeam/POConfirmStep';
 import QuotationsTab from './PurchaseTeam/QuotationsTab';
 import SplitPRTab from './PurchaseTeam/SplitPRTab';
+import SpecialAgreementPanel from './PurchaseTeam/SpecialAgreementPanel';
 import QuotationDialog from './PurchaseTeam/QuotationDialog';
 import CompareDialog from './PurchaseTeam/CompareDialog';
 import CreatePODialog from './PurchaseTeam/CreatePODialog';
@@ -658,6 +659,15 @@ const PurchaseTeamPage: React.FC = () => {
                   Supplier &amp; Quotation
                 </div>
               </div>
+
+              {/* ── Special Agreement suppliers (only for lines an approved agreement covers) ── */}
+              {!quotationAlreadySubmitted && canCreate("PurchaseTeamPage") && (
+                <SpecialAgreementPanel
+                  key={`sa-${selectedPR.pr_basic_sno}-${selectedPR.pr_no ?? ''}`}
+                  selectedPR={selectedPR}
+                  onApplied={() => { setSelectedPR(null); setConfirmedData(null); setPrRefreshKey(k => k + 1); }}
+                />
+              )}
 
               {/* ── Section 1: PO Confirmation ───────────────────────────── */}
               {/* Once a quotation is submitted, Step 1 is locked: show only the

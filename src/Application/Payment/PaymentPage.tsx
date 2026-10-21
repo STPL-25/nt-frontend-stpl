@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { Wallet, Send, RefreshCw, Package, FileText } from 'lucide-react';
+import { Wallet, Send, RefreshCw, Package, FileText, Plus } from 'lucide-react';
+import EnterInvoiceDialog from './EnterInvoiceDialog';
 import { FormSection } from '@/CustomComponent/PageComponents';
 import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
 import { Callout, DetailEmptyState, Panel, SearchInput, SelectableCard, StatusPill } from '@/CustomComponent/ServiceComponents/ServiceParts';
@@ -17,8 +18,8 @@ import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { useMasterOptions } from '@/hooks/ReUsableHook/useMasterOptions';
 import { getErrorMessage } from '@/lib/errors';
 import {
-  payNetBills, payNetGrnPending, payNetAdjustments, payNetPreview, payNetRelease,
-  type GrnPendingPayment, type PayableBillNet, type PaymentAdjustments, type NetPreview,
+  payNetBills, payNetGrnPending, payNetAdjustments, payNetPreview, payNetRelease, payNetInvoiceLedger,
+  type GrnPendingPayment, type PayableBillNet, type PaymentAdjustments, type NetPreview, type InvoiceLedger, type InvoicePaymentStatus,
 } from '@/Services/GrnService/paymentNetApi';
 
 const MODE_OPTIONS = [
@@ -55,6 +56,14 @@ const itcBadge = (b: PayableBillNet) => {
   return <Badge variant="destructive" className="text-[10px]">Not in 2B</Badge>;
 };
 
+const statusBadge = (st: InvoicePaymentStatus) => {
+  if (st === 'Paid') return <Badge className="bg-green-100 text-green-800 text-[10px]">Paid</Badge>;
+  if (st === 'Part paid') return <Badge className="bg-blue-100 text-blue-800 text-[10px]">Part paid</Badge>;
+  if (st === 'Not allocated') return <Badge className="bg-amber-100 text-amber-800 text-[10px]">Not allocated</Badge>;
+  return <Badge variant="secondary" className="text-[10px]">Unpaid</Badge>;
+};
+const dateOnly = (d: string | null | undefined) => (d ? String(d).slice(0, 10) : '—');
+
 type PayGroup = {
   key: string; poNo: string | null; vendorName: string | null; vendorSno: number | null;
   bills: PayableBillNet[]; info?: GrnPendingPayment;
@@ -64,6 +73,7 @@ const PaymentPage: React.FC = () => {
   const { canCreate, canEdit } = usePermissions();
   const permissionComponent = 'PaymentPage';
   const canSubmit = canCreate(permissionComponent) || canEdit(permissionComponent);
+  const canEnterInvoice = canCreate('InvoiceAllocationPage') || canSubmit;
 
   const { options } = useMasterOptions(['VendorMaster']);
 
@@ -71,6 +81,8 @@ const PaymentPage: React.FC = () => {
   const [bills, setBills] = useState<PayableBillNet[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [grnPending, setGrnPending] = useState<GrnPendingPayment[]>([]);
+  const [ledger, setLedger] = useState<InvoiceLedger>({ invoices: [], grns: [] });
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [listSearch, setListSearch] = useState('');
   const [searching, setSearching] = useState(false);
@@ -82,6 +94,8 @@ const PaymentPage: React.FC = () => {
   const [advAmt, setAdvAmt] = useState<Record<number, string>>({});
   const [dnPick, setDnPick] = useState<Set<number>>(new Set());
   const [cnPick, setCnPick] = useState<Set<number>>(new Set());
+  // answer to "redeem the supplier's unredeemed debit / credit notes in this bill?" (null = not asked yet)
+  const [redeemChoice, setRedeemChoice] = useState<'yes' | 'no' | null>(null);
   const [applyTds, setApplyTds] = useState(true);
   const [tdsSection, setTdsSection] = useState<Record<number, string>>({});   // invoice_sno -> section ('' = none)
   const [preview, setPreview] = useState<NetPreview | null>(null);
@@ -102,6 +116,13 @@ const PaymentPage: React.FC = () => {
         setGrnPending(pend?.data?.data ?? []);
       } catch {
         setGrnPending([]);
+      }
+      // Invoice-wise ledger (paid + duplicate flags + what each GRN captured) - informational, never blocks the page.
+      try {
+        const led = await axios.get(payNetInvoiceLedger, { params });
+        setLedger({ invoices: led?.data?.data?.invoices ?? [], grns: led?.data?.data?.grns ?? [] });
+      } catch {
+        setLedger({ invoices: [], grns: [] });
       }
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to load payments'));
@@ -184,14 +205,14 @@ const PaymentPage: React.FC = () => {
     setAdvAmt({});
     setDnPick(new Set());
     setCnPick(new Set());
+    setRedeemChoice(null);
     setPreview(null);
     if (!selectedVendorSno) { setAdj(null); return; }
     axios.get(payNetAdjustments(selectedVendorSno))
       .then((res) => {
         const data: PaymentAdjustments = res.data?.data;
         setAdj(data);
-        setDnPick(new Set(data.debitNotes.map((n) => n.note_sno)));     // pending notes are applied by default
-        setCnPick(new Set(data.creditNotes.map((n) => n.note_sno)));
+        // pending notes are NOT applied until the user answers the "redeem in this bill?" prompt
       })
       .catch((e) => toast.error(getErrorMessage(e, 'Failed to load advances and notes')));
   }, [selectedVendorSno]);
@@ -255,8 +276,18 @@ const PaymentPage: React.FC = () => {
   };
 
   const sum = preview?.summary;
+  const hasPendingNotes = !!adj && (adj.debitNotes.length > 0 || adj.creditNotes.length > 0);
+  const answerRedeem = (yes: boolean) => {
+    setRedeemChoice(yes ? 'yes' : 'no');
+    setDnPick(new Set(yes ? adj?.debitNotes.map((n) => n.note_sno) : []));
+    setCnPick(new Set(yes ? adj?.creditNotes.map((n) => n.note_sno) : []));
+  };
 
   const info = activeGroup?.info;
+  const poInvoices = ledger.invoices.filter((i) => activeGroup?.poNo && i.po_no === activeGroup.poNo);
+  const poGrns = ledger.grns.filter((g) => activeGroup?.poNo && g.po_no === activeGroup.poNo);
+  const grnsMissingInvoice = poGrns.filter((g) => !g.has_invoice_data);
+  const activePoSno = info?.po_basic_sno ?? poInvoices[0]?.po_basic_sno ?? poGrns[0]?.po_basic_sno ?? null;
   const qv = Number(info?.qty_variance) || 0;
   const gv = Number(info?.gst_variance) || 0;
   const activeOutstanding = (g: PayGroup) => g.bills.reduce((t, b) => t + (Number(b.outstanding) || 0), 0);
@@ -348,6 +379,97 @@ const PaymentPage: React.FC = () => {
         </Panel>
       )}
 
+      <Panel
+        icon={FileText}
+        title={`Invoice-wise details (${poInvoices.length})`}
+        description="Every supplier invoice on this PO - paid, part paid or unpaid - with duplicate checks"
+        action={canEnterInvoice && activePoSno && activeGroup.vendorSno ? (
+          <Button type="button" size="sm" className="h-8 text-xs" onClick={() => setInvoiceDialogOpen(true)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />Enter invoice
+          </Button>
+        ) : undefined}
+      >
+        {poInvoices.length > 0 ? (
+          <div className="overflow-x-auto rounded-xl border">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableHead className="text-xs">Invoice No</TableHead>
+                  <TableHead className="text-xs">Supplier Inv No</TableHead>
+                  <TableHead className="text-xs">Date / Due</TableHead>
+                  <TableHead className="text-xs">Status</TableHead>
+                  <TableHead className="text-xs">Payment No</TableHead>
+                  <TableHead className="text-xs text-right">Invoice amt</TableHead>
+                  <TableHead className="text-xs text-right">Payable</TableHead>
+                  <TableHead className="text-xs text-right">Paid</TableHead>
+                  <TableHead className="text-xs text-right">Outstanding</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {poInvoices.map((i) => (
+                  <TableRow key={i.invoice_sno} className={i.dup_count > 0 ? 'bg-amber-50 dark:bg-amber-950/20' : ''}>
+                    <TableCell className="text-xs font-medium">{i.invoice_no}</TableCell>
+                    <TableCell className="text-xs">
+                      {i.supplier_invoice_no ?? '—'}
+                      {i.dup_count > 0 && <Badge variant="destructive" className="ml-1.5 text-[10px]">Duplicate ×{i.dup_count + 1}</Badge>}
+                    </TableCell>
+                    <TableCell className="text-xs">{dateOnly(i.invoice_date)}<p className="text-muted-foreground">{dateOnly(i.due_date)}</p></TableCell>
+                    <TableCell>{statusBadge(i.payment_status)}</TableCell>
+                    <TableCell className="text-xs">{i.payment_nos ?? '—'}</TableCell>
+                    <TableCell className="text-xs text-right tabular-nums">{money(i.invoice_amount)}</TableCell>
+                    <TableCell className="text-xs text-right tabular-nums">{i.payment_status === 'Not allocated' ? '—' : money(i.release_total)}</TableCell>
+                    <TableCell className="text-xs text-right tabular-nums">{Number(i.paid_total) > 0 ? money(i.paid_total) : '—'}</TableCell>
+                    <TableCell className="text-xs text-right font-medium tabular-nums">{i.payment_status === 'Not allocated' ? '—' : money(i.outstanding)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No supplier invoice has been entered against this PO.</p>
+        )}
+        {poInvoices.some((i) => i.payment_status === 'Not allocated') && (
+          <p className="mt-2 text-xs text-muted-foreground">Not-allocated invoices are entered but not yet matched to PO lines on the Invoice screen, so they cannot be paid.</p>
+        )}
+
+        {poGrns.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-1.5 text-xs font-semibold">Invoice captured at GRN</p>
+            <div className="overflow-x-auto rounded-xl border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="text-xs">GRN</TableHead>
+                    <TableHead className="text-xs">Received</TableHead>
+                    <TableHead className="text-xs">Status</TableHead>
+                    <TableHead className="text-xs">Supplier Inv No</TableHead>
+                    <TableHead className="text-xs">Inv date</TableHead>
+                    <TableHead className="text-xs text-right">Inv amt</TableHead>
+                    <TableHead className="text-xs">Document</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {poGrns.map((g) => (
+                    <TableRow key={g.grn_basic_sno} className={g.dup_count > 0 ? 'bg-amber-50 dark:bg-amber-950/20' : ''}>
+                      <TableCell className="text-xs font-medium">GRN {g.grn_no}</TableCell>
+                      <TableCell className="text-xs">{dateOnly(g.received_date)}</TableCell>
+                      <TableCell className="text-xs">{g.status}</TableCell>
+                      <TableCell className="text-xs">
+                        {g.invoice_no ?? <span className="text-muted-foreground">Not captured</span>}
+                        {g.dup_count > 0 && <Badge variant="destructive" className="ml-1.5 text-[10px]">Used {g.dup_count + 1}×</Badge>}
+                      </TableCell>
+                      <TableCell className="text-xs">{dateOnly(g.invoice_date)}</TableCell>
+                      <TableCell className="text-xs text-right tabular-nums">{g.invoice_amount != null ? money(g.invoice_amount) : '—'}</TableCell>
+                      <TableCell className="text-xs">{g.invoice_doc_url ? <a href={g.invoice_doc_url} target="_blank" rel="noreferrer" className="text-blue-600 underline">View</a> : '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+      </Panel>
+
       <Panel icon={Wallet} title={`Invoices against this PO (${activeGroup.bills.length})`} description="Each invoice number is unique - tick the ones to pay together">
         {activeGroup.bills.length > 0 ? (
           <div className="overflow-x-auto rounded-xl border">
@@ -409,7 +531,11 @@ const PaymentPage: React.FC = () => {
           </div>
         ) : (
           <Callout tone="warning" icon={FileText}>
-            No supplier invoice yet. Enter it on the Invoice screen (allocate and match it) and it will be listed here, ready to pay.
+            {poInvoices.length > 0
+              ? 'Nothing is payable on this PO right now - every invoice is either settled or not yet allocated (see Invoice-wise details above).'
+              : grnsMissingInvoice.length > 0
+                ? `No payable invoice yet. ${grnsMissingInvoice.length === poGrns.length ? 'None of the GRNs' : `GRN ${grnsMissingInvoice.map((g) => g.grn_no).join(', ')}`} captured the supplier invoice (these GRNs pre-date the mandatory-invoice rule), so there is nothing to pay against. Enter the supplier invoice on the Invoice screen, allocate and match it to this PO, and it will appear here with a select box, ready to pay.`
+                : 'No supplier invoice yet. Enter it on the Invoice screen (allocate and match it) and it will be listed here, ready to pay.'}
           </Callout>
         )}
         {activeGroup.bills.some((b) => blockReason(b)) && (
@@ -420,6 +546,22 @@ const PaymentPage: React.FC = () => {
       {selected.size > 0 && adj && (
         <Panel icon={Wallet} title="Adjustments & payment" description="Advances, debit / credit notes and TDS netted against the selected invoices">
           <div className="space-y-5">
+            {hasPendingNotes && (
+              <div className="flex flex-col gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:bg-amber-950/30">
+                <p>
+                  This supplier has unredeemed
+                  {adj!.debitNotes.length > 0 ? ` ${adj!.debitNotes.length} debit note(s)` : ''}
+                  {adj!.debitNotes.length > 0 && adj!.creditNotes.length > 0 ? ' and' : ''}
+                  {adj!.creditNotes.length > 0 ? ` ${adj!.creditNotes.length} credit note(s)` : ''}.
+                  {' '}Redeem them in this bill?
+                  {redeemChoice && <span className="ml-1 font-medium">{redeemChoice === 'yes' ? '(Yes - tick/untick below to fine-tune)' : '(No - left unredeemed)'}</span>}
+                </p>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant={redeemChoice === 'yes' ? 'default' : 'outline'} onClick={() => answerRedeem(true)}>Yes, redeem</Button>
+                  <Button type="button" size="sm" variant={redeemChoice === 'no' ? 'default' : 'outline'} onClick={() => answerRedeem(false)}>No</Button>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <div className="space-y-2">
                 <p className="text-xs font-semibold">Advances paid</p>
@@ -549,7 +691,8 @@ const PaymentPage: React.FC = () => {
                 <Button
                   type="button"
                   onClick={handleReleasePayment}
-                  disabled={releasing || !sum || !paymentDetails.mode || !paymentDetails.payment_date}
+                  disabled={releasing || !sum || !paymentDetails.mode || !paymentDetails.payment_date || (hasPendingNotes && !redeemChoice)}
+                  title={hasPendingNotes && !redeemChoice ? 'Answer the redeem question for pending debit / credit notes first' : undefined}
                   className="h-9 bg-blue-600 hover:bg-blue-700"
                 >
                   {releasing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
@@ -564,6 +707,19 @@ const PaymentPage: React.FC = () => {
   ) : null;
 
   return (
+    <>
+    <EnterInvoiceDialog
+      open={invoiceDialogOpen}
+      poBasicSno={activePoSno}
+      poNo={activeGroup?.poNo ?? null}
+      vendorSno={activeGroup?.vendorSno ?? null}
+      vendorName={activeGroup?.vendorName ?? null}
+      suggestedAmount={info?.grn_value ?? null}
+      existingInvoices={ledger.invoices}
+      existingGrns={ledger.grns}
+      onClose={() => setInvoiceDialogOpen(false)}
+      onDone={handleSearch}
+    />
     <SidebarDetailLayout
       sidebarTitle="Payment"
       sidebarCount={groups.length}
@@ -582,6 +738,7 @@ const PaymentPage: React.FC = () => {
       mobileListLabel="PO list"
       mobileSelectionTitle={activeGroup?.poNo ?? undefined}
     />
+    </>
   );
 };
 

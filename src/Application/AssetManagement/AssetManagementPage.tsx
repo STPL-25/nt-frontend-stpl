@@ -1,11 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Boxes, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { PageHeader } from '@/CustomComponent/PageComponents';
+import { cn } from '@/lib/utils';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { getErrorMessage } from '@/lib/errors';
 import {
@@ -17,26 +15,29 @@ import {
   type AssetSupplier, type CreateAssetRequestPayload,
 } from '@/Services/GrnService/assetApi';
 
-import AssetsTab from './AssetManagement/AssetsTab';
-import RequestsTable from './AssetManagement/RequestsTable';
-import RequestDialog from './AssetManagement/RequestDialog';
-import RequestDetailDialog from './AssetManagement/RequestDetailDialog';
+import RegisterTab from './AssetManagement/RegisterTab';
+import RequestsBoard from './AssetManagement/RequestsBoard';
+import ApprovalsTab from './AssetManagement/ApprovalsTab';
+import RequestDrawer from './AssetManagement/RequestDrawer';
+import RaiseRequestSheet, { type RaiseIntent } from './AssetManagement/RaiseRequestSheet';
+import { daysLate, isClosed } from './AssetManagement/helpers';
 
 const SCREEN = 'AssetManagementPage';
+
+type TabKey = 'register' | 'board' | 'approvals';
 
 const AssetManagementPage: React.FC = () => {
   const { canCreate, canEdit } = usePermissions();
 
-  const [tab, setTab] = useState('assets');
+  const [tab, setTab] = useState<TabKey>('register');
   const [me, setMe] = useState<AssetMe | null>(null);
   const [assets, setAssets] = useState<AssetRow[]>([]);
-  const [service, setService] = useState<AssetRequest[]>([]);
-  const [returns, setReturns] = useState<AssetRequest[]>([]);
+  const [requests, setRequests] = useState<AssetRequest[]>([]);
   const [mine, setMine] = useState<AssetRequest[]>([]);
   const [suppliers, setSuppliers] = useState<AssetSupplier[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const [dialog, setDialog] = useState<{ type: 'RETURN' | 'SERVICE'; row: AssetRow } | null>(null);
+  const [raise, setRaise] = useState<RaiseIntent | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -47,15 +48,14 @@ const AssetManagementPage: React.FC = () => {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [a, s, r, m] = await Promise.all([
-        axios.get(assetSvcRegister, { params: { only_in_use: 1 } }),
-        axios.get(assetSvcRequests, { params: { request_type: 'SERVICE', only_open: 1 } }),
-        axios.get(assetSvcRequests, { params: { request_type: 'RETURN' } }),
+      const [a, r, m] = await Promise.all([
+        // every issued line, so an item that is fully out for service still shows where it belongs
+        axios.get(assetSvcRegister),
+        axios.get(assetSvcRequests),
         axios.get(assetSvcRequests, { params: { mine_approvals: 1, only_open: 1 } }),
       ]);
       setAssets(a.data?.data ?? []);
-      setService(s.data?.data ?? []);
-      setReturns(r.data?.data ?? []);
+      setRequests(r.data?.data ?? []);
       setMine(m.data?.data ?? []);
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to load asset data'));
@@ -99,10 +99,10 @@ const AssetManagementPage: React.FC = () => {
     };
   }, [fetchAll, fetchDetail]);
 
-  const openRequest = (r: AssetRequest) => {
+  const openRequest = (id: number) => {
     setDetail(null);
-    setDetailId(r.asset_req_sno);
-    fetchDetail(r.asset_req_sno);
+    setDetailId(id);
+    fetchDetail(id);
   };
 
   const handleCreate = async (payload: CreateAssetRequestPayload) => {
@@ -110,9 +110,9 @@ const AssetManagementPage: React.FC = () => {
     try {
       const res = await axios.post(assetSvcRequests, payload);
       toast.success(res.data?.message ?? 'Request raised');
-      setDialog(null);
+      setRaise(null);
       await fetchAll();
-      setTab(payload.request_type === 'RETURN' ? 'returns' : 'service');
+      setTab('board');
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to raise request'));
     } finally {
@@ -120,15 +120,17 @@ const AssetManagementPage: React.FC = () => {
     }
   };
 
-  const handleAct = async (action: AssetAction, extra: Record<string, unknown> = {}) => {
-    if (!detailId) return;
+  /** Runs one workflow action. Returns true when it went through. */
+  const act = async (id: number, action: AssetAction, extra: Record<string, unknown> = {}) => {
     setActing(true);
     try {
-      await axios.post(assetSvcAction(detailId), { action, ...extra });
+      await axios.post(assetSvcAction(id), { action, ...extra });
       toast.success('Done');
-      await Promise.all([fetchAll(), fetchDetail(detailId, true)]);
+      await Promise.all([fetchAll(), detailIdRef.current === id ? fetchDetail(id, true) : Promise.resolve()]);
+      return true;
     } catch (err) {
       toast.error(getErrorMessage(err, 'Action failed'));
+      return false;
     } finally {
       setActing(false);
     }
@@ -136,85 +138,121 @@ const AssetManagementPage: React.FC = () => {
 
   const canRaise = canCreate(SCREEN);
 
+  const summary = useMemo(() => {
+    const open = requests.filter(r => !isClosed(r.status));
+    return {
+      inUse: assets.reduce((s, a) => s + (a.in_use_qty || 0), 0),
+      products: new Set(assets.filter(a => a.in_use_qty > 0).map(a => a.item_sno)).size,
+      service: open.filter(r => r.request_type === 'SERVICE').length,
+      late: open.filter(r => daysLate(r) > 0).length,
+      returns: open.filter(r => r.request_type === 'RETURN').length,
+      openCount: open.length,
+    };
+  }, [assets, requests]);
+
+  const tabs: { key: TabKey; label: string; count?: number; alert?: boolean }[] = [
+    { key: 'register', label: 'Register' },
+    { key: 'board', label: 'Requests board', count: summary.openCount },
+    { key: 'approvals', label: 'My approvals', count: mine.length, alert: true },
+  ];
+
   return (
-    <div className="flex h-full flex-col bg-background">
-      <PageHeader
-        icon={Boxes}
-        title="Asset Management"
-        description="Non-Regular items issued to departments — return to supplier or send for service"
-      >
-        <Button
-          variant="outline"
-          size="sm"
-          className="border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
-          onClick={fetchAll}
-          disabled={loading}
-        >
-          <RefreshCw size={15} className={loading ? 'mr-1 animate-spin' : 'mr-1'} /> Refresh
-        </Button>
-      </PageHeader>
+    <div className="flex h-full flex-col bg-muted/40">
+      <header className="border-b bg-card">
+        <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-3 px-4 pt-4 sm:px-6">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">GRN <span aria-hidden="true">/</span> Asset Management</p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight">
+                {tab === 'register' ? 'Assets' : tab === 'board' ? 'Requests' : 'My approvals'}
+              </h1>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={fetchAll} disabled={loading}>
+                <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+              {canRaise && (
+                <Button size="sm" onClick={() => setRaise({})}>
+                  <Plus className="h-4 w-4" /> Raise request
+                </Button>
+              )}
+            </div>
+          </div>
+          <nav role="tablist" aria-label="Asset Management sections" className="-mb-px flex gap-6 overflow-x-auto">
+            {tabs.map(t => {
+              const active = tab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setTab(t.key)}
+                  className={cn(
+                    'inline-flex h-11 shrink-0 items-center gap-1.5 border-b-2 px-1 text-sm transition-colors',
+                    active ? 'border-primary font-semibold text-foreground' : 'border-transparent font-medium text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {t.label}
+                  {!!t.count && (
+                    t.alert
+                      ? <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1.5 text-[11px] font-semibold text-white">{t.count}</span>
+                      : <span className="text-xs text-muted-foreground">{t.count}</span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="mb-4 flex h-auto flex-wrap justify-start">
-            <TabsTrigger value="assets">Assets</TabsTrigger>
-            <TabsTrigger value="service">
-              In Service {service.length > 0 && <Badge variant="secondary" className="ml-1.5">{service.length}</Badge>}
-            </TabsTrigger>
-            <TabsTrigger value="returns">Returns</TabsTrigger>
-            <TabsTrigger value="approvals">
-              My Approvals {mine.length > 0 && <Badge className="ml-1.5">{mine.length}</Badge>}
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="assets">
-            <AssetsTab
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[1320px] px-4 py-5 sm:px-6">
+          {tab === 'register' && (
+            <RegisterTab
               rows={assets}
+              requests={requests}
               loading={loading}
               canRaise={canRaise}
-              onReturn={row => setDialog({ type: 'RETURN', row })}
-              onService={row => setDialog({ type: 'SERVICE', row })}
+              summary={summary}
+              mineCount={mine.length}
+              onRaise={(row, type) => setRaise({ row, type })}
+              onOpen={openRequest}
+              onShowApprovals={() => setTab('approvals')}
             />
-          </TabsContent>
-          <TabsContent value="service">
-            <RequestsTable
-              rows={service}
+          )}
+          {tab === 'board' && (
+            <RequestsBoard
+              rows={requests}
               loading={loading}
-              emptyText="Nothing is in service. Items sent for service appear here until they return OK."
+              myEcno={me?.ecno ?? null}
               onOpen={openRequest}
             />
-          </TabsContent>
-          <TabsContent value="returns">
-            <RequestsTable
-              rows={returns}
-              loading={loading}
-              emptyText="No return requests yet."
-              onOpen={openRequest}
-            />
-          </TabsContent>
-          <TabsContent value="approvals">
-            <RequestsTable
+          )}
+          {tab === 'approvals' && (
+            <ApprovalsTab
               rows={mine}
               loading={loading}
-              emptyText="Nothing is waiting for your approval."
+              acting={acting}
+              onAct={act}
               onOpen={openRequest}
             />
-          </TabsContent>
-        </Tabs>
+          )}
+        </div>
       </div>
 
-      <RequestDialog
-        open={!!dialog}
-        type={dialog?.type ?? 'RETURN'}
-        row={dialog?.row ?? null}
+      <RaiseRequestSheet
+        intent={raise}
+        assets={assets}
         suppliers={suppliers}
         isStoreIncharge={!!me?.is_store_incharge}
         saving={saving}
-        onClose={() => setDialog(null)}
+        onClose={() => setRaise(null)}
         onSubmit={handleCreate}
       />
 
-      <RequestDetailDialog
+      <RequestDrawer
         open={detailId !== null}
         detail={detail}
         loading={detailLoading}
@@ -222,7 +260,7 @@ const AssetManagementPage: React.FC = () => {
         canOperate={canEdit(SCREEN)}
         acting={acting}
         onClose={() => { setDetailId(null); setDetail(null); }}
-        onAct={handleAct}
+        onAct={(action, extra) => (detailId ? act(detailId, action, extra) : Promise.resolve(false))}
       />
     </div>
   );

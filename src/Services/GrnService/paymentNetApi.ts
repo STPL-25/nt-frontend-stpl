@@ -29,6 +29,23 @@ export interface GrnPendingPayment {
   taxable_value: number; gst_value: number; grn_value: number; gst_variance: number; taxable_variance: number;
   debit_notes: number; credit_notes: number; advances: number; tds_estimate: number; net_payable: number;
 }
+export const payNetInvoiceLedger = `${base}/invoice-ledger`;
+
+export type InvoicePaymentStatus = 'Paid' | 'Part paid' | 'Unpaid' | 'Not allocated';
+export interface LedgerInvoice {
+  invoice_sno: number; invoice_no: string; supplier_invoice_no: string | null; po_basic_sno: number; po_no: string | null;
+  vendor_sno: number; invoice_date: string | null; due_date: string | null; invoice_amount: number; match_status: string | null;
+  verification_status: string | null; invoice_file_url: string | null;
+  release_total: number; paid_total: number; outstanding: number; payment_status: InvoicePaymentStatus;
+  payment_nos: string | null; dup_count: number;
+}
+export interface LedgerGrn {
+  grn_basic_sno: number; grn_no: number; po_basic_sno: number; po_no: string | null; vendor_sno: number; status: string;
+  received_date: string | null; invoice_no: string | null; invoice_date: string | null; invoice_amount: number | null;
+  invoice_doc_url: string | null; has_invoice_data: boolean; dup_count: number;
+}
+export interface InvoiceLedger { invoices: LedgerInvoice[]; grns: LedgerGrn[] }
+
 export interface SupplierAdvance { advance_sno: number; advance_no: string; po_basic_sno: number | null; paid_date: string; amount: number; balance: number }
 export interface PendingNote { note_sno: number; note_no: string; po_basic_sno: number | null; note_date: string; amount: number; remarks: string | null }
 export type TdsAppliesTo = 'Service' | 'Product' | 'Both';

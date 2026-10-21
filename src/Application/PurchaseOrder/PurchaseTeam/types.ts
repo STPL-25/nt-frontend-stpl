@@ -22,6 +22,8 @@ export interface PRItem {
 
 export interface PRRecord {
   pr_basic_sno?: number;
+  /** PR split group of this Purchase entry (null = the PR's main entry). */
+  group?: number | null;
   pr_no?: string;
   pr_id?: string | number;
   com_sno?: number;

@@ -287,6 +287,8 @@ export const updateSpecialAgreement          = baseUrl + "/api/special_agreement
 export const approveSpecialAgreement         = baseUrl + "/api/special_agreement/approveSpecialAgreement";
 export const getSpecialAgreements            = baseUrl + "/api/special_agreement/getSpecialAgreements";
 export const getSpecialAgreementsForApproval = baseUrl + "/api/special_agreement/getSpecialAgreementsForApproval";
+export const getSpecialAgreementOptionsForPR = baseUrl + "/api/special_agreement/getOptionsForPR";
+export const applySpecialAgreementToPR    = baseUrl + "/api/special_agreement/applyToPR";
 export const uploadSignedAgreement          = baseUrl + "/api/service_agreement/uploadSignedAgreement";
 
 // Service GRN (Unfixed agreements only — PO reference + invoice, no stock tracking)
