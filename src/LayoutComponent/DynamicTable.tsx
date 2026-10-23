@@ -37,6 +37,8 @@ type HeaderDef = {
   type?: string;
   require?: boolean;
   options?: Option[];
+  // Greys the input out in the Add/Edit form (e.g. a built-in row's locked name).
+  disabled?: boolean;
 };
 
 type DynamicTableProps = {
@@ -708,6 +710,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
                 type={h.type || "text"}
                 require={h.require || false}
                 options={h.options || []}
+                disabled={h.disabled}
                 value={formState[h.field] || ""}
                 onChange={(value) => handleFieldChange(h.field, value)}
               />
@@ -742,6 +745,7 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
                 type={h.type || "text"}
                 require={h.require || false}
                 options={h.options || []}
+                disabled={h.disabled}
                 value={formState[h.field] || ""}
                 onChange={(value) => handleFieldChange(h.field, value)}
               />

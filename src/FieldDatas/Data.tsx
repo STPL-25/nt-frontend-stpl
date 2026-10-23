@@ -1,7 +1,7 @@
 import React, { ReactElement, useMemo, useState, useEffect } from "react";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import {  Building, MapPin, FileCheck, IndianRupee, Package, FolderOpen,
-  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck, Landmark, Warehouse, Wrench, UserCog, FileText, Repeat, Link2, Gauge, BookOpen,} from "lucide-react";
+  Receipt, Hash, Archive, Briefcase, TrendingUp, GitBranch, Truck, Landmark, Warehouse, Wrench, UserCog, FileText, Repeat, Link2, Gauge, BookOpen, Boxes, Banknote,} from "lucide-react";
 import { useMasterOptions } from "@/hooks/ReUsableHook/useMasterOptions";
 import usePost from "@/hooks/usePostHook";
 import { apiGetSignEmployee } from "@/Services/Api";
@@ -39,6 +39,7 @@ const masterItems: MasterItemType[] = [
   // { icon: <IndianRupee className="w-5 h-5" />, name: "Ledger Master", category: "finance", color: "bg-emerald-500", id: "ledger_master" },
   { icon: <FolderOpen className="w-5 h-5" />, name: "Product Category", category: "inventory", color: "bg-yellow-500", id: "ProductCategoryMaster" },
   { icon: <FolderOpen className="w-5 h-5" />, name: "Product Sub Category", category: "inventory", color: "bg-amber-500", id: "ProductSubCategoryMaster" },
+  { icon: <Boxes className="w-5 h-5" />, name: "Stock Type", category: "inventory", color: "bg-purple-600", id: "StockTypeMaster" },
   { icon: <Package className="w-5 h-5" />, name: "Product", category: "inventory", color: "bg-indigo-500", id: "ProductMaster" },
    { icon: <Hash className="w-5 h-5" />, name: "UOM", category: "inventory", color: "bg-green-600", id: "UomMaster" },
   { icon: <Hash className="w-5 h-5" />, name: "UOM Class", category: "inventory", color: "bg-green-700", id: "UomClassMaster" },
@@ -56,6 +57,8 @@ const masterItems: MasterItemType[] = [
   { icon: <Wrench className="w-5 h-5" />, name: "Service", category: "services", color: "bg-indigo-600", id: "ServiceMaster" },
   { icon: <Gauge className="w-5 h-5" />, name: "Recurrence Cadence", category: "services", color: "bg-teal-600", id: "RecurrenceCadenceMaster" },
   { icon: <BookOpen className="w-5 h-5" />, name: "Account Head", category: "finance", color: "bg-emerald-700", id: "AccountHeadMaster" },
+  // The company's own bank accounts a Payment Run is paid from + the payment file each bank takes (sql/138)
+  { icon: <Banknote className="w-5 h-5" />, name: "Payment Bank", category: "finance", color: "bg-sky-700", id: "PaymentBankMaster" },
 
   // { icon: <FileText className="w-5 h-5" />, name: "KYC", category: "compliance", color: "bg-teal-500", id: "kyc_master" },
   // { icon: <Tag className="w-5 h-5" />, name: "Product Rate and Discount", category: "inventory", color: "bg-cyan-500", id: "product_rate_discount" },
@@ -448,7 +451,7 @@ const useSupplierCatagoryFieldsMaster = (): FieldType[] => {
   );
 };
 const useProductSubCatagoryMaster = (): FieldType[] => {
-  const { options, loading } = useMasterOptions(['ProductCategoryMaster']);
+  const { options, loading } = useMasterOptions(['ProductCategoryMaster', 'StockTypeMaster']);
   const { formData } = useAppState();
   return useMemo<FieldType[]>(
     () => [
@@ -460,19 +463,16 @@ const useProductSubCatagoryMaster = (): FieldType[] => {
       { field: "subcat_name", label: "Sub Category Name", require: true, view: true, type: "text", input: true },
       { field: "subcat_description", label: "Sub Category Description", require: false, view: true, type: "text", input: true },
       { field: "subcat_notes", label: "Sub Category Notes", require: false, view: true, type: "text", input: true },
-      // Regular = day-to-day stock drawn via Store Requisition; Non-Regular =
-      // one-off/specific-need items that skip requisition and go straight to
-      // Store Issue once GRN receives them; Perishable = same auto-issue-off-
-      // GRN fast path as Non-Regular, plus a shelf-life (below) that flags
-      // unconsumed stock as Expiry Stock on the Inventory page. Defaults to
-      // Regular server-side.
+      // Options come from the Stock Type master (sql/136). Built-ins: Regular =
+      // day-to-day stock drawn via Store Requisition; Non-Regular = one-off/
+      // specific-need items that skip requisition and go straight to Store
+      // Issue once GRN receives them; Perishable = same auto-issue-off-GRN
+      // fast path as Non-Regular, plus a shelf-life (below) that flags
+      // unconsumed stock as Expiry Stock on the Inventory page. A type added in
+      // the master behaves like Regular. Defaults to Regular server-side.
       {
         field: "subcat_stock_type", label: "Stock Type", require: false, view: true, type: "select",
-        options: [
-          { label: "Regular", value: "Regular" },
-          { label: "Non-Regular", value: "Non-Regular" },
-          { label: "Perishable", value: "Perishable" },
-        ],
+        options: options?.StockTypeMaster || [],
         input: true,
       },
       {
@@ -487,6 +487,26 @@ const useProductSubCatagoryMaster = (): FieldType[] => {
       { field: "subcat_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
     [options, loading, formData?.subcat_stock_type]
+  );
+};
+
+const useStockTypeFieldsMaster = (): FieldType[] => {
+  const { formData } = useAppState();
+  // GRN auto-issue, asset tracking and expiry tracking key off a built-in type's
+  // exact name, so it can't be renamed — the stored procedure rejects it too
+  // (sql/136); only the description of a built-in row is editable.
+  const nameLocked = formData?.is_system === "Y";
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "stock_type_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "stock_type_name", label: "Stock Type", require: true, view: true, type: "text", input: true, disabled: nameLocked },
+      { field: "is_system", label: "Built-in", require: false, view: true, type: "select", options: YES_NO_OPTIONS, input: false },
+      { field: "subcategory_count", label: "Sub Categories", require: false, view: true, type: "number", input: false },
+      // Last on purpose: cells don't wrap, so a long description would push the columns after it off-screen.
+      { field: "stock_type_desc", label: "Description", require: false, view: true, type: "textarea", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    [nameLocked]
   );
 };
 
@@ -706,9 +726,41 @@ const useAccountHeadFieldsMaster = (formData?: any): FieldType[] => {
   );
 };
 
+/**
+ * Payment Bank master: the SENDER of the payment file - which bank account the company pays from, the type of payment file that
+ * bank takes, and what goes in the file name / e-mail position. The receiver's bank details come from the supplier KYC, not here.
+ */
+const usePaymentBankFieldsMaster = (): FieldType[] => {
+  const { companyDetails } = useAppState();
+  const fileTypeOptions = useMemo<OptionType[]>(() => [{ label: "Bank upload file (28 fields, NEFT / RTGS)", value: "BANK_UPLOAD" }], []);
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "payment_bank_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "com_sno", label: "Company", require: true, view: false, type: "select", options: companyDetails || [], input: true },
+      { field: "com_name", label: "Company", require: false, view: true, type: "text", input: false },
+      { field: "profile_name", label: "Account Name", require: true, view: true, type: "text", input: true, placeholder: "e.g. HDFC Current A/c" },
+      { field: "bank_name", label: "Bank Name", require: true, view: true, type: "text", input: true },
+      { field: "branch_name", label: "Branch", require: false, view: true, type: "text", input: true },
+      { field: "ac_holder_name", label: "Account Holder Name", require: true, view: true, type: "text", input: true },
+      { field: "ac_number", label: "Account Number", require: true, view: true, type: "text", input: true, placeholder: "Digits only" },
+      { field: "ifsc", label: "IFSC", require: true, view: true, type: "text", input: true, placeholder: "e.g. HDFC0000123" },
+      // blank = the only type there is today; the stored procedure fills it in
+      { field: "file_type", label: "Payment File Type", require: false, view: true, type: "select", options: fileTypeOptions, input: true },
+      { field: "file_prefix", label: "File Name Prefix", require: true, view: true, type: "text", input: true, placeholder: "e.g. SPACETEX" },
+      { field: "client_code", label: "Client Code", require: true, view: true, type: "text", input: true, placeholder: "e.g. SPA311" },
+      { field: "alert_email", label: "Alert E-mail", require: false, view: true, type: "email", input: true, placeholder: "Goes in every line of the file" },
+      { field: "is_default", label: "Default Account", require: false, view: true, type: "select", options: YES_NO_OPTIONS, input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    [companyDetails, fileTypeOptions]
+  );
+};
+
 export {
   masterItems,
+  usePaymentBankFieldsMaster,
   useAccountHeadFieldsMaster,
+  useStockTypeFieldsMaster,
   useCompanyMasterFields,
   useDivisionMasterFields,
   useBranchMasterFields,

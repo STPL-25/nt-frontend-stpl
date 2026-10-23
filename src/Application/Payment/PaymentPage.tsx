@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { Wallet, Send, RefreshCw, Package, FileText, Plus } from 'lucide-react';
+import { Wallet, Send, RefreshCw, Package, FileText, Plus, Info } from 'lucide-react';
 import EnterInvoiceDialog from './EnterInvoiceDialog';
 import { FormSection } from '@/CustomComponent/PageComponents';
 import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
@@ -19,8 +19,10 @@ import { useMasterOptions } from '@/hooks/ReUsableHook/useMasterOptions';
 import { getErrorMessage } from '@/lib/errors';
 import {
   payNetBills, payNetGrnPending, payNetAdjustments, payNetPreview, payNetRelease, payNetInvoiceLedger,
-  type GrnPendingPayment, type PayableBillNet, type PaymentAdjustments, type NetPreview, type InvoiceLedger, type InvoicePaymentStatus,
+  type GrnPendingPayment, type PayableBillNet, type PaymentAdjustments, type PaymentReleasedEvent, type NetPreview, type InvoiceLedger, type InvoicePaymentStatus, type SavedPayment,
 } from '@/Services/GrnService/paymentNetApi';
+import { socket, SOCKET_CONNECT, SOCKET_JOIN_PAYMENT, SOCKET_LEAVE_PAYMENT, SOCKET_PAYMENT_RELEASED } from '@/Services/Socket';
+import { invoiceSnosOf, keepOffered, noteSourceLine, stillPayable, withoutRedeemed } from './paymentNotesModel';
 
 const MODE_OPTIONS = [
   { label: 'NEFT', value: 'NEFT' },
@@ -58,6 +60,7 @@ const itcBadge = (b: PayableBillNet) => {
 
 const statusBadge = (st: InvoicePaymentStatus) => {
   if (st === 'Paid') return <Badge className="bg-green-100 text-green-800 text-[10px]">Paid</Badge>;
+  if (st === 'In payment') return <Badge className="bg-violet-100 text-violet-800 text-[10px]" title="Saved - waiting for approval or for the payment run">In payment</Badge>;
   if (st === 'Part paid') return <Badge className="bg-blue-100 text-blue-800 text-[10px]">Part paid</Badge>;
   if (st === 'Not allocated') return <Badge className="bg-amber-100 text-amber-800 text-[10px]">Not allocated</Badge>;
   return <Badge variant="secondary" className="text-[10px]">Unpaid</Badge>;
@@ -101,15 +104,24 @@ const PaymentPage: React.FC = () => {
   const [preview, setPreview] = useState<NetPreview | null>(null);
   const [previewError, setPreviewError] = useState('');
 
-  const handleSearch = async () => {
+  // keep: the bills ticked right now. A live refresh (another user paid something) must not wipe what this user has ticked -
+  // it only drops the bills that are no longer payable. Without keep the selection is cleared (Refresh, after a release).
+  const handleSearch = async (opts?: { keep?: Set<number> }) => {
+    const keep = opts?.keep;
     setSearching(true);
-    setSelected(new Set());
+    if (!keep) setSelected(new Set());
     try {
       const params = vendorSno ? { vendor_sno: vendorSno } : {};
       const res = await axios.get(payNetBills, { params });
       const rows: PayableBillNet[] = res?.data?.data ?? [];
       setBills(rows);
-      setTdsSection(Object.fromEntries(rows.map((r) => [r.invoice_sno, r.tds_section_code ?? ''])));
+      if (keep) {
+        const kept = stillPayable(keep, rows);
+        if (kept.size < keep.size) toast.info('An invoice you ticked was just paid by someone else - it was taken off your selection.');
+        setSelected(kept);
+      }
+      const fresh = Object.fromEntries(rows.map((r) => [r.invoice_sno, r.tds_section_code ?? '']));
+      setTdsSection((prev) => (keep ? Object.fromEntries(Object.entries(fresh).map(([k, v]) => [k, prev[Number(k)] ?? v])) : fresh));
       // Per-PO goods / GST / notes / advances / TDS breakup (informational) - a failure here must not hide the invoices.
       try {
         const pend = await axios.get(payNetGrnPending, { params: { ...params, include_billed: 1 } });
@@ -200,22 +212,86 @@ const PaymentPage: React.FC = () => {
     setSelected(new Set(payable.map((b) => b.bill_sno)));
   };
 
-  // load advances / notes when the supplier of the selection changes
+  // Advances and notes for the ticked invoices. Which notes are on offer depends on the invoices being paid (a note raised
+  // against a bill that is still open belongs to that bill only; one raised against a paid bill is the supplier's to use on
+  // any bill), so ask again whenever the ticked invoices change. Pending notes are NOT applied until the user answers the
+  // "redeem in this bill?" prompt.
+  const selectedInvoiceSnos = useMemo(() => invoiceSnosOf(selectedBills), [selectedBills]);
+  const selectedInvoiceKey = selectedInvoiceSnos.join(',');
+  const adjRequest = useRef(0);
+  const loadAdjustments = async () => {
+    const requestId = ++adjRequest.current;
+    if (!selectedVendorSno || selectedInvoiceSnos.length === 0) { setAdj(null); return; }
+    try {
+      const res = await axios.get(payNetAdjustments(selectedVendorSno, selectedInvoiceSnos));
+      if (requestId !== adjRequest.current) return;   // the ticks changed again while this was in flight
+      const data: PaymentAdjustments = res.data?.data;
+      setAdj(data);
+      setDnPick((prev) => keepOffered(prev, data.debitNotes));
+      setCnPick((prev) => keepOffered(prev, data.creditNotes));
+    } catch (e) {
+      if (requestId === adjRequest.current) toast.error(getErrorMessage(e, 'Failed to load advances and notes'));
+    }
+  };
+
+  const adjVendor = useRef<number | null>(null);
   useEffect(() => {
-    setAdvAmt({});
-    setDnPick(new Set());
-    setCnPick(new Set());
-    setRedeemChoice(null);
-    setPreview(null);
-    if (!selectedVendorSno) { setAdj(null); return; }
-    axios.get(payNetAdjustments(selectedVendorSno))
-      .then((res) => {
-        const data: PaymentAdjustments = res.data?.data;
-        setAdj(data);
-        // pending notes are NOT applied until the user answers the "redeem in this bill?" prompt
-      })
-      .catch((e) => toast.error(getErrorMessage(e, 'Failed to load advances and notes')));
-  }, [selectedVendorSno]);
+    if (adjVendor.current !== selectedVendorSno) {   // a different supplier: start the adjustments over
+      adjVendor.current = selectedVendorSno;
+      setAdvAmt({});
+      setDnPick(new Set());
+      setCnPick(new Set());
+      setRedeemChoice(null);
+      setPreview(null);
+    }
+    loadAdjustments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVendorSno, selectedInvoiceKey]);
+
+  // What the socket handler below needs to see without re-subscribing on every render.
+  const live = useRef({ selected, adj, vendorSno, loadAdjustments, handleSearch });
+  useEffect(() => { live.current = { selected, adj, vendorSno, loadAdjustments, handleSearch }; });
+  const releaseInFlight = useRef(false);
+  const lastReleasedNo = useRef<string | null>(null);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Live: a payment released by someone else can redeem a note this screen is still offering (or close a bill, which frees
+  // that bill's notes for the supplier's other bills). Take the redeemed notes off the screen at once - otherwise a second
+  // person ticks them and their release fails - then reconcile with the server.
+  useEffect(() => {
+    const join = () => socket.emit(SOCKET_JOIN_PAYMENT);
+    join();
+    socket.on(SOCKET_CONNECT, join);   // rooms belong to one connection: join again after a reconnect
+
+    const onReleased = (ev: PaymentReleasedEvent) => {
+      const cur = live.current;
+      if (releaseInFlight.current || ev.payment_no === lastReleasedNo.current) return;   // our own release refreshes everything itself
+      if (cur.adj && ev.notes?.length) {
+        const { adj: next, dropped } = withoutRedeemed(cur.adj, ev.notes);
+        if (dropped.length) {
+          setAdj(next);
+          setDnPick((prev) => keepOffered(prev, next.debitNotes));
+          setCnPick((prev) => keepOffered(prev, next.creditNotes));
+          toast.info(`${dropped.map((n) => n.note_no).join(', ')} was just redeemed in ${ev.payment_no} - taken off this payment.`);
+        }
+      }
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      refreshTimer.current = setTimeout(() => {
+        const latest = live.current;
+        if (latest.vendorSno && String(latest.vendorSno) !== String(ev.vendor_sno)) return;
+        latest.handleSearch({ keep: latest.selected });
+        latest.loadAdjustments();
+      }, 300);
+    };
+    socket.on(SOCKET_PAYMENT_RELEASED, onReleased);
+
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      socket.off(SOCKET_CONNECT, join);
+      socket.off(SOCKET_PAYMENT_RELEASED, onReleased);
+      socket.emit(SOCKET_LEAVE_PAYMENT);
+    };
+  }, []);
 
   const buildBody = () => ({
     vendor_sno: selectedVendorSno,
@@ -263,15 +339,21 @@ const PaymentPage: React.FC = () => {
   const handleReleasePayment = async () => {
     if (selectedBills.length === 0 || !selectedVendorSno) return;
     setReleasing(true);
+    releaseInFlight.current = true;
     try {
       const res = await axios.post(payNetRelease, buildBody());
-      const row = res?.data?.data;
-      toast.success(row?.payment_no ? `Payment ${row.payment_no} released - pay ${money(row.net_paid)} to the supplier` : 'Payment released');
+      const row: SavedPayment | undefined = res?.data?.data;
+      lastReleasedNo.current = row?.payment_no ?? null;
+      if (!row?.payment_no) toast.success('Payment saved');
+      else if (row.status === 'Pending Approval') toast.success(`Payment ${row.payment_no} saved (${money(row.net_paid)}) - sent to ${row.current_approver_id ?? 'the approver'} for approval`);
+      else toast.success(`Payment ${row.payment_no} saved (${money(row.net_paid)}) and approved - no approval workflow is set for this department. It is waiting in Payment Run.`);
       await handleSearch();
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to release payment. Try again.'));
+      toast.error(getErrorMessage(error, 'Failed to save the payment. Try again.'));
+      loadAdjustments();   // most often a note or bill another payment just used - show what is still on offer
     } finally {
       setReleasing(false);
+      releaseInFlight.current = false;
     }
   };
 
@@ -343,7 +425,7 @@ const PaymentPage: React.FC = () => {
         icon={FileText}
         title={activeGroup.vendorName ?? 'Supplier'}
         description={`${activeGroup.poNo ?? 'No PO'}${info?.grn_nos ? ` · GRN ${info.grn_nos}` : ''}`}
-        action={<Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={handleSearch} disabled={searching}><RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${searching ? 'animate-spin' : ''}`} />Refresh</Button>}
+        action={<Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => handleSearch()} disabled={searching}><RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${searching ? 'animate-spin' : ''}`} />Refresh</Button>}
       >
         <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
           <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Invoices</p><p className="font-semibold">{activeGroup.bills.length}</p></div>
@@ -418,7 +500,10 @@ const PaymentPage: React.FC = () => {
                     <TableCell className="text-xs">{i.payment_nos ?? '—'}</TableCell>
                     <TableCell className="text-xs text-right tabular-nums">{money(i.invoice_amount)}</TableCell>
                     <TableCell className="text-xs text-right tabular-nums">{i.payment_status === 'Not allocated' ? '—' : money(i.release_total)}</TableCell>
-                    <TableCell className="text-xs text-right tabular-nums">{Number(i.paid_total) > 0 ? money(i.paid_total) : '—'}</TableCell>
+                    <TableCell className="text-xs text-right tabular-nums">
+                      {Number(i.paid_total) > 0 ? money(i.paid_total) : '—'}
+                      {Number(i.reserved_total) > 0 && <p className="text-muted-foreground" title="Held by a saved payment that is waiting for approval or for the payment run">+ {money(i.reserved_total)} in payment</p>}
+                    </TableCell>
                     <TableCell className="text-xs text-right font-medium tabular-nums">{i.payment_status === 'Not allocated' ? '—' : money(i.outstanding)}</TableCell>
                   </TableRow>
                 ))}
@@ -521,7 +606,10 @@ const PaymentPage: React.FC = () => {
                       </TableCell>
                       <TableCell className="text-xs text-right tabular-nums">{money(bill.invoice_amount)}</TableCell>
                       <TableCell className="text-xs text-right tabular-nums">{Number(bill.hold_amount) > 0 ? money(bill.hold_amount) : '—'}</TableCell>
-                      <TableCell className="text-xs text-right tabular-nums">{Number(bill.paid_amount) > 0 ? money(bill.paid_amount) : '—'}</TableCell>
+                      <TableCell className="text-xs text-right tabular-nums">
+                        {Number(bill.paid_amount) > 0 ? money(bill.paid_amount) : '—'}
+                        {Number(bill.reserved_amount) > 0 && <p className="text-muted-foreground" title="Held by a saved payment that is waiting for approval or for the payment run">+ {money(bill.reserved_amount)} in payment</p>}
+                      </TableCell>
                       <TableCell className="text-xs text-right font-medium tabular-nums">{money(bill.outstanding)}</TableCell>
                     </TableRow>
                   );
@@ -549,10 +637,10 @@ const PaymentPage: React.FC = () => {
             {hasPendingNotes && (
               <div className="flex flex-col gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:bg-amber-950/30">
                 <p>
-                  This supplier has unredeemed
-                  {adj!.debitNotes.length > 0 ? ` ${adj!.debitNotes.length} debit note(s)` : ''}
-                  {adj!.debitNotes.length > 0 && adj!.creditNotes.length > 0 ? ' and' : ''}
-                  {adj!.creditNotes.length > 0 ? ` ${adj!.creditNotes.length} credit note(s)` : ''}.
+                  {adj!.debitNotes.length > 0 ? `${adj!.debitNotes.length} debit note(s)` : ''}
+                  {adj!.debitNotes.length > 0 && adj!.creditNotes.length > 0 ? ' and ' : ''}
+                  {adj!.creditNotes.length > 0 ? `${adj!.creditNotes.length} credit note(s)` : ''}
+                  {' '}can be adjusted in this payment.
                   {' '}Redeem them in this bill?
                   {redeemChoice && <span className="ml-1 font-medium">{redeemChoice === 'yes' ? '(Yes - tick/untick below to fine-tune)' : '(No - left unredeemed)'}</span>}
                 </p>
@@ -586,12 +674,16 @@ const PaymentPage: React.FC = () => {
 
               <div className="space-y-2">
                 <p className="text-xs font-semibold">Debit notes raised (reduce payment)</p>
-                {adj.debitNotes.length === 0 && <p className="text-xs text-muted-foreground">None pending</p>}
+                {adj.debitNotes.length === 0 && <p className="text-xs text-muted-foreground">None for these invoices</p>}
                 {adj.debitNotes.map((n) => (
                   <label key={n.note_sno} className="flex items-center justify-between gap-2 rounded-md border p-2 text-xs">
                     <span className="flex items-center gap-2">
                       <Checkbox checked={dnPick.has(n.note_sno)} onCheckedChange={() => toggleSet(dnPick, n.note_sno, setDnPick)} />
-                      <span><span className="font-medium">{n.note_no}</span>{n.remarks ? <span className="block text-muted-foreground">{n.remarks}</span> : null}</span>
+                      <span>
+                        <span className="font-medium">{n.note_no}</span>
+                        {noteSourceLine(n) ? <span className="block text-[11px] text-muted-foreground">{noteSourceLine(n)}</span> : null}
+                        {n.remarks ? <span className="block text-muted-foreground">{n.remarks}</span> : null}
+                      </span>
                     </span>
                     <span>- {money(n.amount)}</span>
                   </label>
@@ -600,12 +692,16 @@ const PaymentPage: React.FC = () => {
 
               <div className="space-y-2">
                 <p className="text-xs font-semibold">Credit notes (add to payment)</p>
-                {adj.creditNotes.length === 0 && <p className="text-xs text-muted-foreground">None pending</p>}
+                {adj.creditNotes.length === 0 && <p className="text-xs text-muted-foreground">None for these invoices</p>}
                 {adj.creditNotes.map((n) => (
                   <label key={n.note_sno} className="flex items-center justify-between gap-2 rounded-md border p-2 text-xs">
                     <span className="flex items-center gap-2">
                       <Checkbox checked={cnPick.has(n.note_sno)} onCheckedChange={() => toggleSet(cnPick, n.note_sno, setCnPick)} />
-                      <span><span className="font-medium">{n.note_no}</span>{n.remarks ? <span className="block text-muted-foreground">{n.remarks}</span> : null}</span>
+                      <span>
+                        <span className="font-medium">{n.note_no}</span>
+                        {noteSourceLine(n) ? <span className="block text-[11px] text-muted-foreground">{noteSourceLine(n)}</span> : null}
+                        {n.remarks ? <span className="block text-muted-foreground">{n.remarks}</span> : null}
+                      </span>
                     </span>
                     <span>+ {money(n.amount)}</span>
                   </label>
@@ -686,17 +782,21 @@ const PaymentPage: React.FC = () => {
               </div>
             </FormSection>
 
-            <div className="flex items-center justify-end border-t pt-4">
+            <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <Callout tone="info" icon={Info} className="sm:max-w-xl">
+                Saving sends this payment for approval. Once approved it waits in <b>Payment Run</b>, where it is paid against the day's fund
+                and goes into the payment file. Until then its invoices, advances and notes are held for it.
+              </Callout>
               {canSubmit && (
                 <Button
                   type="button"
                   onClick={handleReleasePayment}
                   disabled={releasing || !sum || !paymentDetails.mode || !paymentDetails.payment_date || (hasPendingNotes && !redeemChoice)}
                   title={hasPendingNotes && !redeemChoice ? 'Answer the redeem question for pending debit / credit notes first' : undefined}
-                  className="h-9 bg-blue-600 hover:bg-blue-700"
+                  className="h-9 shrink-0 bg-blue-600 hover:bg-blue-700"
                 >
                   {releasing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                  Release Payment ({money(sum?.net_paid ?? 0)})
+                  Save Payment ({money(sum?.net_paid ?? 0)})
                 </Button>
               )}
             </div>

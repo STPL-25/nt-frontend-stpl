@@ -10,6 +10,22 @@ export type StageState =
 
 export type MyRole = "PRIMARY" | "ALTERNATE" | "ALTERNATE_WAITING" | "REQUESTER" | "NONE";
 
+/** The part of an approval summary the shared path / action components read - the PR and the Payment summaries both carry it. */
+export interface ApprovalSummaryBase {
+  has_instance: boolean;
+  cycle_no: number | null;
+  current_seq: number | null;
+  return_to_seq: number | null;
+  current_since: string | null;
+  my_role: MyRole;
+  alternate_available_at: string | null;
+  can_approve: boolean;
+  can_reject: boolean;
+  can_forward: boolean;
+  can_send_back: boolean;
+  amount: number | null;
+}
+
 export interface ApprovalSummary {
   pr_basic_sno: number;
   pr_no: string;
@@ -88,8 +104,8 @@ export interface ApprovalLogEntry {
   acted_at: string | null;
 }
 
-export interface ApprovalContext {
-  summary: ApprovalSummary | null;
+export interface ApprovalContext<S extends ApprovalSummaryBase = ApprovalSummary> {
+  summary: S | null;
   stages: ApprovalStageRow[];
   forwardTargets: ForwardTarget[];
   sendBackTargets: SendBackTarget[];

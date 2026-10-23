@@ -35,6 +35,8 @@ export const StoreInchargeApprovalPage = lazy(() => import("../Application/Store
 //  export const AccountEntryPage = lazy(() => import("../Application/AccountEntry/AccountEntryPage"));
 //  export const AccountsBillPage = lazy(() => import("../Application/Accounts/AccountsBillPage"));
  export const PaymentPage = lazy(() => import("../Application/Payment/PaymentPage"));
+ export const PaymentApprovalScreen = lazy(() => import("../Application/Payment/PaymentApprovalPage"));
+ export const PaymentRunPage = lazy(() => import("../Application/Payment/PaymentRunPage"));
  export const VendorBillPage = lazy(() => import("../Application/VendorBill/VendorBillPage"));
  export const InvoiceAllocationPage = lazy(() => import("../Application/Invoice/InvoicePage"));
  export const PRTrackingPage = lazy(() => import("../Application/PRTracking/PRTrackingPage"));
@@ -91,6 +93,8 @@ export const sectionComponents: SectionComponentsMap = {
   // AccountEntryPage,
   // AccountsBillPage,
   PaymentPage,
+  PaymentApprovalScreen,
+  PaymentRunPage,
   VendorBillPage,
   InvoiceAllocationPage,
   PRTrackingPage,

@@ -7,7 +7,7 @@ import {
 import { describeCondition, normalizeCondition, type ConditionFieldDef, type ConditionLookups } from "@/Application/RoleApproval/approvalConditions";
 import {
   ACTION_LABEL, STAGE_STATE_LABEL, formatWhen, personLabel, summarizeEdit,
-  type ApprovalContext, type ApprovalLogEntry, type ApprovalStageRow, type StageState,
+  type ApprovalContext, type ApprovalLogEntry, type ApprovalStageRow, type ApprovalSummaryBase, type StageState,
 } from "@/Application/PR/prApprovalContext";
 
 const STATE_CLS: Record<StageState, string> = {
@@ -21,7 +21,7 @@ const STATE_CLS: Record<StageState, string> = {
   NOT_REQUIRED: "bg-slate-50 text-slate-400 dark:bg-slate-900 dark:text-slate-500",
 };
 
-function StageRow({ stage, idx, fields, lookups }: { stage: ApprovalStageRow; idx: number; fields: ConditionFieldDef[]; lookups?: ConditionLookups }) {
+function StageRow({ stage, idx, fields, lookups, noun }: { stage: ApprovalStageRow; idx: number; fields: ConditionFieldDef[]; lookups?: ConditionLookups; noun: string }) {
   const cond = normalizeCondition(stage.condition_json);
   const muted = stage.state === "NOT_REQUIRED" || stage.state === "SKIPPED";
   const isCurrent = stage.state === "CURRENT";
@@ -62,7 +62,7 @@ function StageRow({ stage, idx, fields, lookups }: { stage: ApprovalStageRow; id
         {cond ? (
           <p className="text-xs text-purple-700 dark:text-purple-400" data-testid="stage-condition">
             Required when: {describeCondition(cond, fields, lookups)}
-            {stage.state === "NOT_REQUIRED" && " — not met for this requisition"}
+            {stage.state === "NOT_REQUIRED" && ` — not met for this ${noun}`}
           </p>
         ) : idx > 0 ? (
           <p className="text-xs text-slate-400">Always required</p>
@@ -81,8 +81,15 @@ function StageRow({ stage, idx, fields, lookups }: { stage: ApprovalStageRow; id
   );
 }
 
-/** The chain this requisition follows, stage by stage, with the state of each. */
-export function ApprovalPath({ context, lookups }: { context: ApprovalContext; lookups?: ConditionLookups }) {
+/**
+ * The chain this requisition follows, stage by stage, with the state of each. The Payment screen uses it too:
+ * `noun` is what is being approved ("payment"), `basis` what decides which stages are needed, `amountLabel` what its amount is called.
+ */
+export function ApprovalPath({
+  context, lookups, noun = "requisition", basis = "amount, categories and priority", amountLabel = "total",
+}: {
+  context: ApprovalContext<ApprovalSummaryBase>; lookups?: ConditionLookups; noun?: string; basis?: string; amountLabel?: string;
+}) {
   const { summary, stages } = context;
   if (!summary?.has_instance || stages.length === 0) return null;
   const required = stages.filter((s) => s.state !== "NOT_REQUIRED" && s.state !== "SKIPPED").length;
@@ -100,13 +107,13 @@ export function ApprovalPath({ context, lookups }: { context: ApprovalContext; l
           )}
         </CardTitle>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Worked out from this requisition's amount, categories and priority
-          {summary.amount != null ? ` — total ₹${Number(summary.amount).toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : ""}.
+          Worked out from this {noun}'s {basis}
+          {summary.amount != null ? ` — ${amountLabel} ₹${Number(summary.amount).toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : ""}.
         </p>
       </CardHeader>
       <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
         <div className="space-y-2">
-          {stages.map((s, i) => <StageRow key={s.seq} stage={s} idx={i} fields={context.fields ?? []} lookups={lookups} />)}
+          {stages.map((s, i) => <StageRow key={s.seq} stage={s} idx={i} fields={context.fields ?? []} lookups={lookups} noun={noun} />)}
         </div>
       </CardContent>
     </Card>
@@ -155,7 +162,7 @@ function LogRow({ entry, itemNames }: { entry: ApprovalLogEntry; itemNames: Reco
 }
 
 /** Everything that has happened to this requisition's approval, including edits and skipped stages. */
-export function ApprovalActivity({ context, itemNames }: { context: ApprovalContext; itemNames: Record<number, string> }) {
+export function ApprovalActivity({ context, itemNames }: { context: Pick<ApprovalContext, "log">; itemNames: Record<number, string> }) {
   const log = context.log;
   if (!log.length) return null;
   const rounds = new Set(log.map((l) => l.cycle_no));

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Check, FileText, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Check, Clock, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,8 +8,10 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/
 import { cn } from '@/lib/utils';
 import type { AssetAction, AssetRequestDetail } from '@/Services/GrnService/assetApi';
 import {
-  KindTag, StatusBadge, Tag, daysLate, fmtDate, fmtDateTime, isClosed, isPending, nextStepLabel, upcomingSteps,
+  daysLate, fmtDate, fmtDateTime, isClosed, isPending, nextStepLabel, statusTone, upcomingSteps,
 } from './helpers';
+import { KindTag, Pill, StatusBadge } from './badges';
+import { TONE } from './tones';
 
 interface Props {
   detail: AssetRequestDetail | null;
@@ -30,12 +32,12 @@ const Fact: React.FC<{ label: string; children: React.ReactNode; className?: str
   </div>
 );
 
-const eventTone = (event: string) => {
+const eventDot = (event: string) => {
   const e = event.toLowerCase();
-  if (e.includes('reject') || e.includes('not ok') || e.includes('debit note') || e.includes('cancel')) return 'bg-red-500';
-  if (e.includes('approv') || e.includes('quality ok') || e.includes('complete')) return 'bg-green-600';
-  if (e.includes('gate pass') || e.includes('vendor') || e.includes('service')) return 'bg-orange-500';
-  return 'bg-primary';
+  if (e.includes('reject') || e.includes('not ok') || e.includes('debit note') || e.includes('cancel')) return TONE.red.dot;
+  if (e.includes('approv') || e.includes('quality ok') || e.includes('complete')) return TONE.green.dot;
+  if (e.includes('gate pass') || e.includes('vendor') || e.includes('service')) return TONE.violet.dot;
+  return TONE.slate.dot;
 };
 
 const RequestDrawer: React.FC<Props> = ({ detail, loading, open, me, canOperate, acting, onClose, onAct }) => {
@@ -45,9 +47,13 @@ const RequestDrawer: React.FC<Props> = ({ detail, loading, open, me, canOperate,
   const [price, setPrice] = useState('');
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  // Clear the inputs whenever a different request, or a new stage of the same one, is shown.
+  const resetKey = `${detail?.request.asset_req_sno ?? ''}:${detail?.request.status ?? ''}`;
+  const [shownKey, setShownKey] = useState(resetKey);
+  if (shownKey !== resetKey) {
+    setShownKey(resetKey);
     setRemarks(''); setDcIn(''); setTech(''); setPrice(''); setError('');
-  }, [detail?.request.asset_req_sno, detail?.request.status]);
+  }
 
   const r = detail?.request;
   const isApprover = !!r && !!me?.ecno && r.current_approver_ecno === me.ecno && isPending(r.status);
@@ -63,7 +69,7 @@ const RequestDrawer: React.FC<Props> = ({ detail, loading, open, me, canOperate,
   const btn = (label: string, action: AssetAction, extra?: Record<string, unknown>, opts: { variant?: 'default' | 'outline' | 'destructive'; needsRemarks?: boolean } = {}) => (
     <Button
       size="sm"
-      className="h-10 flex-[1_1_auto] sm:flex-none"
+      className="h-10 flex-[1_1_auto] shadow-sm sm:flex-none"
       variant={opts.variant ?? 'default'}
       disabled={acting}
       onClick={() => run(action, extra, opts.needsRemarks)}
@@ -169,10 +175,10 @@ const RequestDrawer: React.FC<Props> = ({ detail, loading, open, me, canOperate,
     if (!r) return null;
     if (isClosed(r.status)) {
       return (
-        <div className="flex flex-col gap-1 pt-1">
-          <span className="text-sm font-semibold">{r.status === 'Completed' ? 'Back in use' : r.status}</span>
+        <div className="flex flex-col items-start gap-1 pt-0.5">
+          <span className={cn('text-sm font-semibold', TONE[statusTone(r.status)].text)}>{r.status === 'Completed' ? 'Back in use' : r.status}</span>
           <span className="text-xs text-muted-foreground">{fmtDateTime(r.completed_at ?? r.updated_at)}</span>
-          {r.reject_reason && <span className="mt-1 rounded-md bg-muted px-2.5 py-2 text-[13px]">“{r.reject_reason}”</span>}
+          {r.reject_reason && <span className="mt-1 rounded-lg bg-muted px-3 py-2 text-[13px] leading-relaxed">“{r.reject_reason}”</span>}
         </div>
       );
     }
@@ -198,7 +204,7 @@ const RequestDrawer: React.FC<Props> = ({ detail, loading, open, me, canOperate,
       );
     }
     return (
-      <div className="flex-1 rounded-xl border bg-muted/40 p-3.5">
+      <div className="flex-1 rounded-2xl border border-dashed bg-muted/40 p-4">
         <div className="text-sm font-semibold">{isPending(r.status) ? pendingStage?.stage_name ?? 'Approval' : nextStepLabel(r) ?? r.status}</div>
         <div className="mt-0.5 text-xs text-muted-foreground">
           {isPending(r.status)
@@ -222,91 +228,97 @@ const RequestDrawer: React.FC<Props> = ({ detail, loading, open, me, canOperate,
           </>
         ) : (
           <>
-            <div className="space-y-3 border-b px-5 py-4 pr-12">
-              <div className="flex flex-wrap gap-1.5">
-                <KindTag r={r} />
-                {late > 0 && <Tag tone="late">{late} day{late > 1 ? 's' : ''} late</Tag>}
+            {/* one scrolling column: the slim title bar stays put, everything else (details, then timeline) scrolls */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="sticky top-0 z-10 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b bg-background/95 px-5 py-3 pr-12 backdrop-blur">
+                <SheetTitle className="text-base font-semibold tracking-tight">{r.request_no}</SheetTitle>
                 <StatusBadge status={r.status} />
+                {late > 0 && <Pill tone="red" icon={Clock}>{late} day{late > 1 ? 's' : ''} late</Pill>}
               </div>
-              <div>
-                <SheetTitle className="text-xl font-bold">{r.request_no}</SheetTitle>
-                <SheetDescription className="mt-1 text-sm text-foreground/80">
-                  {r.item_name} × {r.qty} {r.uom ?? ''} · {r.dept_name ?? '—'}
-                </SheetDescription>
-              </div>
-              <dl className="grid grid-cols-2 gap-2.5 rounded-lg bg-muted/60 p-3 sm:grid-cols-3">
-                {r.request_type === 'RETURN' ? (
-                  <>
-                    <Fact label="Supplier">{r.supplier_name}</Fact>
-                    <Fact label="Raised by">{(r.raised_by_name ?? r.raised_by) + (r.raised_role === 'STORE' ? ' (Store)' : '')}</Fact>
-                    <Fact label="Issue ref">{r.issue_ref}</Fact>
-                  </>
-                ) : (
-                  <>
-                    <Fact label={r.service_mode === 'OUTPASS' ? 'Vendor' : 'Technician'}>{r.service_vendor}</Fact>
-                    {r.service_mode === 'OUTPASS'
-                      ? <Fact label="Due back" className={late > 0 ? 'text-red-700 dark:text-red-400' : undefined}>{fmtDate(r.expected_return_date)}</Fact>
-                      : <Fact label="Raised on">{fmtDate(r.created_at)}</Fact>}
-                    <Fact label="Est. cost">{r.payment_applicable === 'Y' ? `₹ ${Number(r.est_amount ?? 0).toLocaleString('en-IN')}` : 'No cost'}</Fact>
-                    <Fact label="Raised by">{(r.raised_by_name ?? r.raised_by) + (r.raised_role === 'STORE' ? ' (Store)' : '')}</Fact>
-                    <Fact label="Issue ref">{r.issue_ref}</Fact>
-                    <Fact label="Cycle">{r.cycle_no > 1 ? `${r.cycle_no} (re-service ${r.rework_count})` : '1st service'}</Fact>
-                  </>
-                )}
-              </dl>
-              <p className="text-[13px] leading-relaxed">
-                <span className="text-muted-foreground">{r.request_type === 'RETURN' ? 'Reason · ' : 'Problem · '}</span>{r.reason}
-              </p>
-              {docs.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {docs.map(d => (
-                    <span key={d.label} className="inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium">
-                      <FileText className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                      <span className="text-muted-foreground">{d.label}</span> {d.no}
-                    </span>
-                  ))}
+
+              <div className="space-y-4 border-b bg-muted/30 px-5 py-5">
+                <div className="space-y-2">
+                  <KindTag r={r} />
+                  <SheetDescription className="text-lg font-semibold leading-snug tracking-tight text-foreground">
+                    {r.item_name} × {r.qty} {r.uom ?? ''}
+                    <span className="mt-0.5 block text-sm font-normal text-muted-foreground">{r.dept_name ?? '—'}</span>
+                  </SheetDescription>
                 </div>
-              )}
-            </div>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border bg-card p-3.5 shadow-xs sm:grid-cols-3">
+                  {r.request_type === 'RETURN' ? (
+                    <>
+                      <Fact label="Supplier">{r.supplier_name}</Fact>
+                      <Fact label="Raised by">{(r.raised_by_name ?? r.raised_by) + (r.raised_role === 'STORE' ? ' (Store)' : '')}</Fact>
+                      <Fact label="Issue ref">{r.issue_ref}</Fact>
+                    </>
+                  ) : (
+                    <>
+                      <Fact label={r.service_mode === 'OUTPASS' ? 'Vendor' : 'Technician'}>{r.service_vendor}</Fact>
+                      {r.service_mode === 'OUTPASS'
+                        ? <Fact label="Due back" className={late > 0 ? 'text-red-700 dark:text-red-400' : undefined}>{fmtDate(r.expected_return_date)}</Fact>
+                        : <Fact label="Raised on">{fmtDate(r.created_at)}</Fact>}
+                      <Fact label="Est. cost">{r.payment_applicable === 'Y' ? `₹ ${Number(r.est_amount ?? 0).toLocaleString('en-IN')}` : 'No cost'}</Fact>
+                      <Fact label="Raised by">{(r.raised_by_name ?? r.raised_by) + (r.raised_role === 'STORE' ? ' (Store)' : '')}</Fact>
+                      <Fact label="Issue ref">{r.issue_ref}</Fact>
+                      <Fact label="Cycle">{r.cycle_no > 1 ? `${r.cycle_no} (re-service ${r.rework_count})` : '1st service'}</Fact>
+                    </>
+                  )}
+                </dl>
+                <blockquote className="border-l-2 border-primary/40 pl-3 text-[13px] leading-relaxed">
+                  <span className="block text-xs font-medium text-muted-foreground">{r.request_type === 'RETURN' ? 'Reason' : 'Problem'}</span>
+                  {r.reason}
+                </blockquote>
+                {docs.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {docs.map(d => (
+                      <span key={d.label} className="inline-flex h-7 items-center gap-1.5 rounded-md bg-card px-2 text-xs font-medium ring-1 ring-border">
+                        <FileText className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                        <span className="text-muted-foreground">{d.label}</span> {d.no}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-5">
-              <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Timeline</h3>
-              <ol>
-                {history.map(h => (
-                  <Step key={h.hist_sno} state="done" railDone>
-                    <div className="pt-0.5">
-                      <div className="flex items-center gap-2 text-sm font-semibold">
-                        <span aria-hidden="true" className={cn('h-2 w-2 rounded-full', eventTone(h.event))} />{h.event}
+              <div className="px-5 py-5">
+                <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Timeline</h3>
+                <ol>
+                  {history.map(h => (
+                    <Step key={h.hist_sno} state="done" railDone>
+                      <div className="pt-0.5">
+                        <div className="flex items-center gap-2 text-sm font-semibold">
+                          <span aria-hidden="true" className={cn('h-2 w-2 shrink-0 rounded-full', eventDot(h.event))} />{h.event}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{fmtDateTime(h.at)} · {h.by_name ?? h.by_ecno ?? '—'}</div>
+                        {h.remarks && <div className="mt-1.5 rounded-lg bg-muted px-3 py-2 text-[13px] leading-relaxed">“{h.remarks}”</div>}
                       </div>
-                      <div className="text-xs text-muted-foreground">{fmtDateTime(h.at)} · {h.by_name ?? h.by_ecno ?? '—'}</div>
-                      {h.remarks && <div className="mt-1.5 rounded-md bg-muted px-2.5 py-2 text-[13px]">“{h.remarks}”</div>}
-                    </div>
-                  </Step>
-                ))}
+                    </Step>
+                  ))}
 
-                <Step state={isClosed(r.status) ? 'done' : 'current'} last={waitingStages.length === 0 && upcoming.length === 0}>
-                  {currentCard()}
-                </Step>
+                  <Step state={isClosed(r.status) ? 'done' : 'current'} last={waitingStages.length === 0 && upcoming.length === 0}>
+                    {currentCard()}
+                  </Step>
 
-                {waitingStages.map((a, i) => (
-                  <Step key={a.approval_sno} state="todo" n={i + 2} last={i === waitingStages.length - 1 && upcoming.length === 0}>
-                    <div className="pt-0.5">
-                      <div className="text-sm font-medium text-foreground/80">{a.stage_name ?? 'Approval'}</div>
-                      <div className="text-xs text-muted-foreground">{a.approver_name ?? a.approver_ecno}</div>
-                    </div>
-                  </Step>
-                ))}
-                {upcoming.map((label, i) => (
-                  <Step key={label} state="todo" n={waitingStages.length + i + 2} last={i === upcoming.length - 1}>
-                    <div className="pt-1 text-sm font-medium text-foreground/80">{label}</div>
-                  </Step>
-                ))}
-              </ol>
-              {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+                  {waitingStages.map((a, i) => (
+                    <Step key={a.approval_sno} state="todo" n={history.length + i + 2} last={i === waitingStages.length - 1 && upcoming.length === 0}>
+                      <div className="pt-0.5">
+                        <div className="text-sm font-medium text-foreground/80">{a.stage_name ?? 'Approval'}</div>
+                        <div className="text-xs text-muted-foreground">{a.approver_name ?? a.approver_ecno}</div>
+                      </div>
+                    </Step>
+                  ))}
+                  {upcoming.map((label, i) => (
+                    <Step key={label} state="todo" n={history.length + waitingStages.length + i + 2} last={i === upcoming.length - 1}>
+                      <div className="pt-1 text-sm font-medium text-foreground/80">{label}</div>
+                    </Step>
+                  ))}
+                </ol>
+                {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+              </div>
             </div>
 
             {isRaiser && isPending(r.status) && (
-              <div className="flex justify-end border-t px-5 py-3">
+              <div className="flex justify-end border-t bg-muted/30 px-5 py-3">
                 <Button variant="outline" size="sm" disabled={acting} onClick={() => run('CANCEL')}>Cancel request</Button>
               </div>
             )}
@@ -326,13 +338,13 @@ const Step: React.FC<{
   children: React.ReactNode;
 }> = ({ state, n, last, railDone, children }) => (
   <li className={cn('relative flex gap-3.5', !last && 'pb-5')} aria-current={state === 'current' ? 'step' : undefined}>
-    {!last && <span aria-hidden="true" className={cn('absolute bottom-0 left-[13px] top-7 w-0.5', railDone ? 'bg-primary' : 'bg-border')} />}
+    {!last && <span aria-hidden="true" className={cn('absolute bottom-0 left-[13px] top-7 w-0.5 rounded-full', railDone ? 'bg-primary/40' : 'bg-border')} />}
     {state === 'done' ? (
       <span aria-hidden="true" className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="h-3.5 w-3.5" strokeWidth={3} /></span>
     ) : state === 'current' ? (
-      <span aria-hidden="true" className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-[3px] border-orange-600 bg-card"><span className="h-2.5 w-2.5 rounded-full bg-orange-600" /></span>
+      <span aria-hidden="true" className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-[3px] border-primary bg-card ring-4 ring-primary/15"><span className="h-2.5 w-2.5 rounded-full bg-primary" /></span>
     ) : (
-      <span aria-hidden="true" className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 bg-card text-xs font-semibold text-muted-foreground">{n}</span>
+      <span aria-hidden="true" className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-dashed bg-card text-xs font-semibold text-muted-foreground">{n}</span>
     )}
     <div className="min-w-0 flex-1">{children}</div>
   </li>
@@ -340,12 +352,12 @@ const Step: React.FC<{
 
 /** The highlighted box on the current step, where the user acts. */
 const ActionBox: React.FC<{ title: string; who: string; hint: string; children: React.ReactNode }> = ({ title, who, hint, children }) => (
-  <div className="flex flex-col gap-2.5 rounded-xl border-[1.5px] border-primary bg-primary/5 p-3.5">
-    <div className="flex flex-wrap justify-between gap-1.5">
-      <span className="text-sm font-bold">{title}</span>
-      <span className="text-xs font-semibold text-primary">{who}</span>
+  <div className="flex flex-col gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 shadow-sm">
+    <div className="flex flex-wrap items-center justify-between gap-1.5">
+      <span className="text-sm font-semibold">{title}</span>
+      <span className="rounded-full bg-primary px-2.5 py-0.5 text-[11px] font-semibold text-primary-foreground">{who}</span>
     </div>
-    <p className="text-[13px] text-foreground/80">{hint}</p>
+    <p className="text-[13px] leading-relaxed text-foreground/80">{hint}</p>
     {children}
   </div>
 );

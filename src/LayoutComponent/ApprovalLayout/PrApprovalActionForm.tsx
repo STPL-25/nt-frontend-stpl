@@ -34,10 +34,10 @@ function RadioOption({
   );
 }
 
-/** Pick a later stage to hand the requisition to — including stages the rules did not require. */
+/** Pick a later stage to hand the requisition to — including stages the rules did not require. `noun` is what is being approved. */
 export function ForwardTargetPicker({
-  targets, value, onChange,
-}: { targets: ForwardTarget[]; value: string; onChange: (v: string) => void }) {
+  targets, value, onChange, noun = "requisition",
+}: { targets: ForwardTarget[]; value: string; onChange: (v: string) => void; noun?: string }) {
   if (targets.length === 0) return <p className="text-sm text-slate-500">There is no later stage to forward to.</p>;
   return (
     <div className="space-y-2" role="radiogroup" aria-label="Forward to" data-testid="forward-targets">
@@ -47,7 +47,7 @@ export function ForwardTargetPicker({
           <span className="block text-xs text-slate-500 dark:text-slate-400">{personLabel(t.approver_name, t.approver_ecno)}</span>
           <span className={`mt-0.5 block text-[11px] ${t.required_by_rule ? "text-green-700 dark:text-green-400" : "text-amber-700 dark:text-amber-400"}`}>
             {t.required_by_rule
-              ? "Required for this requisition"
+              ? `Required for this ${noun}`
               : "Not required by the rules — forwarding asks them anyway"}
           </span>
         </RadioOption>
@@ -57,10 +57,10 @@ export function ForwardTargetPicker({
   );
 }
 
-/** Pick who gets it back: the requester or an approver who already acted. */
+/** Pick who gets it back: the requester or an approver who already acted. `hint` replaces the line under the choices. */
 export function SendBackTargetPicker({
-  targets, value, onChange,
-}: { targets: SendBackTarget[]; value: string; onChange: (v: string) => void }) {
+  targets, value, onChange, hint = "When they are done it comes straight back to you — unless they change any values, which restarts the approval.",
+}: { targets: SendBackTarget[]; value: string; onChange: (v: string) => void; hint?: string }) {
   if (targets.length === 0) return <p className="text-sm text-slate-500">There is nobody to send this back to.</p>;
   return (
     <div className="space-y-2" role="radiogroup" aria-label="Send back to" data-testid="send-back-targets">
@@ -73,9 +73,7 @@ export function SendBackTargetPicker({
           </RadioOption>
         );
       })}
-      <p className="text-xs text-slate-500">
-        When they are done it comes straight back to you — unless they change any values, which restarts the approval.
-      </p>
+      <p className="text-xs text-slate-500">{hint}</p>
     </div>
   );
 }

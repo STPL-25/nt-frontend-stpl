@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Boxes, ClipboardCheck, ClipboardList, Kanban, Plus, RefreshCw, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
@@ -150,38 +150,34 @@ const AssetManagementPage: React.FC = () => {
     };
   }, [assets, requests]);
 
-  const tabs: { key: TabKey; label: string; count?: number; alert?: boolean }[] = [
-    { key: 'register', label: 'Register' },
-    { key: 'board', label: 'Requests board', count: summary.openCount },
-    { key: 'approvals', label: 'My approvals', count: mine.length, alert: true },
+  const tabs: { key: TabKey; label: string; short: string; icon: LucideIcon; count?: number; alert?: boolean }[] = [
+    { key: 'register', label: 'Register', short: 'Register', icon: ClipboardList },
+    { key: 'board', label: 'Requests board', short: 'Requests', icon: Kanban, count: summary.openCount },
+    { key: 'approvals', label: 'My approvals', short: 'Approvals', icon: ClipboardCheck, count: mine.length, alert: true },
   ];
 
   return (
-    <div className="flex h-full flex-col bg-muted/40">
-      <header className="border-b bg-card">
-        <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-3 px-4 pt-4 sm:px-6">
-          <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="@container flex h-full flex-col gap-4">
+      <header className="shrink-0 rounded-2xl border bg-linear-to-r from-primary/[0.07] via-card to-card shadow-sm">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-5">
+          <div className="order-1 flex min-w-0 items-center gap-3">
+            <span aria-hidden="true" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+              <Boxes className="h-5 w-5" />
+            </span>
             <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">GRN <span aria-hidden="true">/</span> Asset Management</p>
-              <h1 className="mt-1 text-2xl font-bold tracking-tight">
-                {tab === 'register' ? 'Assets' : tab === 'board' ? 'Requests' : 'My approvals'}
-              </h1>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={fetchAll} disabled={loading}>
-                <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
-                <span className="hidden sm:inline">Refresh</span>
-              </Button>
-              {canRaise && (
-                <Button size="sm" onClick={() => setRaise({})}>
-                  <Plus className="h-4 w-4" /> Raise request
-                </Button>
-              )}
+              <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">Asset Management</h1>
+              <p className="truncate text-[13px] text-muted-foreground">Issued assets, returns and repairs</p>
             </div>
           </div>
-          <nav role="tablist" aria-label="Asset Management sections" className="-mb-px flex gap-6 overflow-x-auto">
+
+          <nav
+            role="tablist"
+            aria-label="Asset Management sections"
+            className="order-3 flex w-full gap-1 overflow-x-auto rounded-xl bg-muted p-1 @5xl:order-2 @5xl:w-auto"
+          >
             {tabs.map(t => {
               const active = tab === t.key;
+              const Icon = t.icon;
               return (
                 <button
                   key={t.key}
@@ -190,56 +186,68 @@ const AssetManagementPage: React.FC = () => {
                   aria-selected={active}
                   onClick={() => setTab(t.key)}
                   className={cn(
-                    'inline-flex h-11 shrink-0 items-center gap-1.5 border-b-2 px-1 text-sm transition-colors',
-                    active ? 'border-primary font-semibold text-foreground' : 'border-transparent font-medium text-muted-foreground hover:text-foreground',
+                    'inline-flex h-9 flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring @md:gap-2 @md:px-3.5 @5xl:flex-none',
+                    active ? 'bg-card text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  {t.label}
+                  <Icon className="hidden h-4 w-4 @md:block" aria-hidden="true" />
+                  <span className="@md:hidden">{t.short}</span>
+                  <span className="hidden @md:inline">{t.label}</span>
                   {!!t.count && (
                     t.alert
                       ? <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1.5 text-[11px] font-semibold text-white">{t.count}</span>
-                      : <span className="text-xs text-muted-foreground">{t.count}</span>
+                      : <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-foreground/10 px-1.5 text-[11px] font-semibold text-foreground/70">{t.count}</span>
                   )}
                 </button>
               );
             })}
           </nav>
+
+          <div className="order-2 ml-auto flex gap-2 @5xl:order-3">
+            <Button variant="outline" size="sm" className="h-9" onClick={fetchAll} disabled={loading}>
+              <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+              <span className="hidden @xl:inline">Refresh</span>
+            </Button>
+            {canRaise && (
+              <Button size="sm" className="h-9 shadow-sm" onClick={() => setRaise({})}>
+                <Plus className="h-4 w-4" /> Raise request
+              </Button>
+            )}
+          </div>
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[1320px] px-4 py-5 sm:px-6">
-          {tab === 'register' && (
-            <RegisterTab
-              rows={assets}
-              requests={requests}
-              loading={loading}
-              canRaise={canRaise}
-              summary={summary}
-              mineCount={mine.length}
-              onRaise={(row, type) => setRaise({ row, type })}
-              onOpen={openRequest}
-              onShowApprovals={() => setTab('approvals')}
-            />
-          )}
-          {tab === 'board' && (
-            <RequestsBoard
-              rows={requests}
-              loading={loading}
-              myEcno={me?.ecno ?? null}
-              onOpen={openRequest}
-            />
-          )}
-          {tab === 'approvals' && (
-            <ApprovalsTab
-              rows={mine}
-              loading={loading}
-              acting={acting}
-              onAct={act}
-              onOpen={openRequest}
-            />
-          )}
-        </div>
+      <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-4">
+        {tab === 'register' && (
+          <RegisterTab
+            rows={assets}
+            requests={requests}
+            loading={loading}
+            canRaise={canRaise}
+            summary={summary}
+            mineCount={mine.length}
+            onRaise={(row, type) => setRaise({ row, type })}
+            onOpen={openRequest}
+            onShowApprovals={() => setTab('approvals')}
+          />
+        )}
+        {tab === 'board' && (
+          <RequestsBoard
+            rows={requests}
+            loading={loading}
+            myEcno={me?.ecno ?? null}
+            onOpen={openRequest}
+          />
+        )}
+        {tab === 'approvals' && (
+          <ApprovalsTab
+            rows={mine}
+            loading={loading}
+            acting={acting}
+            onAct={act}
+            onOpen={openRequest}
+          />
+        )}
       </div>
 
       <RaiseRequestSheet

@@ -20,6 +20,8 @@ import {
   useProductCatagoryMaster,
   useProductFieldsMaster,
   useAccountHeadFieldsMaster,
+  usePaymentBankFieldsMaster,
+  useStockTypeFieldsMaster,
   useProductSubCatagoryMaster,
   useSupplierCatagoryFieldsMaster,
   usePaymentModeFieldsMaster,
@@ -54,6 +56,7 @@ export const useMasterDataFields = () => {
     ProductMaster: useProductFieldsMaster(),
     ProductCategoryMaster: useProductCatagoryMaster(),
     ProductSubCategoryMaster: useProductSubCatagoryMaster(),
+    StockTypeMaster: useStockTypeFieldsMaster(),
     SupplierCatagoryMaster: useSupplierCatagoryFieldsMaster(),
     PaymentModeMaster: usePaymentModeFieldsMaster(),
     WorkflowMaster: useWorkflowMasterFields(),
@@ -61,6 +64,7 @@ export const useMasterDataFields = () => {
     ServiceMaster: useServiceFieldsMaster(),
     RecurrenceCadenceMaster: useRecurrenceCadenceFieldsMaster(),
     AccountHeadMaster: useAccountHeadFieldsMaster(),
+    PaymentBankMaster: usePaymentBankFieldsMaster(),
   };
 
   return { fields };

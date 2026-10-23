@@ -124,6 +124,15 @@ export const SOCKET_DEBIT_NOTE_CREATED         = "debit_note:created";
 export const SOCKET_GRN_EXCESS_DECIDED         = "grn:excess_decided";
 export const SOCKET_GRN_APPROVAL_DECIDED       = "grn:approval_decided";
 
+// ── Payment room + real-time events ───────────────────────────────────────────
+// join-payment puts the socket in the payment:live:com:… rooms of the user's own hierarchy
+// (needs view permission on the Payment screen). Rooms belong to one connection, so re-join on reconnect.
+export const SOCKET_JOIN_PAYMENT     = "join-payment";
+export const SOCKET_LEAVE_PAYMENT    = "leave-payment";
+export const SOCKET_PAYMENT_RELEASED = "payment:released";
+// a payment was saved / approved / rejected / cancelled / paid in a run: the approval screen and the Payment Run refresh
+export const SOCKET_PAYMENT_UPDATED  = "payment:updated";
+
 // ── Inventory room + real-time events ─────────────────────────────────────────
 export const SOCKET_JOIN_INVENTORY  = "join-inventory";
 export const SOCKET_LEAVE_INVENTORY = "leave-inventory";

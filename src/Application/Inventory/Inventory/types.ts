@@ -59,7 +59,8 @@ export interface InventoryItem {
   // every receipt of this product, not true per-batch aging (this codebase
   // has no batch/lot stock tracking). is_expiry_stock is the server-computed
   // "still on hand past its shelf life" flag the Inventory page badges.
-  subcat_stock_type?: 'Regular' | 'Non-Regular' | 'Perishable' | null;
+  // Regular / Non-Regular / Perishable are built in; further types come from the Stock Type master.
+  subcat_stock_type?: string | null;
   perishable_days?: number | null;
   last_received_date?: string | null;
   days_since_last_received?: number | null;

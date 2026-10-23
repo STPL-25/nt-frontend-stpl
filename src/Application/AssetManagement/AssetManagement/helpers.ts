@@ -1,54 +1,8 @@
-import React from 'react';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
 import { formatDate, formatDateTime } from '@/lib/formatDate';
 import type { AssetRequest } from '@/Services/GrnService/assetApi';
 
-const STATUS_STYLE: Record<string, string> = {
-  'Pending Dept Approval': 'bg-amber-100 text-amber-800 border-amber-300',
-  'Pending Approval': 'bg-amber-100 text-amber-800 border-amber-300',
-  Approved: 'bg-blue-100 text-blue-800 border-blue-300',
-  'Return Order Raised': 'bg-indigo-100 text-indigo-800 border-indigo-300',
-  'Goods Returned': 'bg-purple-100 text-purple-800 border-purple-300',
-  'At Vendor': 'bg-orange-100 text-orange-800 border-orange-300',
-  Received: 'bg-cyan-100 text-cyan-800 border-cyan-300',
-  'In Progress': 'bg-orange-100 text-orange-800 border-orange-300',
-  'QC Failed': 'bg-red-100 text-red-800 border-red-300',
-  'Debit Note Raised': 'bg-red-100 text-red-800 border-red-300',
-  Completed: 'bg-green-100 text-green-800 border-green-300',
-  Closed: 'bg-green-100 text-green-800 border-green-300',
-  Rejected: 'bg-red-100 text-red-800 border-red-300',
-  Cancelled: 'bg-gray-100 text-gray-700 border-gray-300',
-};
-
-export const StatusBadge: React.FC<{ status: string }> = ({ status }) => (
-  <Badge variant="outline" className={`whitespace-nowrap ${STATUS_STYLE[status] ?? ''}`}>{status}</Badge>
-);
-
-/** Small square-cornered tag used on cards and the side panel ("Return", "Repair outside", "6 days late"). */
-export const Tag: React.FC<{ tone: 'return' | 'outside' | 'onsite' | 'late' | 'done' | 'muted' | 'pending'; children: React.ReactNode; className?: string }> = ({ tone, children, className }) => {
-  const tones = {
-    return: 'bg-purple-100 text-purple-800',
-    outside: 'bg-orange-100 text-orange-800',
-    onsite: 'bg-green-100 text-green-800',
-    late: 'bg-red-100 text-red-700',
-    done: 'bg-green-100 text-green-800',
-    pending: 'bg-amber-100 text-amber-800',
-    muted: 'bg-muted text-muted-foreground',
-  } as const;
-  return (
-    <span className={cn('inline-flex h-5 items-center whitespace-nowrap rounded-[5px] px-1.5 text-[11px] font-semibold', tones[tone], className)}>
-      {children}
-    </span>
-  );
-};
-
 export const kindLabel = (r: Pick<AssetRequest, 'request_type' | 'service_mode'>) =>
   r.request_type === 'RETURN' ? 'Return' : r.service_mode === 'INSTORE' ? 'Repair on site' : 'Repair outside';
-
-export const KindTag: React.FC<{ r: Pick<AssetRequest, 'request_type' | 'service_mode'> }> = ({ r }) => (
-  <Tag tone={r.request_type === 'RETURN' ? 'return' : r.service_mode === 'INSTORE' ? 'onsite' : 'outside'}>{kindLabel(r)}</Tag>
-);
 
 export const fmtDate = (v?: string | null) => (v ? formatDate(v) ?? '—' : '—');
 export const fmtDateTime = (v?: string | null) => (v ? formatDateTime(v) ?? '—' : '—');
@@ -107,13 +61,35 @@ export const stageOf = (status: string): Stage => {
   return 'back'; // Goods Returned, Received, QC Failed, Debit Note Raised
 };
 
-export const STAGES: { key: Stage; label: string; dot: string }[] = [
-  { key: 'approval', label: 'Waiting for approval', dot: 'bg-amber-500' },
-  { key: 'act', label: 'Approved · to act', dot: 'bg-blue-600' },
-  { key: 'out', label: 'Out / in progress', dot: 'bg-orange-600' },
-  { key: 'back', label: 'Back · check & close', dot: 'bg-purple-600' },
-  { key: 'closed', label: 'Closed this month', dot: 'bg-green-600' },
+/** Colour families. One status keeps one colour on the board, in the side panel and on every badge. */
+export type Tone = 'amber' | 'sky' | 'violet' | 'teal' | 'green' | 'red' | 'slate';
+
+export const STAGES: { key: Stage; label: string; tone: Tone }[] = [
+  { key: 'approval', label: 'Waiting for approval', tone: 'amber' },
+  { key: 'act', label: 'Approved · to act', tone: 'sky' },
+  { key: 'out', label: 'Out / in progress', tone: 'violet' },
+  { key: 'back', label: 'Back · check & close', tone: 'teal' },
+  { key: 'closed', label: 'Closed this month', tone: 'green' },
 ];
+
+export const statusTone = (status: string): Tone => {
+  switch (status) {
+    case 'Pending Dept Approval':
+    case 'Pending Approval': return 'amber';
+    case 'Approved':
+    case 'Return Order Raised': return 'sky';
+    case 'At Vendor':
+    case 'In Progress': return 'violet';
+    case 'Goods Returned':
+    case 'Received': return 'teal';
+    case 'QC Failed':
+    case 'Debit Note Raised':
+    case 'Rejected': return 'red';
+    case 'Completed':
+    case 'Closed': return 'green';
+    default: return 'slate';
+  }
+};
 
 /** What has to happen next, in a few words (null once the request is finished). */
 export const nextStepLabel = (r: AssetRequest): string | null => {
