@@ -106,12 +106,34 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
   const [currentItem, setCurrentItem] = useState<Record<string, any>>({});
   const currentItemType: PRItemType | '' = currentItem.item_type ?? '';
 
-  const basicInfoFields = usePRBasicInfoFields({
+  // The user's FIXED home organisation (set on the User Home Org screen, carried in the login session).
+  // Role Approval only widens what they can see; a requisition is always raised for their own company /
+  // division / branch / department, so those four fields are pre-filled and locked when a home org exists.
+  const homeOrg = useMemo(() => {
+    const u: any = Array.isArray(userData) ? userData[0] : userData;
+    if (!u?.dept_sno || !u?.com_sno || !u?.div_sno || !u?.brn_sno) return null;
+    return {
+      com_sno: String(u.com_sno), com_name: u.com_name ?? '',
+      div_sno: String(u.div_sno), div_name: u.div_name ?? '',
+      brn_sno: String(u.brn_sno), brn_name: u.brn_name ?? '',
+      dept_sno: String(u.dept_sno), dept_name: u.dept_name ?? '',
+    };
+  }, [userData]);
+
+  const rawBasicInfoFields = usePRBasicInfoFields({
     hierarchyData,
     selectedCompany,
     selectedDivision,
     selectedBranch,
   });
+  const basicInfoFields = useMemo(
+    () => homeOrg
+      ? rawBasicInfoFields.map((f) =>
+          ['com_sno', 'div_sno', 'brn_sno', 'dept_sno'].includes(f.field) ? { ...f, disabled: true } : f
+        )
+      : rawBasicInfoFields,
+    [rawBasicInfoFields, homeOrg]
+  );
   const itemDetailsFields = usePRItemDetailsFields({
     itemType: currentItemType,
     allowedItemTypes: normalizedAllowedItemTypes,
@@ -292,6 +314,20 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
       if ((basicInfo as any).brn_sno) setSelectedBranch(String((basicInfo as any).brn_sno));
     }
   }, [sidebarEditDraft, requisitionType]);
+
+  // ── Home org: keep the four org fields on the user's own organisation ─────
+  // (also re-applies after the form is reset; a sidebar draft keeps the org it was saved with)
+  useEffect(() => {
+    if (!homeOrg || sidebarEditDraft) return;
+    if (
+      basicFormData.com_sno === homeOrg.com_sno && basicFormData.div_sno === homeOrg.div_sno &&
+      basicFormData.brn_sno === homeOrg.brn_sno && basicFormData.dept_sno === homeOrg.dept_sno
+    ) return;
+    setBasicFormData((prev) => ({ ...prev, ...homeOrg }));
+    setSelectedCompany(homeOrg.com_sno);
+    setSelectedDivision(homeOrg.div_sno);
+    setSelectedBranch(homeOrg.brn_sno);
+  }, [homeOrg, sidebarEditDraft, basicFormData.com_sno, basicFormData.div_sno, basicFormData.brn_sno, basicFormData.dept_sno]);
 
   // ── Scope key: update when hierarchy selection changes ───────────────────
 

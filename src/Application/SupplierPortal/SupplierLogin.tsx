@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Package } from 'lucide-react';
+import AuthLayout from '@/LayoutComponent/AuthLayout';
+import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { supplierAxios, supplierLogin, type SupplierProfile } from '@/Services/SupplierService';
+import { SUPPLIER_BRAND } from './supplierBrand';
 
 interface Props {
   onLoggedIn: (token: string, supplier: SupplierProfile, mustResetPassword: boolean) => void;
@@ -32,46 +32,35 @@ const SupplierLogin: React.FC<Props> = ({ onLoggedIn }) => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Package className="h-5 w-5" />
-          </div>
-          <CardTitle>Supplier Portal</CardTitle>
-          <CardDescription>Sign in to view purchase orders</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="supplier-code">Supplier Code</Label>
-              <Input
-                id="supplier-code"
-                type="text"
-                autoComplete="username"
-                required
-                value={suppCode}
-                onChange={(e) => setSuppCode(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="supplier-password">Password</Label>
-              <Input
-                id="supplier-password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            <Button type="submit" disabled={submitting} className="mt-2">
-              {submitting ? 'Signing in…' : 'Sign in'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+    <AuthLayout title="Welcome back" subtitle="Sign in with your supplier code to open the Supplier Portal" brand={SUPPLIER_BRAND}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <CustomInputField
+          field="supp_code"
+          id="supp_code"
+          label="Supplier Code"
+          type="text"
+          placeholder="Enter your supplier code"
+          require
+          autoComplete="username"
+          value={suppCode}
+          onChange={(v: string) => setSuppCode(v)}
+        />
+        <CustomInputField
+          field="supplier_password"
+          label="Password"
+          type="password"
+          placeholder="Enter password (or temporary password)"
+          require
+          id="supplier_password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(v: string) => setPassword(v)}
+        />
+        <Button type="submit" className="w-full" size="lg" disabled={submitting}>
+          {submitting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Signing in…</>) : 'Sign in'}
+        </Button>
+      </form>
+    </AuthLayout>
   );
 };
 

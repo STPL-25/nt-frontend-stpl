@@ -57,7 +57,7 @@ export const notInFileReason = (e: Pick<PaymentEntry, 'channel' | 'mode'>): stri
   return `${e.mode} - not in the bank file`;
 };
 
-/** The account the run is paid from: the one the user chose if it is still offered, else the company's default, else the only one. null = the user has to choose. */
+/** The account the run is paid from: chosen, else this company/division/branch's default, else its only one. */
 export const pickSender = (senders: PaymentSender[], chosen: string): PaymentSender | null =>
   senders.find((s) => String(s.payment_bank_sno) === chosen)
   ?? senders.find((s) => s.is_default === 'Y')
@@ -69,11 +69,34 @@ export const senderLabel = (s: Pick<PaymentSender, 'profile_name' | 'bank_name' 
 /** What stops a run that has `fileLines` bank transfers from being paid, or null: no account to pay from, or more than one and none chosen. */
 export const senderProblem = (fileLines: number, senders: PaymentSender[], chosen: string): string | null => {
   if (fileLines === 0) return null;
-  if (senders.length === 0) return 'No bank account to pay from is set up for this company. Add one in Masters > Payment Bank, then come back.';
+  if (senders.length === 0) return 'No bank account is set up for this company, division and branch. Add one in Masters > Payment Bank, then come back.';
   return pickSender(senders, chosen) ? null : 'Choose the bank account to pay from.';
 };
 
-export const toPaise = (n: number | string | null | undefined): number => Math.round((Number(n) || 0) * 100);
+/** How a payment made on a supplier's portal can have been paid. */
+export const PORTAL_MODES = ['UPI', 'Credit Card', 'Debit Card', 'Net Banking', 'Wallet', 'Other'] as const;
+
+export interface PortalForm { mode: string; txnId: string; txnDate: string; paid: string; discount: string }
+
+/** The net amount split into what was paid and the discount: typing the discount fills the amount paid. */
+export const paidAfterDiscount = (net: number, discount: string): string => {
+  const d = Number(discount);
+  return Number.isFinite(d) && d >= 0 && d <= net ? String(Math.round((net - d) * 100) / 100) : '';
+};
+
+/** Why the portal transaction cannot be saved yet, or null. */
+export const portalProblem = (net: number, f: PortalForm, today: string): string | null => {
+  if (!f.mode) return 'Choose how it was paid.';
+  if (!f.txnId.trim()) return 'Enter the transaction id.';
+  if (!/^[A-Za-z0-9._/-]+$/.test(f.txnId.trim())) return 'The transaction id can only have letters, digits and . _ / -';
+  if (!f.txnDate || f.txnDate > today) return 'Enter the transaction date (not in the future).';
+  const paid = Number(f.paid), disc = Number(f.discount || 0);
+  if (!Number.isFinite(paid) || paid < 0 || !Number.isFinite(disc) || disc < 0) return 'Enter the amount paid and the discount (if any) as positive amounts.';
+  if (Math.abs(toPaise(paid) + toPaise(disc) - toPaise(net)) > 0) return `Amount paid + discount must equal ${rupees(net)}.`;
+  return null;
+};
+
+export const toPaise =(n: number | string | null | undefined): number => Math.round((Number(n) || 0) * 100);
 const fromPaise = (p: number): number => p / 100;
 
 export type FundVerdict = 'PAY' | 'SHORT' | 'BLOCKED';

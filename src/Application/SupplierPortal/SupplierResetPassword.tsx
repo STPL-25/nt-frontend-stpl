@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import AuthLayout from '@/LayoutComponent/AuthLayout';
+import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { supplierAxios, supplierResetPassword } from '@/Services/SupplierService';
+import { SUPPLIER_BRAND } from './supplierBrand';
 
 interface Props {
   onDone: () => void;
@@ -43,45 +44,21 @@ const SupplierResetPassword: React.FC<Props> = ({ onDone, suppCode }) => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Set a new password</CardTitle>
-          <CardDescription>You're using a temporary password — choose a new one to continue.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-password">New password</Label>
-              <Input
-                id="new-password"
-                type="password"
-                autoComplete="new-password"
-                minLength={6}
-                required
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="confirm-password">Confirm password</Label>
-              <Input
-                id="confirm-password"
-                type="password"
-                autoComplete="new-password"
-                minLength={6}
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-              />
-            </div>
-            <Button type="submit" disabled={submitting} className="mt-2">
-              {submitting ? 'Saving…' : 'Save password'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+    <AuthLayout title="Set a new password" subtitle="You're using a temporary password - choose a new one to continue" brand={SUPPLIER_BRAND}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <CustomInputField
+          field="new_password" id="new_password" label="New password" type="password" placeholder="At least 6 characters" require
+          autoComplete="new-password" value={newPassword} onChange={(v: string) => setNewPassword(v)}
+        />
+        <CustomInputField
+          field="confirm_password" id="confirm_password" label="Confirm password" type="password" placeholder="Type it again" require
+          autoComplete="new-password" value={confirmPassword} onChange={(v: string) => setConfirmPassword(v)}
+        />
+        <Button type="submit" className="w-full" size="lg" disabled={submitting}>
+          {submitting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</>) : 'Save password'}
+        </Button>
+      </form>
+    </AuthLayout>
   );
 };
 

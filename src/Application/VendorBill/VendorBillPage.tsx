@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -35,6 +36,8 @@ interface ChildPO {
   payment_cycle_days: number;
   vendor_invoice_no: string | null;
   vendor_invoice_date: string | null;
+  last_received_date: string | null;
+  receipts: string | null; // raw JSON: each delivery (GRN) received against this PO
   items: string; // raw JSON from the SP
 }
 
@@ -47,6 +50,9 @@ const VendorBillPage: React.FC = () => {
 
   const [vendorSno, setVendorSno] = useState<string>('');
   const [vendorError, setVendorError] = useState<string | null>(null);
+  // the period being billed: goods that last arrived between these dates (blank = everything delivered so far)
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [childPOs, setChildPOs] = useState<ChildPO[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
@@ -55,7 +61,11 @@ const VendorBillPage: React.FC = () => {
   const [consolidating, setConsolidating] = useState(false);
 
   const parsedPOs = useMemo(
-    () => childPOs.map((po) => ({ ...po, parsedItems: JSON.parse(po.items || '[]') as ChildPOItem[] })),
+    () => childPOs.map((po) => ({
+      ...po,
+      parsedItems: JSON.parse(po.items || '[]') as ChildPOItem[],
+      parsedReceipts: JSON.parse(po.receipts || '[]') as Array<{ grn_no: number; received_date: string; supplier_invoice_no: string | null; status: string }>,
+    })),
     [childPOs]
   );
 
@@ -72,7 +82,9 @@ const VendorBillPage: React.FC = () => {
     setSearched(true);
     setSelected(new Set());
     try {
-      const res = await axios.get(getVendorDrivenBillableChildPOs, { params: { vendor_sno: vendorSno } });
+      const res = await axios.get(getVendorDrivenBillableChildPOs, {
+        params: { vendor_sno: vendorSno, from_date: fromDate || undefined, to_date: toDate || undefined },
+      });
       setChildPOs(res?.data?.data ?? []);
     } catch (error: any) {
       toast.error(error?.response?.data?.error || 'Failed to load billable child POs');
@@ -115,12 +127,19 @@ const VendorBillPage: React.FC = () => {
       const res = await axios.post(consolidateVendorDrivenBills, {
         vendor_sno: Number(vendorSno),
         po_basic_snos: Array.from(selected),
+        period_from: fromDate || undefined,
+        period_to: toDate || undefined,
       });
       const results: Array<{ po_basic_sno: number; po_no?: string; result: string; error?: string; invoice_no?: string }> = res?.data?.data ?? [];
+      const consolidatedNo: string | undefined = res?.data?.consolidation?.consolidation_no;
       const succeeded = results.filter((r) => r.result === 'SUCCESS');
       const failed = results.filter((r) => r.result !== 'SUCCESS');
       if (succeeded.length > 0) {
-        toast.success(`${succeeded.length} bill${succeeded.length === 1 ? '' : 's'} raised (${succeeded.map((r) => r.invoice_no).filter(Boolean).join(', ')})`);
+        toast.success(
+          consolidatedNo
+            ? `Consolidated bill ${consolidatedNo} raised for ${succeeded.length} PO${succeeded.length === 1 ? '' : 's'} - pay it from the Payment screen`
+            : `${succeeded.length} bill${succeeded.length === 1 ? '' : 's'} raised (${succeeded.map((r) => r.invoice_no).filter(Boolean).join(', ')})`,
+        );
       }
       if (failed.length > 0) {
         toast.error(`${failed.length} PO(s) could not be billed: ${failed.map((f) => `${f.po_no ?? f.po_basic_sno} — ${f.error}`).join('; ')}`);
@@ -140,7 +159,7 @@ const VendorBillPage: React.FC = () => {
       <PageHeader
         icon={Receipt}
         title="Vendor Bill"
-        description="Select delivered child POs from one supplier — spanning multiple days — and raise one consolidated bill for each"
+        description="Select a supplier's delivered child POs for a period and raise ONE consolidated bill to pay"
       />
 
       <div className="container mx-auto py-6 px-4 space-y-6">
@@ -162,7 +181,19 @@ const VendorBillPage: React.FC = () => {
                     className="h-10"
                   />
                 </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium" htmlFor="vb-from">Delivered from</label>
+                  <Input id="vb-from" type="date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} className="h-10" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium" htmlFor="vb-to">Delivered to</label>
+                  <Input id="vb-to" type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} className="h-10" />
+                </div>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Pick the billing period (for example a fortnight). All the delivered POs in it become <b>one consolidated bill</b>, paid from the
+                Payment screen through the usual payment approval and Payment Run.
+              </p>
               <div className="flex justify-end pt-1">
                 <Button type="button" onClick={handleSearch} disabled={searching} className="h-9">
                   {searching ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
@@ -197,7 +228,8 @@ const VendorBillPage: React.FC = () => {
                         </TableHead>
                         <TableHead className="w-6" />
                         <TableHead className="text-xs">PO No</TableHead>
-                        <TableHead className="text-xs">Date</TableHead>
+                        <TableHead className="text-xs">PO Date</TableHead>
+                        <TableHead className="text-xs">Received</TableHead>
                         <TableHead className="text-xs">Supplier Invoice</TableHead>
                         <TableHead className="text-xs">Payment Cycle</TableHead>
                         <TableHead className="text-xs text-right">Amount</TableHead>
@@ -217,14 +249,40 @@ const VendorBillPage: React.FC = () => {
                             </TableCell>
                             <TableCell className="text-xs font-medium">{po.po_df_no}</TableCell>
                             <TableCell className="text-xs">{po.po_date}</TableCell>
+                            <TableCell className="text-xs">
+                              {po.parsedReceipts.length > 1 ? `${po.parsedReceipts.length} deliveries` : (po.last_received_date ?? '—')}
+                            </TableCell>
                             <TableCell className="text-xs">{po.vendor_invoice_no ?? '—'}</TableCell>
                             <TableCell className="text-xs">Every {po.payment_cycle_days} days</TableCell>
                             <TableCell className="text-xs text-right font-medium">₹{poTotal(po).toFixed(2)}</TableCell>
                           </TableRow>
                           {expanded.has(po.po_basic_sno) && (
                             <TableRow>
-                              <TableCell colSpan={7} className="bg-muted/20 p-0">
-                                <div className="p-3">
+                              <TableCell colSpan={8} className="bg-muted/20 p-0">
+                                <div className="p-3 space-y-3">
+                                  <div>
+                                    <p className="mb-1 text-xs font-semibold">Received bills / deliveries ({po.parsedReceipts.length})</p>
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow>
+                                          <TableHead className="text-xs">GRN</TableHead>
+                                          <TableHead className="text-xs">Received on</TableHead>
+                                          <TableHead className="text-xs">Supplier bill no</TableHead>
+                                          <TableHead className="text-xs">GRN status</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {po.parsedReceipts.map((r) => (
+                                          <TableRow key={r.grn_no}>
+                                            <TableCell className="text-xs">GRN {r.grn_no}</TableCell>
+                                            <TableCell className="text-xs">{r.received_date}</TableCell>
+                                            <TableCell className="text-xs">{r.supplier_invoice_no ?? '—'}</TableCell>
+                                            <TableCell className="text-xs">{r.status}</TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
                                   <Table>
                                     <TableHeader>
                                       <TableRow>

@@ -85,6 +85,10 @@ export const SOCKET_JOIN_SERVICE_PO_APPROVAL    = "join-service-po-approval";
 export const SOCKET_LEAVE_SERVICE_PO_APPROVAL   = "leave-service-po-approval";
 export const SOCKET_SERVICE_PO_APPROVAL_UPDATED = "service_po:approval:updated";
 
+export const SOCKET_JOIN_SERVICE_GRN    = "join-service-grn";
+export const SOCKET_LEAVE_SERVICE_GRN   = "leave-service-grn";
+export const SOCKET_SERVICE_GRN_UPDATED = "service_grn:updated";
+
 
 // ── Service Vendor KYC room + real-time events ────────────────────────────────
 export const SOCKET_JOIN_SERVICE_VENDOR_KYC_APPROVAL    = "join-service-vendor-kyc-approval";

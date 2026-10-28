@@ -731,16 +731,20 @@ const useAccountHeadFieldsMaster = (formData?: any): FieldType[] => {
  * bank takes, and what goes in the file name / e-mail position. The receiver's bank details come from the supplier KYC, not here.
  */
 const usePaymentBankFieldsMaster = (): FieldType[] => {
-  const { companyDetails } = useAppState();
+  const { companyDetails, filteredDivDetails, filteredBranchDetails } = useAppState();
   const fileTypeOptions = useMemo<OptionType[]>(() => [{ label: "Bank upload file (28 fields, NEFT / RTGS)", value: "BANK_UPLOAD" }], []);
   return useMemo<FieldType[]>(
     () => [
       { field: "payment_bank_sno", label: "S.No", require: false, view: false, type: "text", input: false },
       { field: "com_sno", label: "Company", require: true, view: false, type: "select", options: companyDetails || [], input: true },
       { field: "com_name", label: "Company", require: false, view: true, type: "text", input: false },
+      { field: "div_sno", label: "Division", require: true, view: false, type: "select", options: filteredDivDetails || [], input: true },
+      { field: "div_name", label: "Division", require: false, view: true, type: "text", input: false },
+      { field: "brn_sno", label: "Business Branch", require: true, view: false, type: "select", options: filteredBranchDetails || [], input: true },
+      { field: "brn_name", label: "Business Branch", require: false, view: true, type: "text", input: false },
       { field: "profile_name", label: "Account Name", require: true, view: true, type: "text", input: true, placeholder: "e.g. HDFC Current A/c" },
       { field: "bank_name", label: "Bank Name", require: true, view: true, type: "text", input: true },
-      { field: "branch_name", label: "Branch", require: false, view: true, type: "text", input: true },
+      { field: "branch_name", label: "Bank Branch", require: false, view: true, type: "text", input: true },
       { field: "ac_holder_name", label: "Account Holder Name", require: true, view: true, type: "text", input: true },
       { field: "ac_number", label: "Account Number", require: true, view: true, type: "text", input: true, placeholder: "Digits only" },
       { field: "ifsc", label: "IFSC", require: true, view: true, type: "text", input: true, placeholder: "e.g. HDFC0000123" },
@@ -748,11 +752,11 @@ const usePaymentBankFieldsMaster = (): FieldType[] => {
       { field: "file_type", label: "Payment File Type", require: false, view: true, type: "select", options: fileTypeOptions, input: true },
       { field: "file_prefix", label: "File Name Prefix", require: true, view: true, type: "text", input: true, placeholder: "e.g. SPACETEX" },
       { field: "client_code", label: "Client Code", require: true, view: true, type: "text", input: true, placeholder: "e.g. SPA311" },
-      { field: "alert_email", label: "Alert E-mail", require: false, view: true, type: "email", input: true, placeholder: "Goes in every line of the file" },
+      { field: "file_code", label: "Starting File Code (.100)", require: true, view: true, type: "text", input: true, placeholder: "100 or .100" },
       { field: "is_default", label: "Default Account", require: false, view: true, type: "select", options: YES_NO_OPTIONS, input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
-    [companyDetails, fileTypeOptions]
+    [companyDetails, filteredDivDetails, filteredBranchDetails, fileTypeOptions]
   );
 };
 

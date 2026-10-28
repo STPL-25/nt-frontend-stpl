@@ -1,5 +1,5 @@
 import React from 'react';
-import { Package, ChevronsLeft, X, ReceiptText } from 'lucide-react';
+import { Package, ChevronsLeft, X, ReceiptText, Banknote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -20,6 +20,8 @@ interface Props {
   isHome: boolean;
   onGoDebitNotes: () => void;
   isDebitNotes: boolean;
+  onGoPayments: () => void;
+  isPayments: boolean;
 }
 
 const SIDEBAR_WIDTH = 260;
@@ -34,6 +36,8 @@ const SupplierSidebar: React.FC<Props> = ({
   isHome,
   onGoDebitNotes,
   isDebitNotes,
+  onGoPayments,
+  isPayments,
 }) => {
   return (
     <TooltipProvider>
@@ -125,10 +129,29 @@ const SupplierSidebar: React.FC<Props> = ({
                   >
                     <ReceiptText className={`h-4 w-4 ${isDebitNotes ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-foreground'}`} />
                   </div>
-                  {!isCollapsed && <span className="ml-3 truncate text-sm font-medium">Debit Notes</span>}
+                  {!isCollapsed && <span className="ml-3 truncate text-sm font-medium">Debit / Credit Notes</span>}
                 </button>
               </TooltipTrigger>
-              {isCollapsed && <TooltipContent side="right">Debit Notes</TooltipContent>}
+              {isCollapsed && <TooltipContent side="right">Debit / Credit Notes</TooltipContent>}
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onGoPayments}
+                  className={`group flex w-full items-center rounded-xl px-2 py-2 text-sm transition-all duration-200
+                    ${isPayments ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}
+                >
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-all duration-200
+                      ${isPayments ? 'border-primary-foreground/20 bg-primary-foreground/10' : 'border-border/60 bg-background'}`}
+                  >
+                    <Banknote className={`h-4 w-4 ${isPayments ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-foreground'}`} />
+                  </div>
+                  {!isCollapsed && <span className="ml-3 truncate text-sm font-medium">Payments</span>}
+                </button>
+              </TooltipTrigger>
+              {isCollapsed && <TooltipContent side="right">Payments</TooltipContent>}
             </Tooltip>
           </nav>
         </div>

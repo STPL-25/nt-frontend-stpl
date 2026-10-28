@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Banknote, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, Download, History, Info, Loader2, RefreshCw, Wallet, XCircle,
+  AlertTriangle, Banknote, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ClipboardCheck, Download, History, Info, Loader2, RefreshCw, Wallet, XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -20,9 +20,10 @@ import { getErrorMessage } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 import { downloadTextFile } from '@/utils/downloadTextFile';
 import {
-  payNetCancel, payNetEntries, payNetRunBatchFile, payNetRunBatches, payNetRunProceed, payNetRunSenders,
+  payNetCancel, payNetEntries, payNetRunBatchFile, payNetRunBatches, payNetRunBatchVerification, payNetRunProceed, payNetRunSenders,
   type PaymentBatch, type PaymentEntries, type PaymentEntry, type PaymentFile, type PaymentSender, type RunResult,
 } from '@/Services/GrnService/paymentNetApi';
+import { PortalPaymentsSection, TdsRecordsPanel } from './PortalAndTdsPanels';
 import { socket, SOCKET_CONNECT, SOCKET_JOIN_PAYMENT, SOCKET_LEAVE_PAYMENT, SOCKET_PAYMENT_UPDATED } from '@/Services/Socket';
 import {
   PRIORITY_MODES, amountInWords, blockReason, dueState, groupLines, inBankFile, msmeNote, notInFileReason, parseAmountInput, pickSender, planFund,
@@ -56,7 +57,7 @@ const PaymentRunPage: React.FC = () => {
 
   const [fundText, setFundText] = useState('');
   const [mode, setMode] = useState<PriorityMode>('MSME_FIRST');
-  const [comSno, setComSno] = useState('');
+  const [scopeKey, setScopeKey] = useState('');
   const [manual, setManual] = useState<Set<number> | null>(null);   // null = follow the fund plan
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState<Set<number>>(new Set());
@@ -115,14 +116,26 @@ const PaymentRunPage: React.FC = () => {
   const limitDays = Number(data.settings.MSME_LIMIT_DAYS) || 45;
   const linesBy = useMemo(() => groupLines(data.lines), [data.lines]);
 
-  // A payment file covers one company: show one company's payments at a time.
-  const companies = useMemo(() => {
-    const m = new Map<number, string>();
-    for (const e of data.entries) if (e.com_sno != null) m.set(e.com_sno, e.com_name ?? `Company ${e.com_sno}`);
-    return [...m];
+  // A payment file and its sender master are scoped to one company/division/branch.
+  const scopes = useMemo(() => {
+    const m = new Map<string, { key: string; com_sno: number; div_sno: number; brn_sno: number; label: string }>();
+    for (const e of data.entries) {
+      if (e.com_sno == null || e.div_sno == null || e.brn_sno == null) continue;
+      const key = `${e.com_sno}|${e.div_sno}|${e.brn_sno}`;
+      m.set(key, {
+        key, com_sno: e.com_sno, div_sno: e.div_sno, brn_sno: e.brn_sno,
+        label: `${e.com_name ?? `Company ${e.com_sno}`} · Division ${e.div_sno} · Branch ${e.brn_sno}`,
+      });
+    }
+    return [...m.values()];
   }, [data.entries]);
-  const activeCom = companies.some(([id]) => String(id) === comSno) ? comSno : (companies[0] ? String(companies[0][0]) : '');
-  const visible = useMemo(() => (activeCom ? data.entries.filter((e) => String(e.com_sno) === activeCom) : data.entries), [data.entries, activeCom]);
+  const activeScope = scopes.find((s) => s.key === scopeKey) ?? scopes[0] ?? null;
+  const scoped = useMemo(() => activeScope
+    ? data.entries.filter((e) => `${e.com_sno}|${e.div_sno}|${e.brn_sno}` === activeScope.key)
+    : data.entries, [data.entries, activeScope]);
+  // portal suppliers are not part of the fund plan or a bank file: they are paid on their portal and recorded below
+  const visible = useMemo(() => scoped.filter((e) => e.channel !== 'PORTAL'), [scoped]);
+  const portalEntries = useMemo(() => scoped.filter((e) => e.channel === 'PORTAL'), [scoped]);
 
   const fund = parseAmountInput(fundText);
   const fundNum = fund ?? 0;
@@ -138,7 +151,7 @@ const PaymentRunPage: React.FC = () => {
 
   const changeFund = (t: string) => { setFundText(t); setManual(null); };
   const changeMode = (m: PriorityMode) => { setMode(m); setManual(null); };
-  const changeCompany = (c: string) => { setComSno(c); setManual(null); };
+  const changeScope = (key: string) => { setScopeKey(key); setManual(null); };
 
   const toggle = (e: PaymentEntry) => {
     if (blockReason(e)) return;
@@ -167,8 +180,8 @@ const PaymentRunPage: React.FC = () => {
 
   const toggleOpen = (id: number) => setOpen((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  // Opens the confirmation and reads the company's bank accounts - a run with bank transfers is paid from one of them.
-  const currentKey = `${activeCom}|${pickedEntries.map((e) => e.payment_sno).join(',')}`;
+  // Opens the confirmation and reads this company/division/branch's bank accounts.
+  const currentKey = `${activeScope?.key ?? ''}|${pickedEntries.map((e) => e.payment_sno).join(',')}`;
   // The list can reload under an open confirmation (live updates): then what it was opened for is no longer what would be paid.
   const stale = confirmOpen && snapKey !== '' && snapKey !== currentKey;
 
@@ -178,7 +191,9 @@ const PaymentRunPage: React.FC = () => {
     setSendersError('');
     setSendersLoading(true);
     try {
-      const res = await axios.get(payNetRunSenders, { params: { com_sno: activeCom || undefined } });
+      const res = await axios.get(payNetRunSenders, { params: activeScope ? {
+        com_sno: activeScope.com_sno, div_sno: activeScope.div_sno, brn_sno: activeScope.brn_sno,
+      } : undefined });
       if (mine === sendersReq.current) setSenders(res.data?.data ?? []);
     } catch (err) {
       if (mine === sendersReq.current) setSendersError(getErrorMessage(err, 'Could not read the bank accounts to pay from'));
@@ -233,6 +248,19 @@ const PaymentRunPage: React.FC = () => {
     }
   };
 
+  // the sheet the auditor / payment inputter checks the bank's screen against (invoice-wise, part payments, TDS)
+  const downloadVerification = async (b: PaymentBatch) => {
+    setDownloading(b.batch_sno);
+    try {
+      const res = await axios.get(payNetRunBatchVerification(b.batch_sno));
+      saveFile(res.data?.data);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not download the verification sheet'));
+    } finally {
+      setDownloading(null);
+    }
+  };
+
   const cancelPayment = async () => {
     if (!cancelFor) return;
     setCancelling(true);
@@ -267,10 +295,17 @@ const PaymentRunPage: React.FC = () => {
 
   const detailRow = (e: PaymentEntry) => {
     const lines = linesBy.get(e.payment_sno) ?? [];
+    const isAdvance = e.payment_type === 'ADVANCE';
     return (
       <TableRow key={`${e.payment_sno}-detail`} className="bg-muted/20 hover:bg-muted/20">
         <TableCell colSpan={10} className="p-0">
           <div className="space-y-3 px-4 py-3 sm:px-6">
+            {isAdvance ? (
+              <Callout tone="info" icon={Info}>
+                Advance agreed on the quotation of PO <b>{e.po_nos ?? '—'}</b>{e.adv_stage_no && e.adv_stage_no > 1 ? ` (stage ${e.adv_stage_no})` : ''}. It fell due when the PO was approved.
+                Once paid it is held as the supplier's advance, and the Payment screen nets it off the PO's bills.
+              </Callout>
+            ) : (
             <div className="overflow-x-auto rounded-lg border bg-card">
               <Table>
                 <TableHeader>
@@ -299,6 +334,7 @@ const PaymentRunPage: React.FC = () => {
                 </TableBody>
               </Table>
             </div>
+            )}
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs sm:grid-cols-4">
               <div><dt className="text-[11px] uppercase tracking-wide text-muted-foreground">Gross</dt><dd className="font-semibold tabular-nums">{rupees(e.gross_amount)}</dd></div>
               <div><dt className="text-[11px] uppercase tracking-wide text-muted-foreground">TDS / advance / notes</dt>
@@ -337,6 +373,7 @@ const PaymentRunPage: React.FC = () => {
           { label: 'Waiting', value: visible.length, icon: Wallet },
           { label: 'Overdue', value: overdueCount, icon: CalendarClock },
           { label: 'MSME suppliers', value: msmeCount, icon: Info },
+          { label: 'Advances', value: visible.filter((e) => e.payment_type === 'ADVANCE').length, icon: Wallet },
           { label: 'Waiting amount', value: `₹${amountInWords(waitingTotal) || Math.round(waitingTotal).toLocaleString('en-IN')}`, icon: Banknote },
         ]}
       >
@@ -377,14 +414,14 @@ const PaymentRunPage: React.FC = () => {
                 </Select>
                 <p className="text-xs text-muted-foreground">{PRIORITY_MODES.find((m) => m.value === mode)?.hint}</p>
               </div>
-              {companies.length > 1 && (
+              {scopes.length > 1 && activeScope && (
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Company</Label>
-                  <Select value={activeCom} onValueChange={changeCompany}>
-                    <SelectTrigger className="h-10 w-full" aria-label="Company"><SelectValue /></SelectTrigger>
-                    <SelectContent>{companies.map(([id, name]) => <SelectItem key={id} value={String(id)}>{name}</SelectItem>)}</SelectContent>
+                  <Label className="text-xs">Payment scope</Label>
+                  <Select value={activeScope.key} onValueChange={changeScope}>
+                    <SelectTrigger className="h-10 w-full" aria-label="Payment scope"><SelectValue /></SelectTrigger>
+                    <SelectContent>{scopes.map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">One payment file covers one company.</p>
+                  <p className="text-xs text-muted-foreground">One payment file covers one company, division and branch.</p>
                 </div>
               )}
             </div>
@@ -471,7 +508,10 @@ const PaymentRunPage: React.FC = () => {
                             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[11px] font-semibold tabular-nums">{rankOf.get(e.payment_sno)}</span>
                           </TableCell>
                           <TableCell className="min-w-44 text-xs">
-                            <span className="block font-semibold">{e.vendor_name ?? '—'}</span>
+                            <span className="block font-semibold">
+                              {e.vendor_name ?? '—'}
+                              {e.payment_type === 'ADVANCE' && <span className={cn('ml-1.5 inline-flex items-center rounded-md border px-1.5 py-px align-middle text-[10px] font-medium', TONE.violet)} title="Advance on an approved PO - not a bill">Advance</span>}
+                            </span>
                             <span className="block text-muted-foreground">{e.payment_no}{e.po_nos ? ` · ${e.po_nos}` : ''}</span>
                             {notInFileReason(e) && <span className="mt-1 inline-block rounded border bg-muted px-1.5 py-px text-[10px] text-muted-foreground">{notInFileReason(e)}</span>}
                           </TableCell>
@@ -523,6 +563,9 @@ const PaymentRunPage: React.FC = () => {
           )}
         </Panel>
 
+        <PortalPaymentsSection entries={portalEntries} canRecord={canProceed} onRecorded={load} version={data} />
+        <TdsRecordsPanel version={data} />
+
         <Panel icon={History} title="Previous payment runs" description="Download the payment file of an earlier run again" bodyClassName="p-0">
           {batches.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-muted-foreground">No payment run yet.</p>
@@ -547,7 +590,10 @@ const PaymentRunPage: React.FC = () => {
                     <TableRow key={b.batch_sno}>
                       <TableCell className="text-xs font-medium">{b.batch_no}</TableCell>
                       <TableCell className="text-xs">{showDate(b.batch_date)}</TableCell>
-                      <TableCell className="text-xs">{b.com_name ?? '—'}</TableCell>
+                      <TableCell className="text-xs">
+                        {b.com_name ?? '—'}
+                        {(b.div_name || b.brn_name) && <span className="block text-muted-foreground">{[b.div_name, b.brn_name].filter(Boolean).join(' · ')}</span>}
+                      </TableCell>
                       <TableCell className="text-xs">
                         {b.sender_bank_name ? <>{b.sender_bank_name}<span className="block text-muted-foreground">••••{b.sender_ac_last4}{b.sender_client_code ? ` · ${b.sender_client_code}` : ''}</span></> : '—'}
                       </TableCell>
@@ -557,9 +603,15 @@ const PaymentRunPage: React.FC = () => {
                       <TableCell className="text-xs">{b.created_by ?? '—'}</TableCell>
                       <TableCell className="text-right">
                         {b.has_file || b.file_type ? (
-                          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" disabled={downloading === b.batch_sno} onClick={() => downloadBatch(b)}>
-                            {downloading === b.batch_sno ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}File
-                          </Button>
+                          <>
+                            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" disabled={downloading === b.batch_sno} onClick={() => downloadBatch(b)}>
+                              {downloading === b.batch_sno ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}File
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" disabled={downloading === b.batch_sno} onClick={() => downloadVerification(b)}
+                              title="Invoice-wise sheet to check the bank file against - part payments, TDS and what is left">
+                              <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" />Check sheet
+                            </Button>
+                          </>
                         ) : <span className="text-xs text-muted-foreground" title="No bank transfer in this run">No file</span>}
                       </TableCell>
                     </TableRow>
@@ -605,7 +657,7 @@ const PaymentRunPage: React.FC = () => {
                     </SelectContent>
                   </Select>
                   <p className={cn('text-xs', sender ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-300')}>
-                    {sender ? `Bank upload file for ${sender.bank_name} (client code ${sender.client_code}). Each supplier's account, IFSC and bank come from their KYC.` : blockedBySender}
+                    {sender ? `Bank upload file for ${sender.bank_name} (client code ${sender.client_code}; daily file numbers start at .${sender.file_code}). Each supplier's account, IFSC and bank come from their KYC.` : blockedBySender}
                   </p>
                 </>
               )}
@@ -654,6 +706,17 @@ const PaymentRunPage: React.FC = () => {
             </div>
           ) : (
             <Callout tone="info" icon={Info}>None of these payments is a NEFT / RTGS bank transfer, so there is no payment file for this run.</Callout>
+          )}
+          {result && result.verification && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed p-3">
+              <div className="min-w-0 text-sm">
+                <p className="font-semibold">Check sheet for the bank upload</p>
+                <p className="text-xs text-muted-foreground">
+                  Invoice-wise: what each transfer pays, part payments, TDS and what is left. The auditor / payment inputter checks the bank's screen against it - the bank only shows the file's lines.
+                </p>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => saveFile(result.verification!)}><ClipboardCheck className="mr-1.5 h-4 w-4" />Download check sheet</Button>
+            </div>
           )}
           {result && result.skipped.length > 0 && (
             <div className="space-y-1.5">

@@ -14,6 +14,43 @@ export const supplierGetDispatchSlip = (dispatch_slip_sno: number) => `${base}/d
 export const supplierGetDispatchDelivery = (delivery_sno: number) => `${base}/dispatch/delivery/${delivery_sno}`;
 export const supplierGetDebitNotes = `${base}/debit-notes`;
 export const supplierGetDebitNoteDetail = (debit_note_sno: number) => `${base}/debit-notes/${debit_note_sno}`;
+export const supplierGetPayments = `${base}/payments`;
+export const supplierGetCreditNotes = `${base}/credit-notes`;
+export const supplierGetCreditNoteDetail = (credit_note_sno: number) => `${base}/credit-notes/${credit_note_sno}`;
+
+/** sp_nt_GetPaymentsForSupplier — what the supplier is (or will be) paid. 'Scheduled' = approved, waiting for a payment run. */
+export interface SupplierPaymentItem {
+  payment_sno: number;
+  payment_no: string;
+  payment_type: 'BILL' | 'ADVANCE';
+  status: 'Scheduled' | 'Paid';
+  payment_date: string | null;
+  processed_at: string | null;
+  batch_no: string | null;
+  mode: string | null;
+  gross_amount: number;
+  tds_amount: number;
+  advance_adjusted: number;
+  note_adjusted: number;
+  net_paid: number;
+  po_nos: string | null;
+  invoice_nos: string | null;
+  supplier_invoice_nos: string | null;
+  planned_for: string | null;
+}
+/** An advance paid to the supplier, with how much of it has been netted off bills. */
+export interface SupplierAdvanceItem {
+  advance_sno: number;
+  advance_no: string;
+  po_basic_sno: number | null;
+  po_no: string | null;
+  paid_date: string;
+  amount: number;
+  adjusted_amount: number;
+  balance: number;
+  remarks: string | null;
+}
+export interface SupplierPaymentsData { payments: SupplierPaymentItem[]; advances: SupplierAdvanceItem[] }
 
 export interface SupplierPOListItem {
   po_basic_sno: number;
@@ -163,6 +200,37 @@ export function dispatchQrCode(delivery: { lr_no: string | null; delivery_sno: n
 }
 
 export type DebitNoteReasonType = 'Damage' | 'Shortage' | 'Return';
+/** Credit notes are raised when more arrived than the supplier invoiced (sql/71) and add to what the supplier is paid. */
+export type CreditNoteReasonType = 'Excess' | string;
+
+/** sp_nt_GetCreditNotesForSupplier - same shape as a debit note row (no supplier invoice on a credit note). */
+export interface SupplierCreditNoteListItem {
+  credit_note_sno: number;
+  credit_note_no: string;
+  grn_basic_sno: number;
+  grn_no: string;
+  po_basic_sno: number;
+  po_no: string;
+  com_name: string | null;
+  vendor_invoice_no: string | null;
+  vendor_invoice_date: string | null;
+  credit_note_date: string;
+  total_qty: number;
+  total_amount: number;
+  remarks: string | null;
+  status: string;
+}
+export interface SupplierCreditNoteItem {
+  credit_note_item_sno: number;
+  prod_name: string;
+  specification: string | null;
+  unit_name: string | null;
+  reason_type: CreditNoteReasonType;
+  qty: number;
+  unit_price: number;
+  amount: number;
+  remarks: string | null;
+}
 
 /** sp_nt_GetDebitNotesForSupplier — one row per debit note raised against this vendor. */
 export interface SupplierDebitNoteListItem {

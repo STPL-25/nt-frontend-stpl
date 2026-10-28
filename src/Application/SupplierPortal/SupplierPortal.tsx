@@ -16,20 +16,23 @@ import SupplierDispatchForm from './SupplierDispatchForm';
 import SupplierDispatchSummary from './SupplierDispatchSummary';
 import SupplierDispatchSlip from './SupplierDispatchSlip';
 import SupplierDebitNotesList from './SupplierDebitNotesList';
+import SupplierPaymentsList from './SupplierPaymentsList';
 
 type View =
   | { name: 'workspace'; selected?: number }
   | { name: 'dispatch-form'; po_basic_sno: number }
   | { name: 'dispatch-summary'; result: DispatchCreateResult }
   | { name: 'dispatch-slip'; delivery_sno: number }
-  | { name: 'debit-notes' };
+  | { name: 'debit-notes' }
+  | { name: 'payments' };
 
 const VIEW_TITLES: Record<View['name'], string> = {
   workspace: 'Purchase Orders',
   'dispatch-form': 'Dispatch',
   'dispatch-summary': 'Dispatch Summary',
   'dispatch-slip': 'Delivery Slip',
-  'debit-notes': 'Debit Notes',
+  'debit-notes': 'Debit / Credit Notes',
+  payments: 'Payments',
 };
 
 const COLLAPSED_WIDTH = 80;
@@ -131,6 +134,8 @@ const SupplierPortal: React.FC = () => {
         isHome={view.name === 'workspace'}
         onGoDebitNotes={() => setView({ name: 'debit-notes' })}
         isDebitNotes={view.name === 'debit-notes'}
+        onGoPayments={() => setView({ name: 'payments' })}
+        isPayments={view.name === 'payments'}
       />
 
       <div className="flex h-screen flex-col overflow-hidden" style={mainContentStyle}>
@@ -154,6 +159,10 @@ const SupplierPortal: React.FC = () => {
           ) : view.name === 'debit-notes' ? (
             <div className="h-full w-full">
               <SupplierDebitNotesList />
+            </div>
+          ) : view.name === 'payments' ? (
+            <div className="h-full w-full">
+              <SupplierPaymentsList />
             </div>
           ) : (
             <div className="mx-auto h-full w-full max-w-4xl">

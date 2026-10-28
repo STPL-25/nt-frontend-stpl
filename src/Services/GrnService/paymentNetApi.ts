@@ -30,6 +30,9 @@ export interface PayableBillNet {
   outstanding: number; invoice_amount: number; taxable_value: number | null;
   tds_section_code: string | null; itc_status: string | null; payment_hold_override: 'Y' | 'N' | null;
   gst_supplier: boolean; gst_booked: boolean; grn_state: 'Done' | 'Pending approval' | 'No GRN' | 'NA'; on_hold_2b: boolean;
+  /** (sql/70) the GST share of this bill; the part of it kept back until the invoice shows in GSTR-2B; what can be paid today
+   *  (below `outstanding` while that GST is held). taxable_known = the invoice carries a taxable value, so it can be split. */
+  gst_amount?: number; gst_held?: number; payable_now?: number; taxable_known?: boolean;
 }
 
 export interface GrnPendingPayment {
@@ -57,7 +60,11 @@ export interface LedgerGrn {
 }
 export interface InvoiceLedger { invoices: LedgerInvoice[]; grns: LedgerGrn[] }
 
-export interface SupplierAdvance { advance_sno: number; advance_no: string; po_basic_sno: number | null; paid_date: string; amount: number; balance: number }
+export interface SupplierAdvance {
+  advance_sno: number; advance_no: string; po_basic_sno: number | null; po_no?: string | null; paid_date: string; amount: number; balance: number;
+  /** OWN = paid against the PO of the invoices being paid; SUPPLIER = its PO is cancelled / settled, so it moves to the supplier's other invoices (sql/70) */
+  scope?: 'OWN' | 'SUPPLIER';
+}
 export interface PendingNote {
   note_sno: number; note_no: string; po_basic_sno: number | null; note_date: string; amount: number; remarks: string | null;
   /** OWN = raised against a bill in this payment (that bill is still open);
@@ -77,7 +84,10 @@ export interface TdsSection { section_code: string; description: string; rate_in
 
 export interface PaymentAdjustments {
   advances: SupplierAdvance[]; debitNotes: PendingNote[]; creditNotes: PendingNote[]; tdsSections: TdsSection[];
+  /** advances approved for the supplier but not paid yet (waiting in Payment Run) - not nettable until paid */
+  pendingAdvances?: PendingAdvance[];
 }
+export interface PendingAdvance { payment_sno: number; payment_no: string; po_basic_sno: number | null; po_no: string | null; amount: number; status: string }
 
 export interface NetSummary {
   gross_amount: number; tds_amount: number; advance_adjusted: number; debit_notes: number; credit_notes: number; net_paid: number;
@@ -85,6 +95,8 @@ export interface NetSummary {
 export interface NetInvoiceLine {
   invoice_sno: number; invoice_no: string; gross: number; taxable_base: number; tds_section: string | null;
   tds_rate_pct: number | null; tds_taxable: number | null; tds_amount: number;
+  /** (sql/70) what the invoice may be paid in all, what was paid / held before this payment, what is left after it; is_part = more is still to pay or was paid before */
+  payable_total?: number; paid_before?: number; balance_after?: number; is_part?: boolean; supplier_invoice_no?: string | null;
 }
 export interface NetPreview { summary: NetSummary | null; invoices: NetInvoiceLine[] }
 
@@ -97,10 +109,34 @@ export interface SavedPayment {
 export const payNetEntries = `${base}/entries`;
 export const payNetEntryDetail = (payment_sno: number) => `${base}/entries/${payment_sno}`;
 export const payNetApprove = `${base}/approve`;
+/** The approver pays less now (sql/70): { payment_sno, reason, allocations: [{ invoice_sno, amount }] }; the rest stays on the invoice. */
+export const payNetRevise = `${base}/revise`;
 export const payNetCancel = `${base}/cancel`;
 export const payNetRunProceed = `${base}/run/proceed`;
 export const payNetRunBatches = `${base}/run/batches`;
 export const payNetRunBatchFile = (batch_sno: number) => `${base}/run/batches/${batch_sno}/file`;
+/** The sheet the auditor / payment inputter checks the bank's screen against (invoice-wise, part payments, TDS, balance left) */
+export const payNetRunBatchVerification = (batch_sno: number) => `${base}/run/batches/${batch_sno}/verification`;
+/** A supplier paid on their portal: no run, no file - record the transaction once it is paid there (sql/69). */
+export const payNetPortalPay = `${base}/run/portal-payment`;
+export const payNetPortalPayments = `${base}/run/portal-payments`;
+/** TDS taken on each invoice (deductee, deductor, section, rate, amount) */
+export const payNetTdsRecords = `${base}/tds-records`;
+
+export type PortalMode = 'UPI' | 'Credit Card' | 'Debit Card' | 'Net Banking' | 'Wallet' | 'Other';
+export interface PortalPayment {
+  txn_sno: number; payment_sno: number; payment_no: string; vendor_name: string | null; supp_code: string | null; portal_name: string | null;
+  txn_mode: PortalMode; txn_id: string; txn_date: string; net_paid: number; amount_paid: number; discount_amount: number;
+  remarks: string | null; recorded_by: string | null; recorded_at: string; com_name: string | null;
+}
+export interface TdsRecord {
+  deduction_sno: number; payment_sno: number; payment_no: string; payment_status: PaymentStatus; payment_date: string | null;
+  invoice_sno: number; invoice_no: string | null; supplier_invoice_no: string | null;
+  vendor_sno: number; vendor_name: string | null; supp_code: string | null; vendor_pan: string | null;
+  deductor_name: string | null; deductor_tan: string | null; deductor_pan: string | null;
+  section_code: string; section_description: string | null; fin_year: string | null; base_amount: number; base_deducted: number; rate_pct: number; tds_amount: number;
+}
+
 /** The company's bank accounts a run can be paid from (Payment Bank master): ?com_sno= */
 export const payNetRunSenders = `${base}/run/senders`;
 
@@ -112,6 +148,8 @@ export type MsmeClass = 'MICRO' | 'SMALL' | 'MEDIUM' | 'MSME';
 
 /** One saved payment. Dates are yyyy-mm-dd (plus a time zone the screens ignore). */
 export interface PaymentEntry {
+  /** ADVANCE = the quotation's advance, due once its PO is approved (sql/69); it has no invoices, and paying it creates a supplier advance */
+  payment_type?: 'BILL' | 'ADVANCE'; po_basic_sno?: number | null; adv_stage_no?: number | null;
   payment_sno: number; payment_no: string; vendor_sno: number; vendor_name: string | null; supp_code: string | null; vendor_email: string | null;
   mode: string; debit_account: string | null; reference_no: string | null; remarks: string | null; payment_date: string | null;
   status: PaymentStatus; current_approver_id: string | null; workflow_types_id: number | null;
@@ -181,25 +219,40 @@ export interface PaymentDecision {
   result: PaymentApprovalResult; payment_sno: number; payment_no: string; net_paid: number; status: PaymentStatus;
   next_approver: string | null; next_seq: number | null; stage_name: string | null; acted_as: string | null;
 }
+/** One invoice of a payment with what an approver needs to decide how much to pay now (sql/70). */
+export interface PaymentInvoiceFigures {
+  invoice_sno: number; invoice_no: string; supplier_invoice_no: string | null; invoice_amount: number | null; gst_amount: number | null;
+  /** what the invoice may be paid in all */
+  payable_total: number;
+  /** held or paid by OTHER payments */
+  paid_other: number;
+  /** what this payment pays on it */
+  this_amount: number;
+  /** left to pay after this payment */
+  balance_after: number;
+  on_hold_2b: boolean; hold_2b: number;
+}
 export interface PaymentDetail {
-  entry: PaymentEntry; lines: PaymentEntryLine[]; history: PaymentHistoryItem[]; adjustments: PaymentAdjustmentLine[]; stages: PaymentStage[];
+  entry: PaymentEntry; lines: PaymentEntryLine[]; invoices?: PaymentInvoiceFigures[]; history: PaymentHistoryItem[]; adjustments: PaymentAdjustmentLine[]; stages: PaymentStage[];
   approval: PaymentApproval;
 }
 
 /** One bank account of a company in the Payment Bank master - what a run is paid from. Only the last 4 digits of the number come to the screen. */
 export interface PaymentSender {
-  payment_bank_sno: number; com_sno: number; com_name: string | null; profile_name: string; bank_name: string; branch_name: string | null;
+  payment_bank_sno: number; com_sno: number; com_name: string | null; div_sno: number; div_name: string | null; brn_sno: number; brn_name: string | null;
+  profile_name: string; bank_name: string; branch_name: string | null;
   ac_holder_name: string; ac_last4: string; ifsc: string;
   /** the layout of the payment file this account's bank takes */
-  file_type: string; client_code: string; alert_email: string | null; is_default: 'Y' | 'N';
+  file_type: string; client_code: string; file_code: number; is_default: 'Y' | 'N';
 }
 
 export interface PaymentBatch {
   batch_sno: number; batch_no: string; batch_date: string; com_sno: number | null; com_name?: string | null;
+  div_sno?: number | null; div_name?: string | null; brn_sno?: number | null; brn_name?: string | null;
   fund_plan_amount: number; total_amount: number; item_count: number; status: string; file_name: string | null; has_file?: boolean;
   created_by: string | null; created_at: string;
   /** the account the run was paid from (null for a run from before the Payment Bank master, or one with no bank transfer) */
-  file_type?: string | null; payment_bank_sno?: number | null; sender_name?: string | null; sender_bank_name?: string | null;
+  file_no?: number | null; file_type?: string | null; payment_bank_sno?: number | null; sender_name?: string | null; sender_bank_name?: string | null;
   sender_ac_last4?: string | null; sender_client_code?: string | null;
 }
 export interface PaymentBatchItem {
@@ -208,7 +261,11 @@ export interface PaymentBatchItem {
 }
 export interface PaymentFile { file_name: string; mime_type: string; content: string; line_count?: number; total_amount?: number }
 export interface SkippedPayment { payment_no: string; vendor_name: string | null; amount: number; channel: PayChannel; reason: string }
-export interface RunResult { batch: PaymentBatch; items: PaymentBatchItem[]; skipped: SkippedPayment[]; file: PaymentFile }
+export interface RunResult {
+  batch: PaymentBatch; items: PaymentBatchItem[]; skipped: SkippedPayment[]; file: PaymentFile;
+  /** the verification sheet (CSV) for the checker of the bank upload; null when the run has no bank transfer */
+  verification?: PaymentFile | null;
+}
 
 /** Pushed on socket `payment:updated` whenever a payment is saved, approved, rejected, cancelled or paid. */
 export interface PaymentUpdatedEvent { payment_sno: number; payment_no: string; status: PaymentStatus; batch_no?: string; payment_snos?: number[] }

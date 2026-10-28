@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   amountInWords, blockReason, dueState, groupLines, inBankFile, msmeNote, notInFileReason, parseAmountInput, pickSender, planFund, rankEntries,
-  senderLabel, senderProblem, totalOf,
+  paidAfterDiscount, portalProblem, senderLabel, senderProblem, totalOf,
 } from "@/Application/Payment/paymentRunModel";
 import type { PaymentEntry, PaymentEntryLine, PaymentSender } from "@/Services/GrnService/paymentNetApi";
 
@@ -177,8 +177,10 @@ describe("the bank file: which payments are a line of it", () => {
 
 describe("the account a run is paid from", () => {
   const sender = (over: Partial<PaymentSender> = {}): PaymentSender => ({
-    payment_bank_sno: 1, com_sno: 1, com_name: "Space Textiles", profile_name: "HDFC Current A/c", bank_name: "HDFC BANK LIMITED", branch_name: "Coimbatore",
-    ac_holder_name: "Space Textiles Pvt Ltd", ac_last4: "5678", ifsc: "HDFC0000123", file_type: "BANK_UPLOAD", client_code: "SPA311", alert_email: null, is_default: "N", ...over,
+    payment_bank_sno: 1, com_sno: 1, com_name: "Space Textiles", div_sno: 2, div_name: "Textiles", brn_sno: 3, brn_name: "Coimbatore",
+    profile_name: "HDFC Current A/c", bank_name: "HDFC BANK LIMITED", branch_name: "Coimbatore",
+    ac_holder_name: "Space Textiles Pvt Ltd", ac_last4: "5678", ifsc: "HDFC0000123", file_type: "BANK_UPLOAD", client_code: "SPA311", file_code: 100,
+    is_default: "N", ...over,
   });
   const hdfc = sender({ payment_bank_sno: 1, is_default: "Y" });
   const kotak = sender({ payment_bank_sno: 2, profile_name: "Kotak Current A/c", bank_name: "KOTAK", ac_last4: "3344" });
@@ -212,6 +214,32 @@ describe("the account a run is paid from", () => {
     expect(senderProblem(3, [sender({ payment_bank_sno: 3 }), kotak], "")).toMatch(/Choose the bank account/);
     expect(senderProblem(3, [hdfc, kotak], "")).toBeNull();
     expect(senderProblem(3, [sender({ payment_bank_sno: 3 }), kotak], "2")).toBeNull();
+  });
+});
+
+describe("recording a payment made on a supplier's portal", () => {
+  const ok = { mode: "UPI", txnId: "UPI-123/ABC", txnDate: "2026-10-22", paid: "9800", discount: "200" };
+
+  it("accepts a transaction whose amount paid + discount is the net amount", () => {
+    expect(portalProblem(10000, ok, "2026-10-23")).toBeNull();
+    expect(portalProblem(10000, { ...ok, paid: "10000", discount: "" }, "2026-10-23")).toBeNull();
+    expect(portalProblem(0.3, { ...ok, paid: "0.2", discount: "0.1" }, "2026-10-23")).toBeNull();      // paise, not floating point
+  });
+
+  it("says what is missing: mode, transaction id, date, amounts", () => {
+    expect(portalProblem(10000, { ...ok, mode: "" }, "2026-10-23")).toMatch(/how it was paid/);
+    expect(portalProblem(10000, { ...ok, txnId: "  " }, "2026-10-23")).toMatch(/transaction id/);
+    expect(portalProblem(10000, { ...ok, txnId: "a b" }, "2026-10-23")).toMatch(/letters, digits/);
+    expect(portalProblem(10000, { ...ok, txnDate: "2026-10-24" }, "2026-10-23")).toMatch(/not in the future/);
+    expect(portalProblem(10000, { ...ok, paid: "-1" }, "2026-10-23")).toMatch(/positive/);
+    expect(portalProblem(10000, { ...ok, paid: "9800", discount: "100" }, "2026-10-23")).toMatch(/must equal/);
+  });
+
+  it("typing a discount fills the amount paid; an impossible discount leaves it empty", () => {
+    expect(paidAfterDiscount(10000, "200")).toBe("9800");
+    expect(paidAfterDiscount(10000, "")).toBe("10000");
+    expect(paidAfterDiscount(10000, "20000")).toBe("");
+    expect(paidAfterDiscount(10000, "abc")).toBe("");
   });
 });
 

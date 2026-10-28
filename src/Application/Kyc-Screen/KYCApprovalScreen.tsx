@@ -66,12 +66,18 @@ const KYCApprovalScreen: React.FC = () => {
       approval_stages: parseStages(selectedKYC),
     };
     try {
-      await postData(apiKycApproveAction, payload);
+      const res = (await postData(apiKycApproveAction, payload)) as { data?: { supplier_invite?: { loginCreated?: boolean; emailSent?: boolean; reason?: string } }[] } | null;
       setKycList(prev => prev.filter(k => k.kyc_basic_info_sno !== selectedKYC.kyc_basic_info_sno));
       setSelectedKYC(null);
       setShowDialog(false);
       setComments('');
       toast.success(`KYC ${actionType === 'approve' ? 'approved' : 'rejected'} successfully`);
+      // The final approval also creates the supplier's portal login and e-mails the temporary password. That step cannot undo the
+      // approval, so when it fails the supplier has a code but cannot sign in - say so instead of leaving it silent.
+      const invite = res?.data?.find((r) => r?.supplier_invite)?.supplier_invite;
+      if (actionType === 'approve' && invite && (!invite.loginCreated || !invite.emailSent)) {
+        toast.warning(invite.reason ?? 'The supplier portal login or its invite e-mail could not be completed.', { duration: 15000 });
+      }
     } catch (err: any) {
       toast.error(getErrorMessage(err, 'Action failed'));
     }

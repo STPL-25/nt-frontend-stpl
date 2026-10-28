@@ -12,9 +12,19 @@ interface AuthLayoutProps {
   children: React.ReactNode;
   title: string;
   subtitle?: string;
+  /** Brand panel copy - the staff console by default; the supplier portal passes its own. */
+  brand?: { eyebrow?: string; heading?: React.ReactNode; copy?: string; features?: string[] };
 }
 
-const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle }) => {
+const DEFAULT_BRAND = {
+  eyebrow: "ERP Console",
+  heading: <>Non-Trade<br />Procurement</>,
+  copy: "Streamline your procurement workflow with real-time tracking, approvals, and budget control.",
+  features: FEATURES,
+};
+
+const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle, brand }) => {
+  const b = { ...DEFAULT_BRAND, ...brand };
   return (
     <div className="flex min-h-screen bg-background">
       {/* ── Left Brand Panel ── */}
@@ -40,7 +50,7 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle }) =>
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-primary-foreground/50">
-              ERP Console
+              {b.eyebrow}
             </p>
             <h2 className="text-base font-bold text-primary-foreground leading-tight">
               Space Textiles Pvt Ltd
@@ -51,13 +61,13 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle }) =>
         {/* Center copy */}
         <div className="relative z-10 flex-1 flex flex-col justify-center py-10">
           <h3 className="text-3xl xl:text-4xl font-bold text-primary-foreground leading-tight mb-3">
-            Non-Trade<br />Procurement
+            {b.heading}
           </h3>
           <p className="text-sm text-primary-foreground/60 leading-relaxed max-w-xs mb-8">
-            Streamline your procurement workflow with real-time tracking, approvals, and budget control.
+            {b.copy}
           </p>
           <div className="space-y-3">
-            {FEATURES.map((f) => (
+            {b.features.map((f) => (
               <div key={f} className="flex items-center gap-3 text-primary-foreground/75">
                 <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground/40 flex-shrink-0" />
                 <span className="text-sm">{f}</span>
@@ -83,7 +93,7 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle }) =>
           </div>
           <div>
             <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">
-              Non-Trade ERP
+              {b.eyebrow === DEFAULT_BRAND.eyebrow ? "Non-Trade ERP" : b.eyebrow}
             </p>
             <p className="text-sm font-bold text-foreground leading-tight">Space Textiles Pvt Ltd</p>
           </div>

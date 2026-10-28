@@ -4,6 +4,7 @@ const baseUrl = import.meta.env.VITE_API_URL || "";
 export const apiLogUser  = baseUrl + "/api/secure/log_user";
 export const apiSignUp   = baseUrl + "/api/secure/sign_up";
 export const apiGetAllUsersSignUp = baseUrl + "/api/secure/get_all_users_sign_up";
+export const apiUserHomeOrg       = baseUrl + "/api/secure/home_org";
 
 // Auth / Sidebar
 // DEPRECATED — replaced by the nt_user_permissions_json backed route below.
@@ -177,6 +178,7 @@ export const getPendingInvoiceMatches = baseUrl + "/api/invoice/getPendingMatche
 export const getPoItemsForAllocation = (po_basic_sno: number | string) => `${baseUrl}/api/invoice/getPoItemsForAllocation/${po_basic_sno}`;
 export const getVendorDrivenBillableChildPOs = baseUrl + "/api/invoice/getVendorDrivenBillableChildPOs";
 export const consolidateVendorDrivenBills = baseUrl + "/api/invoice/consolidateVendorDrivenBills";
+export const getVendorBillConsolidations = baseUrl + "/api/invoice/getVendorBillConsolidations";
 
 // Payment — DB (grn-service)
 export const getPayableBills = baseUrl + "/api/payment/getPayableBills";
@@ -295,6 +297,7 @@ export const uploadSignedAgreement          = baseUrl + "/api/service_agreement/
 export const createServiceGrn         = baseUrl + "/api/service_grn/createServiceGrn";
 export const getPendingServiceGrnPOs  = baseUrl + "/api/service_grn/getPendingServiceGrnPOs";
 export const getServiceGrns           = baseUrl + "/api/service_grn/getServiceGrns";
+export const approveServiceGrn        = baseUrl + "/api/service_grn/approveServiceGrn";
 
 export const submitServicePoEntry        = baseUrl + "/api/service_po/submitServicePoEntry";
 export const approveServicePoCycle       = baseUrl + "/api/service_po/approveServicePoCycle";

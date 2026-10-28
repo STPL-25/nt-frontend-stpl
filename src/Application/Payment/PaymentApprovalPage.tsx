@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { ArrowRightCircle, Banknote, Check, ChevronRight, ClipboardCheck, FileText, Hourglass, Info, Landmark, Loader2, Percent, RefreshCw, Undo2, X, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
@@ -19,7 +20,7 @@ import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { getErrorMessage } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 import {
-  payNetApprove, payNetCancel, payNetEntries, payNetEntryDetail,
+  payNetApprove, payNetCancel, payNetEntries, payNetEntryDetail, payNetRevise,
   type PaymentApprovalAction, type PaymentDecision, type PaymentDetail, type PaymentEntry, type PaymentStatus, type PaymentUpdatedEvent,
 } from '@/Services/GrnService/paymentNetApi';
 import { socket, SOCKET_CONNECT, SOCKET_JOIN_PAYMENT, SOCKET_LEAVE_PAYMENT, SOCKET_PAYMENT_UPDATED } from '@/Services/Socket';
@@ -27,6 +28,7 @@ import {
   decisionBody, decisionFlags, decisionMessage, defaultTarget, nextStageAfterApprove, paymentApprovalContext, remarksProblem, targetProblem,
 } from './paymentApprovalModel';
 import { msmeNote, rupees } from './paymentRunModel';
+import { leftLine, parseAmount, reduceProblem } from './partPaymentModel';
 
 const SCREEN = 'PaymentApprovalScreen';
 
@@ -51,7 +53,7 @@ const maskAccount = (n: string | null) => (n ? `••••${String(n).slice(-4
 const th = 'px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground';
 const ADJ_LABEL: Record<string, string> = { TDS: 'TDS', ADVANCE: 'Advance adjusted', DEBIT_NOTE: 'Debit note', CREDIT_NOTE: 'Credit note' };
 // ApprovalActivity knows APPROVED / REJECTED / SUBMITTED; the others are passed as the label they should show
-const HISTORY_LABEL: Record<string, string> = { AUTO_APPROVED: 'Auto-approved', CANCELLED: 'Cancelled', PAID: 'Paid' };
+const HISTORY_LABEL: Record<string, string> = { AUTO_APPROVED: 'Auto-approved', CANCELLED: 'Cancelled', PAID: 'Paid', REVISED: 'Paying less now' };
 
 /** Saved payments: the ones waiting on the signed-in approver, and every payment with where it stands. */
 const PaymentApprovalPage: React.FC = () => {
@@ -74,6 +76,10 @@ const PaymentApprovalPage: React.FC = () => {
   const [dialog, setDialog] = useState<'forward' | 'send_back' | null>(null);
   const [dialogRemarks, setDialogRemarks] = useState('');
   const [target, setTarget] = useState('');
+  // "Pay less now": the approver cuts the amount of one or more invoices; the rest stays on the invoice for another payment
+  const [reduceOpen, setReduceOpen] = useState(false);
+  const [reduceAmt, setReduceAmt] = useState<Record<number, string>>({});   // invoice_sno -> typed amount (only the ones edited)
+  const [reduceReason, setReduceReason] = useState('');
 
   const fetchAll = useCallback(async () => {
     try {
@@ -106,6 +112,7 @@ const PaymentApprovalPage: React.FC = () => {
     setComments('');
     setDialog(null);
     setDetail(null);
+    setReduceOpen(false); setReduceAmt({}); setReduceReason('');
     if (id != null) loadDetail(id);
   }, [loadDetail]);
 
@@ -168,6 +175,26 @@ const PaymentApprovalPage: React.FC = () => {
     setTarget(defaultTarget(action, approvalCtx));
     setDialogRemarks(comments);
     setDialog(action);
+  };
+
+  const reducePayment = async () => {
+    if (!detail?.invoices?.length) return;
+    const e = detail.entry;
+    setBusy(true);
+    try {
+      const allocations = detail.invoices.map((f) => ({
+        invoice_sno: f.invoice_sno,
+        amount: reduceAmt[f.invoice_sno] === undefined ? Number(f.this_amount) : parseAmount(reduceAmt[f.invoice_sno]),
+      }));
+      await axios.post(payNetRevise, { payment_sno: e.payment_sno, reason: reduceReason.trim(), allocations });
+      toast.success(`${e.payment_no} reduced - the rest stays on the invoice. It is still with you for approval.`);
+      setReduceOpen(false); setReduceAmt({}); setReduceReason('');
+      await Promise.all([load(), loadDetail(e.payment_sno)]);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not reduce the payment'));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const cancelPayment = async () => {
@@ -242,7 +269,18 @@ const PaymentApprovalPage: React.FC = () => {
                     <td className="px-3 py-2">{showDate(l.gate_entry_date)}<span className="block text-xs text-muted-foreground">{l.gate_entry_nos ?? ''}</span></td>
                     <td className="px-3 py-2">{showDate(l.grn_date)}<span className="block text-xs text-muted-foreground">{l.grn_nos ?? ''}</span></td>
                     <td className="px-3 py-2">{showDate(l.due_date)}</td>
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums">{rupees(l.amount)}</td>
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums">
+                      {rupees(l.amount)}
+                      {(() => {
+                        const fg = detail.invoices?.find((x) => x.invoice_sno === l.invoice_sno);
+                        if (!fg || (fg.balance_after <= 0.005 && fg.paid_other <= 0.005)) return null;
+                        return (
+                          <span className="block text-xs font-normal text-blue-700 dark:text-blue-400">
+                            Part payment{fg.paid_other > 0.005 ? ` · ${rupees(fg.paid_other)} paid / held before` : ''} · {leftLine(fg.balance_after, fg.on_hold_2b, fg.hold_2b)}
+                          </span>
+                        );
+                      })()}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -297,6 +335,69 @@ const PaymentApprovalPage: React.FC = () => {
           <Panel icon={ClipboardCheck} title="Your decision" description={afterApprove}>
             {approvalCtx?.summary?.my_role === 'ALTERNATE' && (
               <Callout tone="info" icon={Hourglass} className="mb-3">You are acting as an alternate approver - this has waited past the stage's escalation time.</Callout>
+            )}
+            {flags.approve && (detail.invoices?.length ?? 0) > 0 && (
+              <div className="mb-4 rounded-lg border bg-muted/20 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm">
+                    <span className="font-semibold">Pay all of it in one go, or part now?</span>
+                    <span className="block text-xs text-muted-foreground">Approving as it stands pays the full amount once. To pay less now, reduce an invoice - the rest stays open for another payment.</span>
+                  </p>
+                  <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setReduceOpen((o) => !o)}>
+                    {reduceOpen ? 'Keep the full amount' : 'Pay less now…'}
+                  </Button>
+                </div>
+                {reduceOpen && (
+                  <div className="mt-3 space-y-3">
+                    <div className="overflow-x-auto rounded-md border bg-background">
+                      <table className="w-full text-sm">
+                        <thead className="border-b bg-muted/40">
+                          <tr><th className={th}>Invoice</th><th className={cn(th, 'text-right')}>Payable in all</th><th className={cn(th, 'text-right')}>Paid / held elsewhere</th><th className={cn(th, 'text-right')}>Saved for</th><th className={cn(th, 'text-right')}>Pay now</th><th className={th}>Then</th></tr>
+                        </thead>
+                        <tbody>
+                          {(detail.invoices ?? []).map((f) => {
+                            const typed = reduceAmt[f.invoice_sno];
+                            const now = typed === undefined ? Number(f.this_amount) : parseAmount(typed);
+                            const valid = Number.isFinite(now) && now >= 0 && now <= Number(f.this_amount) + 0.005;
+                            const left = valid ? Number(f.balance_after) + (Number(f.this_amount) - now) : NaN;
+                            return (
+                              <tr key={f.invoice_sno} className="border-b last:border-0">
+                                <td className="px-3 py-2 font-medium">{f.invoice_no}<span className="block text-xs font-normal text-muted-foreground">{f.supplier_invoice_no ?? ''}</span></td>
+                                <td className="px-3 py-2 text-right tabular-nums">{rupees(f.payable_total)}</td>
+                                <td className="px-3 py-2 text-right tabular-nums">{Number(f.paid_other) > 0.005 ? rupees(f.paid_other) : '—'}</td>
+                                <td className="px-3 py-2 text-right tabular-nums">{rupees(f.this_amount)}</td>
+                                <td className="px-3 py-2 text-right">
+                                  <Input
+                                    className={cn('ml-auto h-8 w-28 text-right tabular-nums', !valid && 'border-red-500')}
+                                    inputMode="decimal" aria-label={`Pay now on ${f.invoice_no}`}
+                                    value={typed ?? Number(f.this_amount).toFixed(2)}
+                                    onChange={(ev) => setReduceAmt((p) => ({ ...p, [f.invoice_sno]: ev.target.value.replace(/[^\d.]/g, '') }))}
+                                  />
+                                </td>
+                                <td className="px-3 py-2 text-xs text-muted-foreground">
+                                  {!valid ? 'Between 0 and the saved amount' : now <= 0.005 ? 'Left out of this payment' : Number.isFinite(left) ? leftLine(left, f.on_hold_2b, f.hold_2b) : ''}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Textarea placeholder="Why is this being paid in part? (required)" value={reduceReason} onChange={(ev) => setReduceReason(ev.target.value)} className="min-h-[56px] text-sm" />
+                    {(() => {
+                      const problem = reduceProblem(detail.invoices ?? [], reduceAmt);
+                      return (
+                        <div className="flex flex-wrap items-center gap-3">
+                          <Button type="button" size="sm" disabled={busy || !!problem || !reduceReason.trim()} onClick={reducePayment}>
+                            {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}Reduce this payment
+                          </Button>
+                          <span className="text-xs text-muted-foreground">{problem || (!reduceReason.trim() ? 'Give the reason first' : 'TDS is worked out again on the new amounts; you then approve it as usual.')}</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
             )}
             <Textarea placeholder={`Remarks (required to reject${flags.sendBack ? ' or send back' : ''})`} value={comments} onChange={(ev) => setComments(ev.target.value)} className="min-h-[72px] text-sm" />
             <div className="mt-3 flex flex-wrap gap-2">

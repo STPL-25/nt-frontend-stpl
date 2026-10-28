@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { ArrowLeft, Plus, Trash2, Paperclip, X } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Paperclip, X, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Panel } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -130,14 +130,8 @@ const SupplierDispatchForm: React.FC<Props> = ({ po_basic_sno, onBack, onCreated
         <ArrowLeft className="h-4 w-4" /> Back
       </Button>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Dispatch details</CardTitle>
-          <CardDescription>
-            Enter one row per shipment/LR. A printable slip is generated for each delivery once submitted.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <Panel icon={Truck} title="Dispatch details" description="Enter one row per shipment / LR. A printable slip is generated for each delivery once submitted.">
+        <div>
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             <div className="flex flex-col gap-1.5 sm:max-w-xs">
               <Label>Transport *</Label>
@@ -163,7 +157,7 @@ const SupplierDispatchForm: React.FC<Props> = ({ po_basic_sno, onBack, onCreated
 
             <div className="flex flex-col gap-3">
               {rows.map((row, idx) => (
-                <div key={row.id} className="rounded-md border p-3">
+                <div key={row.id} className="rounded-lg border bg-muted/20 p-3">
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Delivery {idx + 1}
@@ -281,8 +275,8 @@ const SupplierDispatchForm: React.FC<Props> = ({ po_basic_sno, onBack, onCreated
               {submitting ? 'Creating…' : 'Create dispatch slip'}
             </Button>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </Panel>
     </div>
   );
 };

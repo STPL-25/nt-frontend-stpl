@@ -1,7 +1,7 @@
 import React from 'react';
-import { ArrowLeft, Printer } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Callout, Panel } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import type { DispatchCreateResult } from '@/Services/SupplierService';
 
@@ -18,15 +18,11 @@ const SupplierDispatchSummary: React.FC<Props> = ({ result, onBack, onPrint }) =
         <ArrowLeft className="h-4 w-4" /> Back to purchase orders
       </Button>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Dispatch {result.dispatch_slip_no} created</CardTitle>
-          <CardDescription>
-            Print a delivery slip for each shipment below — every LR gets its own printable paper.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto rounded-md border">
+      <Callout tone="success" icon={CheckCircle2}>Dispatch <b>{result.dispatch_slip_no}</b> was created.</Callout>
+
+      <Panel icon={Printer} title="Delivery slips" description="Print a delivery slip for each shipment below - every LR gets its own printable paper." bodyClassName="p-0">
+        <div>
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -50,8 +46,8 @@ const SupplierDispatchSummary: React.FC<Props> = ({ result, onBack, onPrint }) =
               </TableBody>
             </Table>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </Panel>
     </div>
   );
 };

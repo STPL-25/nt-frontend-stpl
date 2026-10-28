@@ -51,6 +51,7 @@ export const StoreInchargeApprovalPage = lazy(() => import("../Application/Store
  export const ServicePoPage = lazy(() => import("../Application/ServiceAgreement/ServicePoPage"));
  export const ServicePoApprovalScreen = lazy(() => import("../Application/ServiceAgreement/ServicePoApprovalScreen"));
  export const ApprovalRoutingPage = lazy(() => import("../Application/RoleApproval/ApprovalRoutingPage"));
+ export const UserHomeOrgPage = lazy(() => import("../Application/RoleApproval/UserHomeOrgPage"));
  export const ServiceVendorKycPage = lazy(() => import("../Application/ServiceVendorKyc/ServiceVendorKycPage"));
  export const ServiceVendorKycApprovalScreen = lazy(() => import("../Application/ServiceVendorKyc/ServiceVendorKycApprovalScreen"));
 // Interface for the component map
@@ -108,6 +109,7 @@ export const sectionComponents: SectionComponentsMap = {
   ServicePoPage,
   ServicePoApprovalScreen,
   ApprovalRoutingPage,
+  UserHomeOrgPage,
   ServiceVendorKycPage,
   ServiceVendorKycApprovalScreen,
 };
