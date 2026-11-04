@@ -112,7 +112,7 @@ const InvoicePage: React.FC = () => {
       if (file) fd.append('invoice_file', file);
 
       const res = await axios.post(createInvoice, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      toast.success(`Invoice ${res.data?.data?.[0]?.invoice_no ?? ''} captured`);
+      toast.success(`Invoice ${form.vendor_invoice_no || ''} captured`);
       setShowCaptureForm(false);
       const fresh = await fetchInvoices();
       const created = fresh.find(i => i.invoice_sno === res.data?.data?.[0]?.invoice_sno);

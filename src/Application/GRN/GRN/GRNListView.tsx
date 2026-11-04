@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronUp, ReceiptText, FileDown } from 'lucide-react';
+import { ClipboardList, RefreshCw, Loader2, ChevronDown, ChevronUp, ReceiptText, FileDown, FileText } from 'lucide-react';
+import { getAuthFileUrl } from '@/Services/authUrl';
 import { downloadGRNPdf } from '@/utils/generateGRNPdf';
 import type { GRNRecord, DebitNoteRecord, CreditNoteRecord } from './types';
 import { formatDate, formatINR, hasGRNDiscrepancy } from './helpers';
@@ -93,6 +94,23 @@ const GRNCard: React.FC<{
                 </div>
               )}
             </div>
+            {(grn.doc_ref_no || grn.invoice_date || grn.invoice_amount != null || grn.invoice_doc_url) && (
+              <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-md border bg-muted/30 px-3 py-2 text-xs">
+                <span className="inline-flex items-center gap-1 font-semibold text-foreground"><FileText size={13} /> Supplier invoice</span>
+                {grn.doc_ref_no && <span><span className="text-muted-foreground/70">No: </span><span className="font-medium">{grn.doc_ref_no}</span></span>}
+                {grn.invoice_date && <span><span className="text-muted-foreground/70">Date: </span><span className="font-medium">{formatDate(grn.invoice_date)}</span></span>}
+                {grn.invoice_amount != null && <span><span className="text-muted-foreground/70">Amount: </span><span className="font-medium">{formatINR(grn.invoice_amount)}</span></span>}
+                {grn.invoice_taxable_value != null && Number(grn.invoice_taxable_value) > 0 && (
+                  <span><span className="text-muted-foreground/70">Taxable: </span><span className="font-medium">{formatINR(grn.invoice_taxable_value)}</span>
+                    <span className="text-muted-foreground/70"> · GST: </span><span className="font-medium">{formatINR(Number(grn.invoice_amount ?? 0) - Number(grn.invoice_taxable_value))}</span></span>
+                )}
+                {grn.invoice_doc_url && (
+                  <a href={getAuthFileUrl(grn.invoice_doc_url)} target="_blank" rel="noreferrer" className="font-medium text-primary underline-offset-2 hover:underline">
+                    View uploaded invoice
+                  </a>
+                )}
+              </div>
+            )}
             {grn.remarks && (
               <p className="text-xs text-muted-foreground mt-1">Note: {grn.remarks}</p>
             )}

@@ -9,8 +9,9 @@ import useFetch from "@/hooks/useFetchHook";
 import { apiFetchCommonMaster } from "@/Services/Api";
 import { masterItems, type MasterItemType } from "@/FieldDatas/Data";
 import { socket, SOCKET_MASTER_UPDATED } from "@/Services/Socket";
-import { LoadingState, ErrorState } from "@/CustomComponent/PageComponents";
-import { usePermissions } from "@/globalState/hooks/usePermissions";
+import { LoadingState, ErrorState, EmptyState } from "@/CustomComponent/PageComponents";
+import { Lock } from "lucide-react";
+import { usePermissions, masterScreenComp } from "@/globalState/hooks/usePermissions";
 
 // Bespoke masters (Company/Division/Branch/Department picker, point-by-point
 // list, working default-flag logic) that don't fit the generic
@@ -31,8 +32,13 @@ interface Category {
 
 const MasterScreen: React.FC = () => {
   const { selectedMaster, setCurrentScreen, setSelectedMaster } = useAppState() as any;
-  const { canCreate, canEdit, canDelete } = usePermissions();
+  const { canView, canCreate, canEdit, canDelete } = usePermissions();
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Each master has its own access row (see masterScreenComp), so View / Create / Edit / Delete
+  // are decided per master, not for the whole Masters page.
+  const masterAccess = selectedMaster ? masterScreenComp(selectedMaster) : "";
+  const hasViewAccess = !!selectedMaster && canView(masterAccess);
 
   const masterDataResult = useMasterDataFields() as any;
   const fields: Record<string, any[]> = masterDataResult?.fields || {};
@@ -58,9 +64,10 @@ const MasterScreen: React.FC = () => {
   const isBespoke = !!(selectedMaster && BESPOKE_MASTER_COMPONENTS[selectedMaster]);
 
   // Skip the generic common_master fetch entirely for a bespoke master —
-  // it manages its own data fetching (see TermsConditionsMaster.tsx).
+  // it manages its own data fetching (see TermsConditionsMaster.tsx). Nor is anything fetched
+  // for a master this user has no View access to.
   const { data: datas, loading, error } = useFetch(
-    selectedMaster && !isBespoke ? `${apiFetchCommonMaster}${selectedMaster}` : '',
+    selectedMaster && !isBespoke && hasViewAccess ? `${apiFetchCommonMaster}${selectedMaster}` : '',
     "",
     null,
     refreshKey
@@ -68,6 +75,16 @@ const MasterScreen: React.FC = () => {
 
   if (!selectedMaster) {
     return <ErrorState message="Please select a master to view" fullPage />;
+  }
+
+  if (!hasViewAccess) {
+    return (
+      <ErrorState
+        message={`You don't have access to ${masterTitle}. Ask an administrator to grant it on Role Permissions.`}
+        onRetry={() => { setCurrentScreen("main"); setSelectedMaster(null); }}
+        fullPage
+      />
+    );
   }
 
   if (isBespoke) {
@@ -100,9 +117,9 @@ const MasterScreen: React.FC = () => {
         sortable={true}
         className="mb-8"
         setCurrentScreen={setCurrentScreen}
-        canCreate={canCreate("masters")}
-        canEdit={canEdit("masters")}
-        canDelete={canDelete("masters")}
+        canCreate={canCreate(masterAccess)}
+        canEdit={canEdit(masterAccess)}
+        canDelete={canDelete(masterAccess)}
       />
     </div>
   );
@@ -121,7 +138,9 @@ const MasterItemsGrid: React.FC = () => {
     selectedMaster,
     setSelectedMaster,
     userData,
+    data: sidebarData,
   } = useAppState() as any;
+  const { loaded: permissionsLoaded, canView } = usePermissions();
 
   // Non-staff (temporary login_id/password) sessions have no real ecno —
   // same check used across the app (App.tsx's RootRoute, Header.tsx).
@@ -131,9 +150,15 @@ const MasterItemsGrid: React.FC = () => {
     return !firstUser?.ecno && !!firstUser?.login_id;
   }, [userData]);
 
+  // A tile shows only if this user has View on that master's own access row (Role Permissions >
+  // Individual Masters). canView reads the sidebar data, so the list is rebuilt whenever that is
+  // (re)fetched — e.g. when an admin changes this user's access live.
   const visibleMasterItems = useMemo(
-    () => (isNonStaff ? masterItems.filter((item) => !item.staffOnly) : masterItems),
-    [isNonStaff]
+    () => masterItems.filter(
+      (item) => (!isNonStaff || !item.staffOnly) && canView(masterScreenComp(item.id))
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isNonStaff, sidebarData]
   );
 
   const categories = useMemo<Category[]>(() => {
@@ -173,6 +198,14 @@ const MasterItemsGrid: React.FC = () => {
   const MainGrid: React.FC = () => (
     <div className="min-h-full bg-muted/20">
       <div className="mx-auto px-2 py-3">
+        {visibleMasterItems.length === 0 && (
+          <EmptyState
+            icon={Lock}
+            message="No masters available"
+            description="You haven't been given access to any master. Ask an administrator to grant it on Role Permissions."
+            className="mb-8"
+          />
+        )}
         <div className="mb-8">
           <div className="flex flex-wrap gap-2">
             {categories.map((category) => (
@@ -196,6 +229,11 @@ const MasterItemsGrid: React.FC = () => {
   );
 
  
+
+  // Until the user's screens arrive "no access" can't be told from "not loaded yet".
+  if (!permissionsLoaded) {
+    return <LoadingState message="Loading masters..." fullPage />;
+  }
 
   if (currentScreen === "master" && selectedMaster) {
     return <MasterScreen />;

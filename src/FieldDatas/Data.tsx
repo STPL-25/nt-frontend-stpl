@@ -22,6 +22,8 @@ export interface MasterItemType {
   staffOnly?: boolean;
 }
 
+// Every tile below needs its own access row in `screens` (comp "masters.<id>", group "Individual Masters" — see
+// backend sql/151) or nobody sees it: MasterPageScreen shows a tile only to users with View on that row.
 const masterItems: MasterItemType[] = [
   { icon: <Building className="w-5 h-5" />, name: "Company Master", category: "organization", color: "bg-blue-500", id: "CompanyMaster" },
   { icon: <Briefcase className="w-5 h-5" />, name: "Division Master", category: "organization", color: "bg-green-500", id: "DivisionMaster" },
@@ -59,6 +61,9 @@ const masterItems: MasterItemType[] = [
   { icon: <BookOpen className="w-5 h-5" />, name: "Account Head", category: "finance", color: "bg-emerald-700", id: "AccountHeadMaster" },
   // The company's own bank accounts a Payment Run is paid from + the payment file each bank takes (sql/138)
   { icon: <Banknote className="w-5 h-5" />, name: "Payment Bank", category: "finance", color: "bg-sky-700", id: "PaymentBankMaster" },
+  // The layout of the payment file, bank by bank: the format, then its columns (sql/149)
+  { icon: <FileText className="w-5 h-5" />, name: "Bank File Format", category: "finance", color: "bg-sky-800", id: "BankFileFormatMaster" },
+  { icon: <FileText className="w-5 h-5" />, name: "Bank File Format Columns", category: "finance", color: "bg-sky-900", id: "BankFileFormatColumnMaster" },
 
   // { icon: <FileText className="w-5 h-5" />, name: "KYC", category: "compliance", color: "bg-teal-500", id: "kyc_master" },
   // { icon: <Tag className="w-5 h-5" />, name: "Product Rate and Discount", category: "inventory", color: "bg-cyan-500", id: "product_rate_discount" },
@@ -598,7 +603,7 @@ const useProductFieldsMaster = (): FieldType[] => {
         input: needsProdConFactor,
       },
       { field: "con_uom_name", label: "In Unit", require: false, view: true, type: "text", input: false },
-      { field: "tax_sno", label: "Tax", require: true, view: false, type: "select", options: options?.TaxMaster, input: false },
+      { field: "tax_sno", label: "GST", require: true, view: false, type: "select", options: options?.TaxMaster, input: false },
       // Ledger the purchase of this product is booked to (Tally trial balance). Optional: blank falls back to the sub-category, then Suspense.
       { field: "account_head_sno", label: "Account Head", require: false, view: false, type: "search-select", options: options?.AccountLedgerMaster, input: true,
         placeholder: "Ledger this product is booked to" },
@@ -733,6 +738,7 @@ const useAccountHeadFieldsMaster = (formData?: any): FieldType[] => {
 const usePaymentBankFieldsMaster = (): FieldType[] => {
   const { companyDetails, filteredDivDetails, filteredBranchDetails } = useAppState();
   const fileTypeOptions = useMemo<OptionType[]>(() => [{ label: "Bank upload file (28 fields, NEFT / RTGS)", value: "BANK_UPLOAD" }], []);
+  const { options } = useMasterOptions(['BankFileFormatMaster']);
   return useMemo<FieldType[]>(
     () => [
       { field: "payment_bank_sno", label: "S.No", require: false, view: false, type: "text", input: false },
@@ -749,20 +755,106 @@ const usePaymentBankFieldsMaster = (): FieldType[] => {
       { field: "ac_number", label: "Account Number", require: true, view: true, type: "text", input: true, placeholder: "Digits only" },
       { field: "ifsc", label: "IFSC", require: true, view: true, type: "text", input: true, placeholder: "e.g. HDFC0000123" },
       // blank = the only type there is today; the stored procedure fills it in
-      { field: "file_type", label: "Payment File Type", require: false, view: true, type: "select", options: fileTypeOptions, input: true },
+      { field: "file_type", label: "Payment File Type", require: false, view: false, type: "select", options: fileTypeOptions, input: true },
+      // The layout this bank's file is written in (Bank File Format master) - the file is written only from it
+      { field: "file_format_sno", label: "Bank File Format", require: true, view: false, type: "select", options: options?.BankFileFormatMaster || [], input: true },
+      { field: "file_format_name", label: "Bank File Format", require: false, view: true, type: "text", input: false },
       { field: "file_prefix", label: "File Name Prefix", require: true, view: true, type: "text", input: true, placeholder: "e.g. SPACETEX" },
       { field: "client_code", label: "Client Code", require: true, view: true, type: "text", input: true, placeholder: "e.g. SPA311" },
       { field: "file_code", label: "Starting File Code (.100)", require: true, view: true, type: "text", input: true, placeholder: "100 or .100" },
+      // goes in the file wherever the Bank File Format column is "Our alert e-mail" (position 28 of the standard format)
+      { field: "alert_email", label: "Alert E-mail (in the file)", require: false, view: true, type: "text", input: true, placeholder: "e.g. payment@company.com" },
       { field: "is_default", label: "Default Account", require: false, view: true, type: "select", options: YES_NO_OPTIONS, input: true },
       { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
     ],
-    [companyDetails, filteredDivDetails, filteredBranchDetails, fileTypeOptions]
+    [companyDetails, filteredDivDetails, filteredBranchDetails, fileTypeOptions, options]
+  );
+};
+
+/**
+ * Bank File Format master: one layout of the payment file (separator, header line, line ending, quotes). Its fields are the
+ * Bank File Format Column master. A Payment Bank account picks the layout its file is written in.
+ */
+const useBankFileFormatFieldsMaster = (): FieldType[] => {
+  const delimiterOptions = useMemo<OptionType[]>(() => [
+    { label: "Comma ( , )", value: "COMMA" }, { label: "Pipe ( | )", value: "PIPE" }, { label: "Tab", value: "TAB" },
+    { label: "Semicolon ( ; )", value: "SEMICOLON" }, { label: "None - fixed width", value: "NONE" },
+  ], []);
+  const lineEndingOptions = useMemo<OptionType[]>(() => [{ label: "LF (Unix)", value: "LF" }, { label: "CRLF (Windows)", value: "CRLF" }], []);
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "format_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "format_name", label: "Format Name", require: true, view: true, type: "text", input: true, placeholder: "e.g. HDFC bulk NEFT" },
+      { field: "delimiter", label: "Separator", require: false, view: true, type: "select", options: delimiterOptions, input: true },
+      { field: "has_header", label: "Header Line", require: false, view: true, type: "select", options: YES_NO_OPTIONS, input: true },
+      { field: "quote_text", label: "Quote Every Value", require: false, view: true, type: "select", options: YES_NO_OPTIONS, input: true },
+      { field: "line_ending", label: "Line Ending", require: false, view: true, type: "select", options: lineEndingOptions, input: true },
+      { field: "column_count", label: "Columns", require: false, view: true, type: "text", input: false },
+      { field: "remarks", label: "Remarks", require: false, view: true, type: "text", input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    [delimiterOptions, lineEndingOptions]
+  );
+};
+
+/**
+ * Bank File Format Column master: one field of a layout - its position on the line and where its value comes from.
+ * Keep this list in step with grn-service paymentnet/bankFileFormat.js SOURCE_FIELDS and the check in sql/149.
+ */
+const BANK_FILE_SOURCE_OPTIONS: OptionType[] = [
+  { label: "Transfer type code (N = NEFT, R = RTGS)", value: "TRANSFER_TYPE" },
+  { label: "Payment mode (NEFT / RTGS)", value: "MODE" },
+  { label: "Receiver's account number", value: "ACCOUNT_NO" },
+  { label: "Amount the bank sends (2 decimals)", value: "AMOUNT" },
+  { label: "Receiver's name", value: "BENEFICIARY_NAME" },
+  { label: "Reference (supplier id-payment no)", value: "REFERENCE" },
+  { label: "Payment number", value: "PAYMENT_NO" },
+  { label: "Supplier id", value: "SUPPLIER_CODE" },
+  { label: "Payment details 1 (invoice no(s) / tax head)", value: "DETAIL_1" },
+  { label: "Payment details 2 (FULL / PART / period)", value: "DETAIL_2" },
+  { label: "Payment details 3 (TDS, advance, notes / registration no)", value: "DETAIL_3" },
+  { label: "Payment date", value: "PAYMENT_DATE" },
+  { label: "Receiver's IFSC", value: "IFSC" },
+  { label: "Receiver's bank", value: "BANK_NAME" },
+  { label: "Receiver's branch", value: "BRANCH_NAME" },
+  { label: "Line number in the file", value: "SERIAL_NO" },
+  { label: "Our account number", value: "SENDER_ACCOUNT_NO" },
+  { label: "Our account holder name", value: "SENDER_NAME" },
+  { label: "Our IFSC", value: "SENDER_IFSC" },
+  { label: "Our bank", value: "SENDER_BANK_NAME" },
+  { label: "Our client code with the bank", value: "SENDER_CLIENT_CODE" },
+  { label: "Our alert e-mail", value: "SENDER_EMAIL" },
+  { label: "Fixed text (type it in 'Fixed Text')", value: "FIXED" },
+  { label: "Empty", value: "BLANK" },
+];
+const useBankFileFormatColumnFieldsMaster = (): FieldType[] => {
+  const { options } = useMasterOptions(['BankFileFormatMaster']);
+  const padOptions = useMemo<OptionType[]>(() => [{ label: "Left", value: "L" }, { label: "Right", value: "R" }], []);
+  const dateOptions = useMemo<OptionType[]>(() => ["DD/MM/YYYY", "DD-MM-YYYY", "YYYY-MM-DD", "DDMMYYYY", "YYYYMMDD"].map((v) => ({ label: v, value: v })), []);
+  return useMemo<FieldType[]>(
+    () => [
+      { field: "column_sno", label: "S.No", require: false, view: false, type: "text", input: false },
+      { field: "format_sno", label: "Format", require: true, view: false, type: "select", options: options?.BankFileFormatMaster || [], input: true },
+      { field: "format_name", label: "Format", require: false, view: true, type: "text", input: false },
+      { field: "position", label: "Position", require: true, view: true, type: "number", input: true, placeholder: "1, 2, 3 ..." },
+      { field: "header_text", label: "Header Text", require: false, view: true, type: "text", input: true },
+      { field: "source_field", label: "Value Comes From", require: true, view: true, type: "select", options: BANK_FILE_SOURCE_OPTIONS, input: true },
+      { field: "fixed_value", label: "Fixed Text", require: false, view: true, type: "text", input: true, placeholder: "only for Fixed text" },
+      { field: "max_len", label: "Max Length", require: false, view: true, type: "number", input: true },
+      { field: "pad_side", label: "Pad On", require: false, view: true, type: "select", options: padOptions, input: true },
+      { field: "pad_char", label: "Pad Character", require: false, view: true, type: "text", input: true, placeholder: "one character, e.g. 0" },
+      { field: "date_format", label: "Date Format", require: false, view: true, type: "select", options: dateOptions, input: true },
+      { field: "is_active", label: "Active Status", require: false, view: false, type: "text", input: false },
+    ],
+    [options, padOptions, dateOptions]
   );
 };
 
 export {
   masterItems,
   usePaymentBankFieldsMaster,
+  useBankFileFormatFieldsMaster,
+  useBankFileFormatColumnFieldsMaster,
   useAccountHeadFieldsMaster,
   useStockTypeFieldsMaster,
   useCompanyMasterFields,

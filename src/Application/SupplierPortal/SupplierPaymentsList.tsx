@@ -103,7 +103,7 @@ const SupplierPaymentsList: React.FC = () => {
                         <TableCell className="text-xs font-medium">{p.payment_no}{p.batch_no ? <span className="block font-normal text-muted-foreground">{p.batch_no}</span> : null}</TableCell>
                         <TableCell><span className={chip(p.payment_type === 'ADVANCE' ? 'violet' : 'info')}>{p.payment_type === 'ADVANCE' ? 'Advance' : 'Bill payment'}</span></TableCell>
                         <TableCell className="text-xs">{p.po_nos ?? '—'}</TableCell>
-                        <TableCell className="text-xs">{p.supplier_invoice_nos ?? p.invoice_nos ?? '—'}</TableCell>
+                        <TableCell className="text-xs">{p.supplier_invoice_nos ?? '—'}</TableCell>
                         <TableCell><StatusPill tone={p.status === 'Paid' ? 'success' : 'warning'}>{p.status}</StatusPill></TableCell>
                         <TableCell className="text-xs">
                           {p.status === 'Paid' ? formatDate(p.processed_at ?? p.payment_date) : (p.planned_for ? `Due ${formatDate(p.planned_for)}` : '—')}

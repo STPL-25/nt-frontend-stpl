@@ -41,6 +41,7 @@ export interface CustomInputFieldProps {
   placeholder?: string;
   maxLength?: number;
   show?: boolean;
+  showToggle?: boolean;
   [key: string]: any;
 }
 
@@ -61,6 +62,7 @@ export function CustomInputField({
   placeholder,
   maxLength,
   show = true,
+  showToggle = false,
   ...props
 }: CustomInputFieldProps): JSX.Element | null {
   // hide S.No exactly like original
@@ -78,6 +80,7 @@ export function CustomInputField({
   const optionsArray = getOptionsArray();
 
   const [searchOpen, setSearchOpen] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   // eventOrValue can be a native event or a direct value (from Select / Switch / Checkbox)
   const handleChange = (eventOrValue: any) => {
@@ -381,6 +384,34 @@ export function CustomInputField({
             required={require}
             {...props}
           />
+        );
+      case "password":
+        return (
+          <div className="relative">
+            <Input
+              name={field}
+              type={isPasswordVisible ? "text" : "password"}
+              placeholder={placeholder}
+              className={cn(showToggle && "pr-11", className, error && "border-red-500")}
+              disabled={disabled}
+              value={value ?? ""}
+              maxLength={maxLength}
+              onChange={handleChange}
+              required={require}
+              {...props}
+            />
+            {showToggle && (
+              <button
+                type="button"
+                aria-label={isPasswordVisible ? "Hide password" : "Show password"}
+                aria-pressed={isPasswordVisible}
+                onClick={() => setIsPasswordVisible((visible) => !visible)}
+                className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30"
+              >
+                <Eye className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         );
         case "radio":
           

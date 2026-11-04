@@ -16,6 +16,22 @@ export const formatINR = (n: number) =>
 
 // ── Data normalisation ───────────────────────────────────────────────────────
 
+/**
+ * Advance split. `advance_pct` is always taken on the net value (grand total EXCLUDING GST).
+ *  - Without GST: advance = % of net value.
+ *  - With GST:    GST % is calculated on that advance and added to it.
+ */
+export function calcAdvanceSplit(
+  netAmountExGst: number,
+  advancePct: number,
+  gstApplicable: boolean,
+  gstPct: number,
+) {
+  const base = netAmountExGst * (advancePct / 100);
+  const gst = gstApplicable ? base * (gstPct / 100) : 0;
+  return { base, gst, total: base + gst };
+}
+
 export function parseItemDetails(raw: string | PRItem[] | undefined): PRItem[] {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw.map(it => ({ ...it, unit_name: it.unit_name ?? it.uom_name ?? it.uom_code }));
@@ -142,6 +158,23 @@ export function calcQuotationTotals(items: QuotationItem[]) {
     return s + base * (it.tax_pct / 100);
   }, 0);
   return { subtotal, discount, tax, grandTotal: subtotal - discount + tax };
+}
+
+/** Short text for one additional cover, e.g. "Warranty: 2 yrs, Free — terms". */
+export function describeCover(c: { type: string; label?: string; years: number | string; cost_type: string; terms?: string }): string {
+  const name = c.type === 'Other' ? (c.label || 'Other') : c.type;
+  return `${name}: ${c.years} yr${Number(c.years) === 1 ? '' : 's'}, ${c.cost_type}${c.terms ? ` — ${c.terms}` : ''}`;
+}
+
+/** First missing Warranty / AMC detail on a quotation line, or '' when it is complete. */
+export function warrantyAmcIssue(item: QuotationItem): string {
+  const name = item.prod_name || 'item';
+  for (const c of item.additional ?? []) {
+    const what = c.type === 'Other' ? (c.label?.trim() || 'the other cover') : c.type;
+    if (c.type === 'Other' && !c.label?.trim()) return `Enter a name for the other cover on ${name}`;
+    if (!(Number(c.years) > 0)) return `Enter the years for ${what} on ${name}`;
+  }
+  return '';
 }
 
 /** Recalculate a single quotation item's total */

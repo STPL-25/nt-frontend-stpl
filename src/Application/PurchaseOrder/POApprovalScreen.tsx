@@ -238,8 +238,7 @@ const POApprovalScreen: React.FC = () => {
       setBackwardTarget('');
       setToast({ message: `Quotation ${actionLabel} successfully`, type: 'success' });
     } catch (err: any) {
-      const message = err?.response?.data?.error || err?.message || 'Action failed';
-      setToast({ message, type: 'error' });
+      setToast({ message: getErrorMessage(err, 'Action failed'), type: 'error' });
     }
   };
 

@@ -80,6 +80,18 @@ export interface Vendor {
   msme_type?: string;       // Micro / Small / Medium (from KYC)
 }
 
+export type AdditionalCoverType = 'Warranty' | 'AMC' | 'Other';
+export type AdditionalCostType = 'Free' | 'Paid' | 'Semi-paid';
+
+export interface AdditionalCover {
+  type: AdditionalCoverType;
+  /** Name of the cover — only used for 'Other'. */
+  label?: string;
+  years: number | string;
+  cost_type: AdditionalCostType;
+  terms?: string;
+}
+
 export interface QuotationItem {
   pr_item_sno?: number;
   prod_sno?: number;
@@ -94,7 +106,9 @@ export interface QuotationItem {
   total_amount: number;
   delivery_days: number;
   remarks: string;
-  buyback_value?: number;   
+  /** Extra covers the supplier offers on this line (Warranty / AMC / Others). */
+  additional?: AdditionalCover[];
+  buyback_value?: number;
   pr_no?: string;    // trade-in credit from supplier for existing asset
 }
 

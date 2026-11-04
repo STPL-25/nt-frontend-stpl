@@ -6,8 +6,7 @@ import { Input } from '@/components/ui/input';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { Wallet, Send, RefreshCw, Package, FileText, Plus, Info } from 'lucide-react';
-import EnterInvoiceDialog from './EnterInvoiceDialog';
+import { Wallet, Send, RefreshCw, Package, FileText, Info } from 'lucide-react';
 import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
 import { Callout, DetailEmptyState, Panel, SearchInput, SelectableCard, StatusPill } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
@@ -18,8 +17,8 @@ import { useMasterOptions } from '@/hooks/ReUsableHook/useMasterOptions';
 import { getErrorMessage } from '@/lib/errors';
 import { getVendorBillConsolidations } from '@/Services/Api';
 import {
-  payNetBills, payNetGrnPending, payNetAdjustments, payNetPreview, payNetRelease, payNetInvoiceLedger,
-  type GrnPendingPayment, type PayableBillNet, type PaymentAdjustments, type PaymentReleasedEvent, type NetPreview, type InvoiceLedger, type InvoicePaymentStatus, type SavedPayment,
+  payNetBills, payNetGrnPending, payNetAdjustments, payNetPreview, payNetRelease, payNetInvoiceLedger, payNetTdsSections, payNetGroup,
+  type TdsSection, type NetSummary, type GrnPendingPayment, type PayableBillNet, type PaymentAdjustments, type PaymentReleasedEvent, type NetPreview, type InvoiceLedger, type InvoicePaymentStatus, type SavedPayment,
 } from '@/Services/GrnService/paymentNetApi';
 import { socket, SOCKET_CONNECT, SOCKET_JOIN_PAYMENT, SOCKET_LEAVE_PAYMENT, SOCKET_PAYMENT_RELEASED } from '@/Services/Socket';
 import { invoiceSnosOf, keepOffered, noteSourceLine, stillPayable, withoutRedeemed } from './paymentNotesModel';
@@ -35,8 +34,8 @@ const money = (n: number | null | undefined) =>
 const blockReason = (b: PayableBillNet): string => {
   if (b.grn_state === 'Pending approval') return 'GRN is awaiting approval';
   if (b.grn_state === 'No GRN') return 'No approved GRN for this PO';
-  // an invoice that is not in 2B yet can still be paid up to its taxable value (the GST part follows once 2B has it)
-  if (heldBy2b(b)) return 'Not in GSTR-2B yet - Accounts can release the hold on the GSTR-2B screen';
+  // 2B is not looked at here (sql/79): the bill is offered in full; Payment Run checks 2B and keeps the GST of an invoice that is missing from it on the Unpaid GST screen
+  if (heldBy2b(b)) return 'Not payable yet';
   return '';
 };
 
@@ -44,14 +43,6 @@ const grnBadge = (b: PayableBillNet) => {
   if (b.grn_state === 'Done') return <Badge className="bg-green-100 text-green-800 text-[10px]">GRN done</Badge>;
   if (b.grn_state === 'NA') return <Badge variant="secondary" className="text-[10px]">Service</Badge>;
   return <Badge variant="destructive" className="text-[10px]">{b.grn_state}</Badge>;
-};
-
-const itcBadge = (b: PayableBillNet) => {
-  if (!b.gst_supplier) return <Badge variant="secondary" className="text-[10px]">No GSTIN</Badge>;
-  if (b.itc_status === 'Eligible') return <Badge className="bg-green-100 text-green-800 text-[10px]">In 2B</Badge>;
-  if (b.itc_status === 'Ineligible') return <Badge className="bg-amber-100 text-amber-800 text-[10px]">In 2B · no ITC</Badge>;
-  if (b.payment_hold_override === 'Y') return <Badge className="bg-blue-100 text-blue-800 text-[10px]">Hold released</Badge>;
-  return <Badge variant="destructive" className="text-[10px]">Not in 2B</Badge>;
 };
 
 const statusBadge = (st: InvoicePaymentStatus) => {
@@ -81,7 +72,6 @@ const PaymentPage: React.FC = () => {
   const { canCreate, canEdit } = usePermissions();
   const permissionComponent = 'PaymentPage';
   const canSubmit = canCreate(permissionComponent) || canEdit(permissionComponent);
-  const canEnterInvoice = canCreate('InvoiceAllocationPage') || canSubmit;
 
   const { options } = useMasterOptions(['VendorMaster']);
 
@@ -91,7 +81,6 @@ const PaymentPage: React.FC = () => {
   const [grnPending, setGrnPending] = useState<GrnPendingPayment[]>([]);
   const [ledger, setLedger] = useState<InvoiceLedger>({ invoices: [], grns: [] });
   const [consolidations, setConsolidations] = useState<ConsolidatedBill[]>([]);
-  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [listSearch, setListSearch] = useState('');
   const [searching, setSearching] = useState(false);
@@ -111,8 +100,17 @@ const PaymentPage: React.FC = () => {
   const [redeemChoice, setRedeemChoice] = useState<'yes' | 'no' | null>(null);
   const [applyTds, setApplyTds] = useState(true);
   const [tdsSection, setTdsSection] = useState<Record<number, string>>({});   // invoice_sno -> section ('' = none)
+  const [tdsRate, setTdsRate] = useState<Record<number, string>>({});         // invoice_sno -> rate % typed over the section's own ('' = the section's rate)
   const [preview, setPreview] = useState<NetPreview | null>(null);
   const [previewError, setPreviewError] = useState('');
+  // TDS sections for the per-invoice dropdown when several suppliers are ticked (the adjustments, which normally carry them, are single-supplier)
+  const [tdsMaster, setTdsMaster] = useState<TdsSection[]>([]);
+  useEffect(() => {
+    axios.get(payNetTdsSections).then((r) => setTdsMaster(r?.data?.data ?? [])).catch(() => setTdsMaster([]));
+  }, []);
+  // several suppliers ticked: one preview per supplier (supplier_sno -> figures or why not) and the result of the last save
+  const [multiPrev, setMultiPrev] = useState<Record<string, { summary?: NetSummary | null; error?: string }>>({});
+  const [multiResult, setMultiResult] = useState<{ ok: string[]; failed: string[] } | null>(null);
 
   // keep: the bills ticked right now. A live refresh (another user paid something) must not wipe what this user has ticked -
   // it only drops the bills that are no longer payable. Without keep the selection is cleared (Refresh, after a release).
@@ -132,6 +130,8 @@ const PaymentPage: React.FC = () => {
       }
       const fresh = Object.fromEntries(rows.map((r) => [r.invoice_sno, r.tds_section_code ?? '']));
       setTdsSection((prev) => (keep ? Object.fromEntries(Object.entries(fresh).map(([k, v]) => [k, prev[Number(k)] ?? v])) : fresh));
+      const freshRate = Object.fromEntries(rows.map((r) => [r.invoice_sno, r.tds_rate_override != null ? String(r.tds_rate_override) : '']));
+      setTdsRate((prev) => (keep ? Object.fromEntries(Object.entries(freshRate).map(([k, v]) => [k, prev[Number(k)] ?? v])) : freshRate));
       // Per-PO goods / GST / notes / advances / TDS breakup (informational) - a failure here must not hide the invoices.
       try {
         const pend = await axios.get(payNetGrnPending, { params: { ...params, include_billed: 1 } });
@@ -172,7 +172,9 @@ const PaymentPage: React.FC = () => {
     const conOfInvoice = new Map<number, ConsolidatedBill>();
     const conPoNos = new Set<string>();
     for (const c of consolidations) for (const m of membersOf(c)) { conOfInvoice.set(m.invoice_sno, c); if (m.po_no) conPoNos.add(m.po_no); }
-    for (const b of bills) {
+    // an invoice already saved in a payment (or paid) has moved on to approval / Payment Run: it is not offered here again
+    const settled = new Set(ledger.invoices.filter((i) => i.payment_status === 'In payment' || i.payment_status === 'Paid').map((i) => i.invoice_sno));
+    for (const b of bills.filter((x) => !settled.has(x.invoice_sno))) {
       const con = conOfInvoice.get(b.invoice_sno);
       const key = con ? `con:${con.consolidation_sno}` : b.po_no ? `po:${b.po_no}` : `inv:${b.invoice_sno}`;
       const g = map.get(key) ?? { key, poNo: con ? con.consolidation_no : b.po_no, vendorName: b.vendor_name, vendorSno: b.vendor_sno, bills: [], info: !con && b.po_no ? infoByPo.get(b.po_no) : undefined, consolidation: con };
@@ -193,6 +195,7 @@ const PaymentPage: React.FC = () => {
       || ledger.invoices.some((i) => i.po_no === g.poNo && openStatuses.includes(i.payment_status)))));
   }, [bills, grnPending, ledger, consolidations]);
 
+
   const filteredGroups = useMemo(() => {
     const q = listSearch.trim().toLowerCase();
     if (!q) return groups;
@@ -201,12 +204,13 @@ const PaymentPage: React.FC = () => {
   }, [groups, listSearch]);
 
   const activeGroup = groups.find((g) => g.key === selectedKey) ?? null;
-  const pickGroup = (g: PayGroup) => { setSelectedKey(g.key); setSelected(new Set()); setPayAmt({}); };
+  // the ticks stay when another PO is opened: one save can pay several POs and several suppliers
+  const pickGroup = (g: PayGroup) => { setSelectedKey(g.key); };
 
   // TDS sections offered for a bill: service bill -> Service + Both, goods bill -> Product + Both, a mix of the two -> all.
   const tdsOptionGroups = (invoice_sno: number) => {
     const kinds = new Set(bills.filter((b) => b.invoice_sno === invoice_sno).map((b) => (b.bucket_type === 'SERVICE' ? 'Service' : 'Product')));
-    const active = (adj?.tdsSections ?? []).filter((t) => t.is_active === 'Y');
+    const active = (adj?.tdsSections ?? tdsMaster).filter((t) => t.is_active === 'Y');
     const pick = (a: string) => active.filter((t) => (t.applies_to ?? 'Both') === a);
     const groups = [
       { label: 'Service', items: kinds.has('Service') ? pick('Service') : [] },
@@ -217,17 +221,18 @@ const PaymentPage: React.FC = () => {
   };
 
   const selectedBills = useMemo(() => bills.filter((b) => selected.has(b.bill_sno)), [bills, selected]);
-  const selectedVendorSno = selectedBills[0]?.vendor_sno ?? null;
+  // A payment has one payee and one company, so the ticked bills are saved as one payment per supplier + company.
+  const payKeyOf = (b: PayableBillNet) => `${b.vendor_sno}|${b.com_sno ?? ''}`;
+  const selectedGroupKeys = useMemo(() => [...new Set(selectedBills.map(payKeyOf))], [selectedBills]);
+  const multiSupplier = selectedGroupKeys.length > 1;
+  // the single supplier whose advances / notes are handled on this screen; null while several suppliers are ticked
+  const selectedVendorSno = selectedGroupKeys.length === 1 ? (selectedBills[0]?.vendor_sno ?? null) : null;
   // what this payment pays: the whole of what can be paid on each ticked bill, unless a smaller amount was typed (part payment)
   const selectedTotal = selectedBills.reduce((sum, b) => sum + amountOf(b, payAmt), 0);
   const amountProblems = selectedBills.map((b) => amountProblem(b, payAmt)).filter(Boolean);
 
   const toggleRow = (bill: PayableBillNet) => {
     if (blockReason(bill)) return;
-    if (selectedVendorSno && selectedVendorSno !== bill.vendor_sno && !selected.has(bill.bill_sno)) {
-      toast.error('A payment release covers one supplier at a time - clear the current selection first.');
-      return;
-    }
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(bill.bill_sno)) next.delete(bill.bill_sno); else next.add(bill.bill_sno);
@@ -239,11 +244,6 @@ const PaymentPage: React.FC = () => {
   const toggleInvoice = (invoice_sno: number) => {
     const lines = (activeGroup?.bills ?? []).filter((b) => b.invoice_sno === invoice_sno && !blockReason(b));
     if (lines.length === 0) return;
-    const vendor = lines[0].vendor_sno;
-    if (selectedVendorSno && selectedVendorSno !== vendor) {
-      toast.error('A payment release covers one supplier at a time - clear the current selection first.');
-      return;
-    }
     setSelected((prev) => {
       const next = new Set(prev);
       const all = lines.every((l) => next.has(l.bill_sno));
@@ -253,10 +253,14 @@ const PaymentPage: React.FC = () => {
   };
 
   const payable = (activeGroup?.bills ?? []).filter((b) => !blockReason(b));
-  const allSelected = payable.length > 0 && selected.size === payable.length;
+  const allSelected = payable.length > 0 && payable.every((b) => selected.has(b.bill_sno));
+  // ticks / unticks this PO's payable lines and leaves the ticks on other POs alone
   const toggleAll = () => {
-    if (allSelected) { setSelected(new Set()); return; }
-    setSelected(new Set(payable.map((b) => b.bill_sno)));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      payable.forEach((b) => (allSelected ? next.delete(b.bill_sno) : next.add(b.bill_sno)));
+      return next;
+    });
   };
 
   // Advances and notes for the ticked invoices. Which notes are on offer depends on the invoices being paid (a note raised
@@ -365,7 +369,7 @@ const PaymentPage: React.FC = () => {
       ...[...dnPick].map((id) => ({ type: 'DEBIT', note_sno: id })),
       ...[...cnPick].map((id) => ({ type: 'CREDIT', note_sno: id })),
     ],
-    tds_overrides: [...new Set(selectedBills.map((b) => b.invoice_sno))].map((id) => ({ invoice_sno: id, section: tdsSection[id] ?? '' })),
+    tds_overrides: [...new Set(selectedBills.map((b) => b.invoice_sno))].map((id) => ({ invoice_sno: id, section: tdsSection[id] ?? '', rate: tdsSection[id] ? (tdsRate[id] ?? '') : '' })),
   });
 
   // a part payment pays less: an advance must not net off more than is being paid
@@ -392,7 +396,93 @@ const PaymentPage: React.FC = () => {
     }, 300);
     return () => { cancelled = true; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, payAmt, advAmt, dnPick, cnPick, applyTds, tdsSection, adj]);
+  }, [selected, payAmt, advAmt, dnPick, cnPick, applyTds, tdsSection, tdsRate, adj]);
+
+  const billsOfGroup = (key: string) => selectedBills.filter((b) => payKeyOf(b) === key);
+  const bodyForGroup = (key: string) => ({
+    vendor_sno: billsOfGroup(key)[0]?.vendor_sno,
+    payment_date: paymentDate,
+    mode: PAYMENT_MODE,
+    apply_tds: applyTds,
+    allocations: billsOfGroup(key).map((b) => ({ invoice_alloc_sno: b.bill_sno, amount: amountOf(b, payAmt) })),
+    advances: [],
+    notes: [],
+    tds_overrides: [...new Set(billsOfGroup(key).map((b) => b.invoice_sno))].map((id) => ({ invoice_sno: id, section: tdsSection[id] ?? '', rate: tdsSection[id] ? (tdsRate[id] ?? '') : '' })),
+  });
+  const manyCompanies = new Set(selectedBills.map((b) => b.com_sno ?? null)).size > 1;
+  const vendorNameOf = (key: string) => {
+    const b = billsOfGroup(key)[0];
+    return `${b?.vendor_name ?? `Supplier ${key}`}${manyCompanies ? ` (${b?.com_name ?? 'no company'})` : ''}`;
+  };
+
+  // several suppliers ticked: work out each supplier's payment on its own
+  useEffect(() => {
+    if (!multiSupplier) { setMultiPrev({}); return; }
+    if (amountProblems.length > 0) { setMultiPrev({}); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const out: Record<string, { summary?: NetSummary | null; error?: string }> = {};
+      for (const v of selectedGroupKeys) {
+        try {
+          const res = await axios.post(payNetPreview, bodyForGroup(v));
+          out[v] = { summary: res.data?.data?.summary ?? null };
+        } catch (e) {
+          out[v] = { error: getErrorMessage(e, 'Could not work out the amount') };
+        }
+      }
+      if (!cancelled) setMultiPrev(out);
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, payAmt, applyTds, tdsSection, tdsRate, multiSupplier]);
+
+  // One payment is saved per supplier (a payment has one payee, one approval and one line in the bank file), all in one go.
+  // A supplier that fails keeps its ticks so it can be corrected and saved again.
+  const handleReleaseAll = async () => {
+    if (!multiSupplier) return;
+    setReleasing(true);
+    releaseInFlight.current = true;
+    const ok: string[] = [];
+    const failed: string[] = [];
+    const failedBills = new Set<number>();
+    const saved: { row: SavedPayment; label: string }[] = [];
+    try {
+      for (const v of selectedGroupKeys) {
+        try {
+          const res = await axios.post(payNetRelease, bodyForGroup(v));
+          const row: SavedPayment | undefined = res?.data?.data;
+          if (row?.payment_no) { lastReleasedNo.current = row.payment_no; saved.push({ row, label: vendorNameOf(v) }); }
+          ok.push(`${vendorNameOf(v)}: ${row?.payment_no ?? 'saved'}${row ? ` (${money(row.net_paid)}${row.status === 'Pending Approval' ? ', sent for approval' : ', approved'})` : ''}`);
+        } catch (e) {
+          failed.push(`${vendorNameOf(v)}: ${getErrorMessage(e, 'could not be saved')}`);
+          billsOfGroup(v).forEach((b) => failedBills.add(b.bill_sno));
+        }
+      }
+      // Suppliers of one company / division / branch saved together are tied into a payment group: shown, approved and paid as one.
+      const byScope = new Map<string, SavedPayment[]>();
+      for (const { row } of saved) {
+        const key = `${row.com_sno ?? ''}|${row.div_sno ?? ''}|${row.brn_sno ?? ''}`;
+        byScope.set(key, [...(byScope.get(key) ?? []), row]);
+      }
+      for (const rows of byScope.values()) {
+        if (rows.length < 2) continue;
+        try {
+          const res = await axios.post(payNetGroup, { payment_snos: rows.map((r) => r.payment_sno) });
+          const g = res.data?.data;
+          if (g?.group_no) ok.push(`Group ${g.group_no}: ${rows.map((r) => r.payment_no).join(', ')} (${money(g.total_amount)}) - approved and paid together`);
+        } catch (e) {
+          failed.push(`Could not group ${rows.map((r) => r.payment_no).join(', ')}: ${getErrorMessage(e, 'grouping failed')} - they are saved and can still be approved one by one`);
+        }
+      }
+      setMultiResult({ ok, failed });
+      if (failed.length === 0) toast.success(`${ok.length} payments saved`);
+      else toast.error(`${ok.length} saved, ${failed.length} failed - see the list`);
+      await handleSearch(failedBills.size > 0 ? { keep: failedBills } : undefined);
+    } finally {
+      setReleasing(false);
+      releaseInFlight.current = false;
+    }
+  };
 
   const toggleSet = (set: Set<number>, id: number, setter: (s: Set<number>) => void) => {
     const next = new Set(set);
@@ -433,9 +523,10 @@ const PaymentPage: React.FC = () => {
   const con = activeGroup?.consolidation;
   const conMembers = con ? membersOf(con) : [];
   const conPoNos = new Set(conMembers.map((m) => m.po_no));
-  const poInvoices = con
+  const openInvoice = (i: { payment_status: InvoicePaymentStatus }) => i.payment_status !== 'In payment' && i.payment_status !== 'Paid';
+  const poInvoices = (con
     ? ledger.invoices.filter((i) => conMembers.some((m) => m.invoice_sno === i.invoice_sno))
-    : ledger.invoices.filter((i) => activeGroup?.poNo && i.po_no === activeGroup.poNo);
+    : ledger.invoices.filter((i) => activeGroup?.poNo && i.po_no === activeGroup.poNo)).filter(openInvoice);
   const poGrns = con
     ? ledger.grns.filter((g) => conPoNos.has(g.po_no))
     : ledger.grns.filter((g) => activeGroup?.poNo && g.po_no === activeGroup.poNo);
@@ -472,14 +563,20 @@ const PaymentPage: React.FC = () => {
       ) : (
         filteredGroups.map((g) => {
           const awaited = g.bills.length === 0;
+          // the invoice the GRN captured, even though it is not a payable bill yet
+          const grnInvoiceLabel = (poNo: string | null) => {
+            const gi = ledger.grns.filter((x) => poNo && x.po_no === poNo && x.has_invoice_data && !x.payable_invoice_sno);
+            return gi.length > 0 ? `GRN invoice ${gi.map((x) => x.invoice_no).join(', ')} · not billed yet` : null;
+          };
           return (
             <SelectableCard key={g.key} selected={g.key === selectedKey} onClick={() => { pickGroup(g); closeSheet(); }}>
               <span className="block truncate text-sm font-semibold">{g.vendorName ?? '—'}</span>
               <span className="mt-0.5 block truncate text-xs text-muted-foreground">{g.consolidation ? `${g.consolidation.consolidation_no} · ${g.consolidation.invoice_count} PO${g.consolidation.invoice_count !== 1 ? 's' : ''}${g.consolidation.period_from ? ` · ${g.consolidation.period_from} to ${g.consolidation.period_to ?? '…'}` : ''}` : (g.poNo ?? 'No PO')}{g.info?.grn_nos ? ` · GRN ${g.info.grn_nos}` : ''}</span>
               <span className="mt-2.5 flex flex-wrap items-center gap-1.5">
                 {awaited
-                  ? <StatusPill tone="warning">Invoice awaited</StatusPill>
+                  ? <StatusPill tone="warning">{grnInvoiceLabel(g.poNo) ?? 'Invoice awaited'}</StatusPill>
                   : <StatusPill tone="info">{g.bills.length} invoice{g.bills.length !== 1 ? 's' : ''}</StatusPill>}
+                {g.bills.some((x) => selected.has(x.bill_sno)) && <StatusPill tone="success">{g.bills.filter((x) => selected.has(x.bill_sno)).length} ticked</StatusPill>}
               </span>
               <span className="mt-2 flex justify-between text-xs">
                 <span className="text-muted-foreground">{awaited ? 'Net payable (est.)' : 'Outstanding'}</span>
@@ -539,22 +636,18 @@ const PaymentPage: React.FC = () => {
       <Panel
         icon={FileText}
         title={`Invoice-wise details (${poInvoices.length})`}
-        description="Every supplier invoice on this PO - paid, part paid or unpaid - with duplicate checks"
-        action={canEnterInvoice && activePoSno && activeGroup.vendorSno ? (
-          <Button type="button" size="sm" className="h-8 text-xs" onClick={() => setInvoiceDialogOpen(true)}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" />Enter invoice
-          </Button>
-        ) : undefined}
+        description="Every supplier invoice on this PO - paid, part paid or unpaid - as uploaded at GRN, with its GST and duplicate checks"
       >
         {poInvoices.length > 0 ? (
           <div className="overflow-x-auto rounded-xl border">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50 hover:bg-muted/50">
-                  <TableHead className="text-xs">Invoice No</TableHead>
-                  <TableHead className="text-xs">Supplier Inv No</TableHead>
+                  <TableHead className="text-xs">Supplier Invoice No</TableHead>
                   <TableHead className="text-xs">Date / Due</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
+                  <TableHead className="text-xs text-right">Taxable / GST</TableHead>
+                  <TableHead className="text-xs">Invoice file</TableHead>
                   <TableHead className="text-xs">Payment No</TableHead>
                   <TableHead className="text-xs text-right">Invoice amt</TableHead>
                   <TableHead className="text-xs text-right">Payable</TableHead>
@@ -565,13 +658,16 @@ const PaymentPage: React.FC = () => {
               <TableBody>
                 {poInvoices.map((i) => (
                   <TableRow key={i.invoice_sno} className={i.dup_count > 0 ? 'bg-amber-50 dark:bg-amber-950/20' : ''}>
-                    <TableCell className="text-xs font-medium">{i.invoice_no}</TableCell>
-                    <TableCell className="text-xs">
-                      {i.supplier_invoice_no ?? '—'}
+                    <TableCell className="text-xs font-medium">
+                      {i.supplier_invoice_no || <span className="font-normal text-muted-foreground">Not entered</span>}
                       {i.dup_count > 0 && <Badge variant="destructive" className="ml-1.5 text-[10px]">Duplicate ×{i.dup_count + 1}</Badge>}
                     </TableCell>
                     <TableCell className="text-xs">{dateOnly(i.invoice_date)}<p className="text-muted-foreground">{dateOnly(i.due_date)}</p></TableCell>
                     <TableCell>{statusBadge(i.payment_status)}</TableCell>
+                    <TableCell className="text-xs text-right tabular-nums">
+                      {i.taxable_value != null ? <>{money(i.taxable_value)}<p className="text-muted-foreground">GST {money(Number(i.invoice_amount) - Number(i.taxable_value))}</p></> : <span className="text-muted-foreground" title="No invoice amount to split">—</span>}
+                    </TableCell>
+                    <TableCell className="text-xs">{i.invoice_file_url ? <a href={i.invoice_file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-blue-600 underline"><FileText className="h-3 w-3" />View</a> : '—'}</TableCell>
                     <TableCell className="text-xs">{i.payment_nos ?? '—'}</TableCell>
                     <TableCell className="text-xs text-right tabular-nums">{money(i.invoice_amount)}</TableCell>
                     <TableCell className="text-xs text-right tabular-nums">{i.payment_status === 'Not allocated' ? '—' : money(i.release_total)}</TableCell>
@@ -594,7 +690,8 @@ const PaymentPage: React.FC = () => {
 
         {poGrns.length > 0 && (
           <div className="mt-4">
-            <p className="mb-1.5 text-xs font-semibold">Invoice captured at GRN</p>
+            <p className="mb-0.5 text-xs font-semibold">Invoice uploaded at GRN</p>
+            <p className="mb-1.5 text-xs text-muted-foreground">The invoice details and file are uploaded when the goods are received (GRN) - nothing is entered again here. Once the GRN is approved the invoice appears below, ready to pay.</p>
             <div className="overflow-x-auto rounded-xl border">
               <Table>
                 <TableHeader>
@@ -605,7 +702,8 @@ const PaymentPage: React.FC = () => {
                     <TableHead className="text-xs">Supplier Inv No</TableHead>
                     <TableHead className="text-xs">Inv date</TableHead>
                     <TableHead className="text-xs text-right">Inv amt</TableHead>
-                    <TableHead className="text-xs">Document</TableHead>
+                    <TableHead className="text-xs text-right">Taxable</TableHead>
+                    <TableHead className="text-xs">Invoice file</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -620,7 +718,8 @@ const PaymentPage: React.FC = () => {
                       </TableCell>
                       <TableCell className="text-xs">{dateOnly(g.invoice_date)}</TableCell>
                       <TableCell className="text-xs text-right tabular-nums">{g.invoice_amount != null ? money(g.invoice_amount) : '—'}</TableCell>
-                      <TableCell className="text-xs">{g.invoice_doc_url ? <a href={g.invoice_doc_url} target="_blank" rel="noreferrer" className="text-blue-600 underline">View</a> : '—'}</TableCell>
+                      <TableCell className="text-xs text-right tabular-nums">{g.invoice_taxable_value != null ? money(g.invoice_taxable_value) : '—'}</TableCell>
+                      <TableCell className="text-xs">{g.invoice_doc_url ? <a href={g.invoice_doc_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-blue-600 underline"><FileText className="h-3 w-3" />View</a> : '—'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -635,18 +734,14 @@ const PaymentPage: React.FC = () => {
           <div className="overflow-x-auto rounded-xl border">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <TableRow className="bg-muted hover:bg-muted">
                   <TableHead className="w-10"><Checkbox checked={allSelected} onCheckedChange={toggleAll} /></TableHead>
-                  <TableHead className="text-xs">Invoice No</TableHead>
-                  <TableHead className="text-xs">Supplier Inv No</TableHead>
-                  <TableHead className="text-xs">Date / Due</TableHead>
-                  <TableHead className="text-xs">GRN</TableHead>
-                  <TableHead className="text-xs">GSTR-2B</TableHead>
-                  <TableHead className="text-xs">TDS section</TableHead>
-                  <TableHead className="text-xs text-right">Invoice amt</TableHead>
-                  <TableHead className="text-xs text-right">Hold</TableHead>
-                  <TableHead className="text-xs text-right">Paid</TableHead>
-                  <TableHead className="text-xs text-right">Outstanding</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs">Date / Due</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs">GRN</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs">TDS section</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs text-right">Invoice amt</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs text-right">Paid</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs text-right">Outstanding</TableHead>
                   <TableHead className="sticky right-0 z-[1] min-w-[9.5rem] bg-muted text-xs text-right shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.15)]">Pay now</TableHead>
                 </TableRow>
               </TableHeader>
@@ -658,11 +753,11 @@ const PaymentPage: React.FC = () => {
                   const invPicked = invLines.filter((x) => selected.has(x.bill_sno));
                   const invPaying = invPicked.reduce((t, x) => t + amountOf(x, payAmt), 0);
                   const invOutstanding = invLines.reduce((t, x) => t + (Number(x.outstanding) || 0), 0);
-                  const invStatus = ledger.invoices.find((i) => i.invoice_sno === bill.invoice_sno)?.payment_status;
+                  const invInfo = ledger.invoices.find((i) => i.invoice_sno === bill.invoice_sno);
+                  const invStatus = invInfo?.payment_status;
                   const reason = blockReason(bill);
                   const isSel = selected.has(bill.bill_sno);
                   const cap = payCap(bill);
-                  const heldGst = Number(bill.gst_held) || 0;
                   const problem = isSel ? amountProblem(bill, payAmt) : '';
                   const pay = amountOf(bill, payAmt);
                   const kind = billKind(bill, pay);
@@ -671,7 +766,7 @@ const PaymentPage: React.FC = () => {
                     {firstOfInvoice && (
                       <TableRow className="bg-muted/40 hover:bg-muted/40">
                         <TableCell><Checkbox checked={invPayable.length > 0 && invPicked.length === invPayable.length} disabled={invPayable.length === 0} onCheckedChange={() => toggleInvoice(bill.invoice_sno)} aria-label={`Pay all of ${bill.bill_no}`} /></TableCell>
-                        <TableCell colSpan={11}>
+                        <TableCell colSpan={7}>
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                             <span className="text-sm font-semibold">{bill.bill_no}</span>
                             <span className="text-muted-foreground">Supplier inv {bill.supplier_invoice_no ?? '—'}</span>
@@ -689,11 +784,8 @@ const PaymentPage: React.FC = () => {
                     )}
                     <TableRow title={reason} className={`${isSel ? 'bg-blue-50 dark:bg-blue-950/20' : ''} ${reason ? 'opacity-60' : ''}`}>
                       <TableCell><Checkbox checked={isSel} disabled={!!reason} onCheckedChange={() => toggleRow(bill)} /></TableCell>
-                      <TableCell className="text-xs font-medium">{bill.bill_no}</TableCell>
-                      <TableCell className="text-xs">{bill.supplier_invoice_no ?? '—'}</TableCell>
-                      <TableCell className="text-xs">{String(bill.invoice_date).slice(0, 10)}<p className="text-muted-foreground">{bill.due_date ? String(bill.due_date).slice(0, 10) : '—'}</p></TableCell>
-                      <TableCell>{grnBadge(bill)}</TableCell>
-                      <TableCell>{itcBadge(bill)}</TableCell>
+                      <TableCell className="whitespace-nowrap text-xs">{dateOnly(bill.invoice_date ?? invInfo?.invoice_date)}<p className="text-muted-foreground">Due {dateOnly(bill.due_date ?? invInfo?.due_date)}</p>{bill.bucket_type && <p className="text-[11px] text-muted-foreground">{bill.bucket_type === 'SERVICE' ? 'Service' : 'Product'}</p>}</TableCell>
+                      <TableCell className="whitespace-nowrap">{grnBadge(bill)}</TableCell>
                       <TableCell>
                         <select
                           className="h-7 rounded-md border bg-background px-1 text-xs"
@@ -711,20 +803,28 @@ const PaymentPage: React.FC = () => {
                             </optgroup>
                           ))}
                         </select>
+                        {(tdsSection[bill.invoice_sno] ?? '') !== '' && (
+                          <div className="mt-1 flex items-center gap-1" title="Change the TDS rate for this invoice, e.g. 2 to 3. Leave blank to use the section's own rate. It is remembered for the invoice's later part payments.">
+                            <Input
+                              className="h-7 w-16 px-1.5 text-right text-xs tabular-nums"
+                              inputMode="decimal"
+                              placeholder="rate"
+                              aria-label={`TDS rate in percent for ${bill.bill_no}`}
+                              disabled={!isSel}
+                              value={tdsRate[bill.invoice_sno] ?? ''}
+                              onChange={(e) => setTdsRate((p) => ({ ...p, [bill.invoice_sno]: e.target.value.replace(/[^d.]/g, '') }))}
+                            />
+                            <span className="text-[11px] text-muted-foreground">%</span>
+                          </div>
+                        )}
                       </TableCell>
-                      <TableCell className="text-xs text-right tabular-nums">{money(bill.invoice_amount)}</TableCell>
-                      <TableCell className="text-xs text-right tabular-nums">{Number(bill.hold_amount) > 0 ? money(bill.hold_amount) : '—'}</TableCell>
-                      <TableCell className="text-xs text-right tabular-nums">
+                      <TableCell className="whitespace-nowrap text-xs text-right tabular-nums">{money(bill.invoice_amount)}</TableCell>
+                      <TableCell className="whitespace-nowrap text-xs text-right tabular-nums">
                         {Number(bill.paid_amount) > 0 ? money(bill.paid_amount) : '—'}
                         {Number(bill.reserved_amount) > 0 && <p className="text-muted-foreground" title="Held by a saved payment that is waiting for approval or for the payment run">+ {money(bill.reserved_amount)} in payment</p>}
                       </TableCell>
-                      <TableCell className="text-xs text-right font-medium tabular-nums">
+                      <TableCell className="whitespace-nowrap text-xs text-right font-medium tabular-nums">
                         {money(bill.outstanding)}
-                        {heldGst > 0.005 && (
-                          <p className="font-normal text-amber-700 dark:text-amber-400" title="This invoice is not in GSTR-2B yet: its GST part is paid once it appears there">
-                            GST {money(heldGst)} after 2B
-                          </p>
-                        )}
                       </TableCell>
                       <TableCell className={`sticky right-0 z-[1] text-right shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.15)] ${isSel ? 'bg-blue-50 dark:bg-slate-900' : 'bg-background'}`}>
                         {reason ? <span className="text-xs text-muted-foreground">—</span> : (
@@ -763,10 +863,12 @@ const PaymentPage: React.FC = () => {
         ) : (
           <Callout tone="warning" icon={FileText}>
             {poInvoices.length > 0
-              ? 'Nothing is payable on this PO right now - every invoice is either settled or not yet allocated (see Invoice-wise details above).'
+              ? 'Nothing is payable on this PO right now - every invoice is either settled, in a payment, or waiting for its goods to be received (see Invoice-wise details above).'
+              : poGrns.some((g) => g.has_invoice_data && !g.payable_invoice_sno)
+                ? `No payable bill yet. ${poGrns.filter((g) => g.has_invoice_data && !g.payable_invoice_sno).map((g) => `GRN ${g.grn_no} captured invoice ${g.invoice_no} (${money(g.invoice_amount)}, ${dateOnly(g.invoice_date)})`).join('; ')} - listed above, but not posted as a payable bill yet, so it cannot be ticked for payment.`
               : grnsMissingInvoice.length > 0
-                ? `No payable invoice yet. ${grnsMissingInvoice.length === poGrns.length ? 'None of the GRNs' : `GRN ${grnsMissingInvoice.map((g) => g.grn_no).join(', ')}`} captured the supplier invoice (these GRNs pre-date the mandatory-invoice rule), so there is nothing to pay against. Enter the supplier invoice on the Invoice screen, allocate and match it to this PO, and it will appear here with a select box, ready to pay.`
-                : 'No supplier invoice yet. Enter it on the Invoice screen (allocate and match it) and it will be listed here, ready to pay.'}
+                ? `No payable invoice yet. ${grnsMissingInvoice.length === poGrns.length ? 'None of the GRNs' : `GRN ${grnsMissingInvoice.map((g) => g.grn_no).join(', ')}`} captured the supplier invoice (these GRNs pre-date the mandatory-invoice rule), so there is nothing to pay against.`
+                : 'No supplier invoice yet. The invoice is uploaded at GRN - once the GRN is approved it is listed here, ready to pay.'}
           </Callout>
         )}
         {activeGroup.bills.some((b) => blockReason(b)) && (
@@ -774,15 +876,83 @@ const PaymentPage: React.FC = () => {
         )}
       </Panel>
 
+      {multiSupplier && (
+        <Panel icon={Wallet} title={`Pay ${selectedGroupKeys.length} payments together`} description="Bills ticked on several suppliers or companies are saved in one go - one payment per supplier and company, each sent for approval">
+          <div className="space-y-4">
+            <Callout tone="info" icon={Info}>
+              Advances and debit / credit notes are not netted in a multi-supplier save. To use them for a supplier, untick the other suppliers and save that
+              supplier on its own.
+            </Callout>
+            <div className="overflow-x-auto rounded-xl border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="text-xs">Supplier</TableHead>
+                    <TableHead className="text-xs text-right">Invoices</TableHead>
+                    <TableHead className="text-xs text-right">Invoice amount</TableHead>
+                    <TableHead className="text-xs text-right">TDS</TableHead>
+                    <TableHead className="text-xs text-right">To pay</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedGroupKeys.map((v) => {
+                    const mine = billsOfGroup(v);
+                    const pv = multiPrev[v];
+                    return (
+                      <TableRow key={v}>
+                        <TableCell className="text-xs font-medium">
+                          {vendorNameOf(v)}
+                          {pv?.error && <span className="block text-[11px] font-normal text-red-600">{pv.error}</span>}
+                        </TableCell>
+                        <TableCell className="text-xs text-right tabular-nums">{new Set(mine.map((b) => b.invoice_sno)).size}</TableCell>
+                        <TableCell className="text-xs text-right tabular-nums">{money(mine.reduce((t, b) => t + amountOf(b, payAmt), 0))}</TableCell>
+                        <TableCell className="text-xs text-right tabular-nums">{pv?.summary ? `- ${money(pv.summary.tds_amount)}` : '—'}</TableCell>
+                        <TableCell className="text-xs text-right font-semibold tabular-nums">{pv?.summary ? money(pv.summary.net_paid) : '…'}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
+                    <TableCell className="text-xs font-semibold" colSpan={4}>Total to pay</TableCell>
+                    <TableCell className="text-xs text-right font-semibold tabular-nums">
+                      {money(selectedGroupKeys.reduce((t, v) => t + (Number(multiPrev[v]?.summary?.net_paid) || 0), 0))}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+            <label className="flex items-center gap-2 text-xs">
+              <Checkbox checked={applyTds} onCheckedChange={(v) => setApplyTds(v === true)} /> Deduct TDS where a section is chosen
+            </label>
+            {multiResult && (multiResult.ok.length > 0 || multiResult.failed.length > 0) && (
+              <div className="space-y-1 rounded-md border p-3 text-xs">
+                {multiResult.ok.map((t) => <p key={t} className="text-green-700">✓ {t}</p>)}
+                {multiResult.failed.map((t) => <p key={t} className="text-red-600">✗ {t}</p>)}
+              </div>
+            )}
+            <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <Callout tone="info" icon={Info} className="sm:max-w-xl">
+                Each supplier gets its own payment and goes to approval separately. If one cannot be saved, the others are still saved and that supplier stays ticked.
+              </Callout>
+              {canSubmit && (
+                <Button
+                  type="button"
+                  onClick={handleReleaseAll}
+                  disabled={releasing || amountProblems.length > 0 || selectedGroupKeys.some((v) => !multiPrev[v]?.summary)}
+                  title={amountProblems[0]}
+                  className="h-9 shrink-0 bg-blue-600 hover:bg-blue-700"
+                >
+                  {releasing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                  Save {selectedGroupKeys.length} Payments
+                </Button>
+              )}
+            </div>
+          </div>
+        </Panel>
+      )}
+
       {selected.size > 0 && adj && (
         <Panel icon={Wallet} title="Adjustments & payment" description="Advances, debit / credit notes and TDS netted against the selected invoices">
           <div className="space-y-5">
-            {selectedBills.some((b) => (Number(b.gst_held) || 0) > 0.005) && (
-              <Callout tone="info" icon={Info}>
-                {selectedBills.filter((b) => (Number(b.gst_held) || 0) > 0.005).map((b) => `${b.bill_no}: ${money(b.gst_held)} GST`).join(' · ')} is not paid in this
-                payment - the invoice is not in GSTR-2B yet. This payment covers the taxable value; the GST part can be paid once 2B has the invoice.
-              </Callout>
-            )}
             {selectedBills.some((b) => amountOf(b, payAmt) < payCap(b) - 0.005) && (
               <Callout tone="info" icon={Info}>
                 Part payment: what is not paid now stays on the invoice and can be paid in another payment. The approver can also reduce a payment
@@ -895,10 +1065,10 @@ const PaymentPage: React.FC = () => {
                     {(preview?.invoices ?? []).map((l) => (
                       <div key={l.invoice_sno} className="flex justify-between border-b py-1">
                         <span>
-                          {l.invoice_no}{l.supplier_invoice_no ? ` (${l.supplier_invoice_no})` : ''} {l.tds_section ? `· ${l.tds_section} @ ${l.tds_rate_pct ?? 0}%` : '· no TDS'}
+                          {l.supplier_invoice_no || 'Invoice no. not entered'} {l.tds_section ? `· ${l.tds_section} @ ${l.tds_rate_pct ?? 0}%` : '· no TDS'}
                           {l.balance_after !== undefined && (
                             <span className={`block text-[11px] ${l.is_part ? 'text-blue-700 dark:text-blue-400' : 'text-muted-foreground'}`}>
-                              {l.is_part ? `${Number(l.balance_after) <= 0.005 ? 'Last part' : 'Part payment'} of ${money(l.gross)} - ${leftLine(Number(l.balance_after), selectedBills.some((b) => b.invoice_sno === l.invoice_sno && b.on_hold_2b), selectedBills.filter((b) => b.invoice_sno === l.invoice_sno).reduce((t, b) => t + (Number(b.gst_held) || 0), 0))}` : 'Paid in full'}
+                              {l.is_part ? `${Number(l.balance_after) <= 0.005 ? 'Last part' : 'Part payment'} of ${money(l.gross)} - ${leftLine(Number(l.balance_after), false, 0)}` : 'Paid in full'}
                             </span>
                           )}
                           {l.tds_section && (adj?.tdsSections ?? []).find((t) => t.section_code === l.tds_section)?.description && (
@@ -942,18 +1112,6 @@ const PaymentPage: React.FC = () => {
 
   return (
     <>
-    <EnterInvoiceDialog
-      open={invoiceDialogOpen}
-      poBasicSno={activePoSno}
-      poNo={activeGroup?.poNo ?? null}
-      vendorSno={activeGroup?.vendorSno ?? null}
-      vendorName={activeGroup?.vendorName ?? null}
-      suggestedAmount={info?.grn_value ?? null}
-      existingInvoices={ledger.invoices}
-      existingGrns={ledger.grns}
-      onClose={() => setInvoiceDialogOpen(false)}
-      onDone={handleSearch}
-    />
     <SidebarDetailLayout
       sidebarTitle="Payment"
       sidebarCount={groups.length}

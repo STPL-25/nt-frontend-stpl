@@ -12,7 +12,8 @@ export const gstr2bUploadDetail = (id: number, status?: string) =>
   `${base}/uploads/${id}${status ? `?status=${encodeURIComponent(status)}` : ''}`;
 export const gstr2bCandidates = (rowSno: number) => `${base}/rows/${rowSno}/candidates`;
 export const gstr2bConfirm = (rowSno: number) => `${base}/rows/${rowSno}/confirm`;
-export const gstr2bSkip = (rowSno: number) => `${base}/rows/${rowSno}/skip`;
+export const gstr2bEdit = (rowSno: number) => `${base}/rows/${rowSno}`;
+export const gstr2bSkip =(rowSno: number) => `${base}/rows/${rowSno}/skip`;
 export const gstr2bMissing = `${base}/missing`;
 export const gstr2bHoldOverride = (invoiceSno: number) => `${base}/invoices/${invoiceSno}/hold-override`;
 

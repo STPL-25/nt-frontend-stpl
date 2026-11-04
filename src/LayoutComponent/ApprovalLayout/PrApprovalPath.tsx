@@ -134,7 +134,9 @@ const ACTION_ICON: Record<string, ReactNode> = {
 function LogRow({ entry, itemNames }: { entry: ApprovalLogEntry; itemNames: Record<number, string> }) {
   const editLines = entry.action === "EDIT" ? summarizeEdit(entry.before_json, entry.after_json, itemNames) : [];
   const actor = entry.acted_as === "SYSTEM" ? "System" : personLabel(entry.acted_by_name, entry.acted_by);
-  const alt = entry.acted_as === "ALTERNATE" ? " (as alternate)" : entry.acted_as === "REQUESTER" ? " (requester)" : "";
+  const alt = entry.acted_as === "ALTERNATE" ? " (as alternate)"
+    : entry.acted_as === "REQUESTER" ? " (requester)"
+    : entry.acted_as === "AUTO" ? " (auto - already approved earlier)" : "";
   const system = entry.acted_as === "SYSTEM";
   return (
     <div className={`flex items-start gap-3 rounded-lg border p-3 ${system ? "border-slate-200 bg-slate-50/40 dark:border-slate-800 dark:bg-slate-900/20" : "border-slate-200 dark:border-slate-800"}`} data-testid="activity-row">

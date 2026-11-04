@@ -21,6 +21,8 @@ import {
   useProductFieldsMaster,
   useAccountHeadFieldsMaster,
   usePaymentBankFieldsMaster,
+  useBankFileFormatFieldsMaster,
+  useBankFileFormatColumnFieldsMaster,
   useStockTypeFieldsMaster,
   useProductSubCatagoryMaster,
   useSupplierCatagoryFieldsMaster,
@@ -65,6 +67,8 @@ export const useMasterDataFields = () => {
     RecurrenceCadenceMaster: useRecurrenceCadenceFieldsMaster(),
     AccountHeadMaster: useAccountHeadFieldsMaster(),
     PaymentBankMaster: usePaymentBankFieldsMaster(),
+    BankFileFormatMaster: useBankFileFormatFieldsMaster(),
+    BankFileFormatColumnMaster: useBankFileFormatColumnFieldsMaster(),
   };
 
   return { fields };

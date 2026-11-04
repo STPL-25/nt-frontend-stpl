@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAppState } from "@/globalState/hooks/useAppState";
+import { isMasterAccessComp } from "@/globalState/hooks/usePermissions";
 import type { IconComponent, MenuItem, MenuGroup, Screen, HandleClickParams } from "./SideBar.types";
 
 // ---------------------------------------------------------------------------
@@ -26,6 +27,8 @@ const buildGroupedMenu = (screens: Screen[]): MenuGroup[] => {
   const groupIndex = new Map<string | number, number>();
 
   screens.forEach((s) => {
+    // Per-master access rows only carry permissions for the Masters page — not menu items.
+    if (isMasterAccessComp(s.screen_comp)) return;
     const groupId = s.group_id ?? "ungrouped";
     const groupName = s.group_name?.trim() || "Other";
     const item: MenuItem = {

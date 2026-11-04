@@ -1,4 +1,6 @@
 import * as React from "react"
+import { Inbox } from "lucide-react"
+import { EmptyState } from "@/CustomComponent/PageComponents/EmptyState"
 import {
   closestCenter,
   DndContext,
@@ -518,9 +520,9 @@ export function DataTable({
                   <TableRow>
                     <TableCell
                       colSpan={columns.length}
-                      className="h-24 text-center"
+                      className="p-4"
                     >
-                      No results.
+                      <EmptyState icon={Inbox} message="No results" description="Nothing to show here yet." />
                     </TableCell>
                   </TableRow>
                 )}

@@ -51,7 +51,7 @@ const InvoiceAllocationForm: React.FC<InvoiceAllocationFormProps> = ({ invoice, 
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
           <SplitSquareHorizontal size={16} className="text-primary" />
-          Allocate Invoice — {invoice.invoice_no}
+          Allocate Invoice — {invoice.vendor_invoice_no || ''}
           <Badge variant="outline" className="text-xs ml-1">
             Material: {formatINR(materialTotal)} · Service: {formatINR(serviceTotal)}
           </Badge>

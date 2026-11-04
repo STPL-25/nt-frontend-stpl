@@ -22,7 +22,6 @@ const InvoiceSidebar: React.FC<InvoiceSidebarProps> = ({ invoices, loading, sele
     const q = search.toLowerCase();
     return invoices.filter(i =>
       !q ||
-      i.invoice_no.toLowerCase().includes(q) ||
       (i.vendor_name ?? '').toLowerCase().includes(q) ||
       (i.po_no ?? '').toLowerCase().includes(q) ||
       (i.vendor_invoice_no ?? '').toLowerCase().includes(q)
@@ -59,9 +58,15 @@ const InvoiceSidebar: React.FC<InvoiceSidebarProps> = ({ invoices, loading, sele
             <span className="text-sm">Loading invoices...</span>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground/70">
-            <FileText size={24} />
-            <span className="text-sm">No invoices found</span>
+          <div className="m-3 flex flex-col items-center rounded-2xl border border-dashed border-primary/20 bg-gradient-to-b from-primary/[0.07] to-card px-4 py-8 text-center">
+            <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/20">
+              <FileText size={21} />
+            </span>
+            <span className="text-sm font-semibold text-foreground">{search ? 'No matching invoices' : 'No invoices yet'}</span>
+            <span className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              {search ? 'Try another invoice, vendor, or PO.' : 'Captured invoices will appear in this list.'}
+            </span>
+            {!search && canCreate && <Button size="sm" className="mt-4" onClick={onNewInvoice}><Plus size={14} /> New invoice</Button>}
           </div>
         ) : (
           filtered.map((inv, idx) => {
@@ -75,7 +80,7 @@ const InvoiceSidebar: React.FC<InvoiceSidebarProps> = ({ invoices, loading, sele
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-semibold text-primary truncate">{inv.invoice_no}</span>
+                  <span className="text-sm font-semibold text-primary truncate">{inv.vendor_invoice_no || 'Invoice no. not entered'}</span>
                   <Badge className={`text-xs shrink-0 ml-1 ${matchStatusTone[inv.match_status] ?? ''}`}>{inv.match_status}</Badge>
                 </div>
                 <div className="text-xs text-foreground font-medium truncate">{inv.vendor_name ?? '—'}</div>

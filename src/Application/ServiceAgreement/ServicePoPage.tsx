@@ -179,7 +179,7 @@ const EntryDialog: React.FC<{ cycle: CycleRow; onClose: () => void; onSaved: () 
         </DialogHeader>
 
         <div className="flex-1 space-y-4 overflow-y-auto bg-muted/30 px-4 py-4 sm:px-6">
-          <Panel icon={Percent} title="Rate & tax">
+          <Panel icon={Percent} title="Rate & GST">
             <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-3">
               <CustomInputField field="rate_amount" label="Rate" require type="number" value={rate} onChange={setRate} placeholder="0.00" className="h-10" />
               <CustomInputField field="discount_pct" label="Discount %" type="number" value={discount} onChange={setDiscount} className="h-10" />

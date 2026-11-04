@@ -104,6 +104,7 @@ export interface GRNRecord {
   doc_ref_no?: string;
   invoice_date?: string;
   invoice_amount?: number;
+  invoice_taxable_value?: number;
   invoice_doc_url?: string;
   vehicle_no?: string;
   challan_no?: string;
@@ -118,6 +119,8 @@ export interface GRNFormState {
   doc_ref_no: string;
   invoice_date?: string;
   invoice_amount?: string;
+  /** Optional: the invoice's taxable value (before GST). With it the GST can be held back until GSTR-2B shows the invoice. */
+  invoice_taxable_value?: string;
   /** Mandatory supplier invoice file; never persisted in a draft (not JSON-serialisable). */
   invoice_file?: File | null;
   vehicle_no: string;

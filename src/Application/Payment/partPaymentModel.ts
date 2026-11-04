@@ -35,7 +35,7 @@ export const amountProblem = (b: PayableBillNet, typed: Record<number, string>):
   const cap = payCap(b);
   if (n > cap + 0.005) {
     return num(b.outstanding) > cap + 0.005
-      ? `At most ${cap.toFixed(2)} now - the GST part follows once the invoice is in GSTR-2B`
+      ? `At most ${cap.toFixed(2)} now on this invoice now`
       : `At most ${cap.toFixed(2)} is left on this invoice`;
   }
   return '';
@@ -72,8 +72,8 @@ export const reduceProblem = (fig: PaymentInvoiceFigures[], typed: Record<number
   for (const f of fig) {
     const raw = typed[f.invoice_sno];
     const n = raw === undefined ? num(f.this_amount) : parseAmount(raw);
-    if (!Number.isFinite(n) || n < 0) return `Enter an amount for ${f.invoice_no} (0 leaves it out of this payment)`;
-    if (n > num(f.this_amount) + 0.005) return `${f.invoice_no}: the payment was saved for ${num(f.this_amount).toFixed(2)} - it can only be reduced`;
+    if (!Number.isFinite(n) || n < 0) return `Enter an amount for ${f.supplier_invoice_no || 'this invoice'} (0 leaves it out of this payment)`;
+    if (n > num(f.this_amount) + 0.005) return `${f.supplier_invoice_no || 'This invoice'}: the payment was saved for ${num(f.this_amount).toFixed(2)} - it can only be reduced`;
     if (n < num(f.this_amount) - 0.005) changed = true;
     if (n > 0.005) anyLeft = true;
   }

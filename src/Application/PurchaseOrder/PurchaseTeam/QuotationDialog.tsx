@@ -11,14 +11,16 @@ import {
 import {
   Users, Send, Loader2, CreditCard, RefreshCcw, Paperclip,
   ChevronRight, CheckCircle2, Lock, Info,
-  Download, Upload, AlertCircle,
+  Download, Upload, AlertCircle, ShieldCheck,
 } from 'lucide-react';
 import { downloadQuotationItemsExcel, parseQuotationItemsExcel } from '@/utils/excelUtils';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { useQuotationHeaderFields, useQuotationItemFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
-import type { QuotationItem, QuotationFormState, AdvancePaymentData, Vendor } from './types';
-import { formatINR, calcQuotationTotals, calcChargesTotal, recalcItemTotal, today } from './helpers';
+import type { QuotationItem, QuotationFormState, AdvancePaymentData, Vendor, Quotation } from './types';
+import { formatINR, calcQuotationTotals, calcChargesTotal, recalcItemTotal, calcAdvanceSplit, today } from './helpers';
 import AdvancePaymentDialog from './AdvancePaymentDialog';
+import { AdditionalPanel } from './WarrantyAmcEditor';
+import { describeCover } from './helpers';
 
 interface QuotationDialogProps {
   open: boolean;
@@ -29,10 +31,15 @@ interface QuotationDialogProps {
   vendor?: Vendor | null;
   /** Billing company — its GSTIN state prefix is compared with the supplier's to decide intrastate vs interstate. */
   comSno?: number | string | null;
+  /** When set the dialog edits this (still pending) quotation instead of creating a new one. */
+  editing?: Quotation | null;
   onSubmit: (form: QuotationFormState, items: QuotationItem[], file: File | null) => Promise<void>;
 }
 
 const MAX_FILE_MB = 10;
+const API_BASE = import.meta.env.VITE_API_URL || '';
+const resolveFileUrl = (path: string) =>
+  /^https?:\/\//.test(path) ? path : `${API_BASE}/${path.replace(/^\//, '')}`;
 
 const INITIAL_FORM: QuotationFormState = {
   quotation_ref_no: '',
@@ -60,8 +67,48 @@ interface SupplyInfo {
   is_intrastate: boolean | null;
 }
 
+const dateOnly = (v?: string) => (v ? String(v).slice(0, 10) : '');
+
+// Rebuilds the entry form from a saved quotation (header columns + its supplier_advance JSON row).
+const formFromQuotation = (q: Quotation): QuotationFormState => {
+  let advance_payment_data: AdvancePaymentData | undefined;
+  try {
+    const raw: any[] = typeof q.supplier_advance === 'string' ? JSON.parse(q.supplier_advance) : (q.supplier_advance as any[] ?? []);
+    const adv = raw?.[0];
+    if (adv) {
+      const stages = typeof adv.adv_issue_stages === 'string' ? JSON.parse(adv.adv_issue_stages) : (adv.adv_issue_stages ?? []);
+      advance_payment_data = {
+        advance_pct: Number(adv.advance_payment_pct ?? 0),
+        gst_applicable: adv.gst_applicable === 'Y',
+        gst_pct: Number(adv.gst_pct ?? 0),
+        reason: adv.reason ?? '',
+        note: adv.note ?? '',
+        stages,
+      };
+    }
+  } catch { /* unreadable advance row — leave it to be re-configured */ }
+  return {
+    quotation_ref_no: q.quotation_ref_no ?? '',
+    quotation_date: dateOnly(q.quotation_date) || today(),
+    valid_upto: dateOnly(q.valid_upto),
+    currency_code: q.currency_code || 'INR',
+    payment_terms: q.payment_terms ?? '',
+    delivery_days: Number(q.delivery_days ?? 0),
+    remarks: q.remarks ?? '',
+    buyback_available: !!q.buyback_available,
+    buyback_value: Number(q.buyback_value ?? 0),
+    advance_payment_required: !!q.advance_payment_required,
+    advance_payment_pct: Number(q.advance_payment_pct ?? 0),
+    advance_payment_data,
+    freight_charges: Number(q.freight_charges ?? 0),
+    other_charges: Number(q.other_charges ?? 0),
+    freight_gst_pct: Number(q.freight_gst_pct ?? 0),
+    other_charges_gst_pct: Number(q.other_charges_gst_pct ?? 0),
+  };
+};
+
 const QuotationDialog: React.FC<QuotationDialogProps> = ({
-  open, onOpenChange, quotationItems: initialItems, defaultQuotationRefNo, vendor, comSno, onSubmit,
+  open, onOpenChange, quotationItems: initialItems, defaultQuotationRefNo, vendor, comSno, editing, onSubmit,
 }) => {
   const headerFields = useQuotationHeaderFields();
   const itemFields = useQuotationItemFields();
@@ -91,6 +138,8 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
   const [itemSelection, setItemSelection] = useState<Set<number>>(new Set(initialItems.map((_, i) => i)));
   const [submitting, setSubmitting] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  // Document already stored on the quotation being edited (kept unless a new file is picked).
+  const [existingFile, setExistingFile] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string>('');
   const [showAdvanceDialog, setShowAdvanceDialog] = useState(false);
   const [excelErrors, setExcelErrors] = useState<string[]>([]);
@@ -103,12 +152,13 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
     if (open) {
       setItems(initialItems);
       setItemSelection(new Set(initialItems.map((_, i) => i)));
-      setForm({ ...INITIAL_FORM, quotation_ref_no: defaultQuotationRefNo ?? '' });
+      setForm(editing ? formFromQuotation(editing) : { ...INITIAL_FORM, quotation_ref_no: defaultQuotationRefNo ?? '' });
       setFile(null);
+      setExistingFile(editing?.sq_quotation_file ? resolveFileUrl(editing.sq_quotation_file) : null);
       setFileError('');
       setShowAdvanceDialog(false);
     }
-  }, [open, initialItems, defaultQuotationRefNo]);
+  }, [open, initialItems, defaultQuotationRefNo, editing]);
 
   React.useEffect(() => {
     const vendorSno = vendor?.kyc_basic_info_sno ?? vendor?.vendor_sno;
@@ -169,7 +219,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
   // Delete (null) and Re-upload (a new File) both come through here; the file only reaches the server on submit.
   const handlePickFile = (f: File | null) => {
     setFileError('');
-    if (!f) { setFile(null); return; }
+    if (!f) { setFile(null); setExistingFile(null); return; }
     if (f.size > MAX_FILE_MB * 1024 * 1024) {
       setFileError(`File must be under ${MAX_FILE_MB} MB`);
       return;
@@ -188,6 +238,13 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
     );
   };
 
+  const [showAdditional, setShowAdditional] = useState(false);
+  const [additionalIdx, setAdditionalIdx] = useState(0);
+  const additionalCount = items.filter(it => (it.additional?.length ?? 0) > 0).length;
+
+  const patchItem = (idx: number, patch: Partial<QuotationItem>) =>
+    setItems(prev => prev.map((item, i) => (i === idx ? { ...item, ...patch } : item)));
+
   const selectedItems = useMemo(
     () => items.filter((_, i) => itemSelection.has(i)),
     [items, itemSelection],
@@ -205,6 +262,8 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
   // Global buyback from form state
   const totalBuyback = form.buyback_available ? (form.buyback_value || 0) : 0;
   const netAfterBuyback = grandWithCharges - totalBuyback;
+  // Net value without GST — the base the advance % is taken on
+  const netExGst = Math.max(0, netAfterBuyback - totalGst);
 
   // Advance payment is only enabled when every selected item has a unit price AND tax entered
   const canEnableAdvance = selectedItems.length > 0
@@ -226,11 +285,10 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
     if (!form.advance_payment_required) return 0;
     const d = form.advance_payment_data;
     if (d) {
-      const base = netAfterBuyback * (d.advance_pct / 100);
-      return base + (d.gst_applicable ? base * (d.gst_pct / 100) : 0);
+      return calcAdvanceSplit(netExGst, d.advance_pct, d.gst_applicable, defaultTaxPct).total;
     }
     return netAfterBuyback * (form.advance_payment_pct / 100);
-  }, [form.advance_payment_required, form.advance_payment_data, form.advance_payment_pct, netAfterBuyback]);
+  }, [form.advance_payment_required, form.advance_payment_data, form.advance_payment_pct, netAfterBuyback, netExGst, defaultTaxPct]);
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -248,7 +306,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users size={18} className="text-green-600" />
-            Add Supplier Quotation
+            {editing ? 'Edit Supplier Quotation' : 'Add Supplier Quotation'}
           </DialogTitle>
         </DialogHeader>
 
@@ -301,6 +359,34 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
           />
         ))}
 
+        {/* ── Additional: Warranty / AMC / Others per product (opens a pop-up) ─ */}
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck size={14} className="text-muted-foreground" />
+              <span className="text-xs font-semibold text-muted-foreground">Additional — Warranty / AMC / Others</span>
+              {additionalCount > 0 && (
+                <span className="text-[11px] bg-primary/10 text-primary rounded px-1.5 py-0.5 font-medium">
+                  {additionalCount} product{additionalCount !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowAdditional(true)}>
+              {additionalCount > 0 ? 'Edit' : 'Add'} <ChevronRight size={11} />
+            </Button>
+          </div>
+          {additionalCount > 0 && (
+            <div className="mt-2 space-y-1">
+              {items.map((it, i) => (it.additional?.length ?? 0) > 0 && (
+                <p key={i} className="text-[11px] text-muted-foreground">
+                  <span className="font-semibold text-foreground">{it.prod_name}:</span>{' '}
+                  {it.additional!.map(describeCover).join(' | ')}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* ── Advance Payment ───────────────────────────────────────────────── */}
         <div className={`rounded-lg border p-3 ${canEnableAdvance ? 'bg-amber-50 border-amber-200' : 'bg-muted/30 border-border'}`}>
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -346,7 +432,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
                       Advance configured: {form.advance_payment_data.advance_pct}%
                       {form.advance_payment_data.gst_applicable && (
                         <span className="font-normal text-amber-700">
-                          {' '}+ GST {form.advance_payment_data.gst_pct}%
+                          {' '}+ GST {defaultTaxPct}%
                         </span>
                       )}
                       <span className="font-normal">= {formatINR(advanceAmount)}</span>
@@ -525,7 +611,8 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
               {items.map((item, idx) => {
                 const included = itemSelection.has(idx);
                 return (
-                  <TableRow key={idx} className={!included ? 'opacity-40' : ''}>
+                  <React.Fragment key={idx}>
+                  <TableRow className={!included ? 'opacity-40' : ''}>
                     <TableCell>
                       <input
                         type="checkbox"
@@ -586,6 +673,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
                       );
                     })}
                   </TableRow>
+                  </React.Fragment>
                 );
               })}
             </TableBody>
@@ -690,17 +778,17 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
               <>
                 <div className="flex justify-between text-muted-foreground">
                   <span>CGST</span>
-                  <span className="font-medium">{formatINR(totalGst / 2)}</span>
+                  <span className="font-medium">{formatINR(totals.tax / 2)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
                   <span>SGST</span>
-                  <span className="font-medium">{formatINR(totalGst / 2)}</span>
+                  <span className="font-medium">{formatINR(totals.tax / 2)}</span>
                 </div>
               </>
             ) : (
               <div className="flex justify-between text-muted-foreground">
                 <span>IGST</span>
-                <span className="font-medium">{formatINR(totalGst)}</span>
+                <span className="font-medium">{formatINR(totals.tax)}</span>
               </div>
             )}
             {freight > 0 && (
@@ -709,10 +797,22 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
                 <span className="font-medium">{formatINR(freight)}</span>
               </div>
             )}
+            {charges.freightGst > 0 && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Freight GST ({form.freight_gst_pct}%)</span>
+                <span className="font-medium">{formatINR(charges.freightGst)}</span>
+              </div>
+            )}
             {otherCharges > 0 && (
               <div className="flex justify-between text-muted-foreground">
                 <span>Other Charges</span>
                 <span className="font-medium">{formatINR(otherCharges)}</span>
+              </div>
+            )}
+            {charges.otherGst > 0 && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Other Charges GST ({form.other_charges_gst_pct}%)</span>
+                <span className="font-medium">{formatINR(charges.otherGst)}</span>
               </div>
             )}
             <div className="flex justify-between border-t pt-1 font-bold">
@@ -738,7 +838,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
                 <span>
                   Advance ({form.advance_payment_data?.advance_pct ?? form.advance_payment_pct}%
                   {form.advance_payment_data?.gst_applicable
-                    ? ` + GST ${form.advance_payment_data.gst_pct}%`
+                    ? ` + GST ${defaultTaxPct}%`
                     : ''})
                 </span>
                 <span className="font-medium">{formatINR(advanceAmount)}</span>
@@ -754,13 +854,14 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
             Quotation Document
             <span className="text-[10px] font-normal text-muted-foreground/70">
               (image or PDF, optional, max {MAX_FILE_MB}MB)
+              {editing?.sq_quotation_file ? ' — the saved document is kept unless you upload a new one' : ''}
             </span>
           </div>
           <CustomInputField
             field="quotation_file"
             label="Quotation Document"
             type="file"
-            value={file}
+            value={file ?? existingFile}
             onChange={(f: File | null) => handlePickFile(f)}
           />
           {fileError && <p className="text-[11px] text-red-500">{fileError}</p>}
@@ -770,16 +871,54 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={handleSubmit} disabled={submitting} className="bg-primary hover:bg-primary/90">
             {submitting ? <Loader2 size={16} className="animate-spin mr-1" /> : <Send size={16} className="mr-1" />}
-            Submit Quotation
+            {editing ? 'Save Changes' : 'Submit Quotation'}
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Additional (Warranty / AMC / Others) pop-up: pick a product, then give its details */}
+      <Dialog open={showAdditional} onOpenChange={setShowAdditional}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <ShieldCheck size={16} /> Additional — Warranty / AMC / Others
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[65vh] space-y-3 overflow-y-auto pr-1">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Product</label>
+              <select
+                value={additionalIdx}
+                onChange={(e) => setAdditionalIdx(Number(e.target.value))}
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              >
+                {items.map((it, i) => (
+                  <option key={i} value={i}>
+                    {i + 1}. {it.prod_name}{(it.additional?.length ?? 0) > 0 ? ` ✓ (${it.additional!.length})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {items[additionalIdx] && (
+              <AdditionalPanel
+                key={additionalIdx}
+                item={items[additionalIdx]}
+                onChange={(additional) => patchItem(additionalIdx, { additional })}
+              />
+            )}
+          </div>
+          <DialogFooter>
+            <Button size="sm" onClick={() => setShowAdditional(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Advance payment sub-dialog */}
       <AdvancePaymentDialog
         open={showAdvanceDialog}
         onOpenChange={setShowAdvanceDialog}
         totalAmount={netAfterBuyback}
+        netAmount={netExGst}
         defaultTaxPct={defaultTaxPct}
         initialData={form.advance_payment_data}
         onSave={(advData: AdvancePaymentData) => {

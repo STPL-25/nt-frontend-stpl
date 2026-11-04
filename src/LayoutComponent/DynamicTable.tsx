@@ -21,6 +21,7 @@ import {
   TableHeader, TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/CustomComponent/PageComponents/EmptyState";
 import { getErrorMessage } from "@/lib/errors";
 import { downloadExcelTemplate, parseExcelFile } from "@/utils/excelUtils";
 
@@ -527,35 +528,31 @@ const DynamicTable: React.FC<DynamicTableProps> = ({
         {/* ── Table or Empty State ── */}
         <div className="overflow-x-auto">
           {paginatedData.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center px-6">
-              <div className="rounded-full bg-muted/60 p-4 mb-4">
-                <FileX className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-base font-semibold text-foreground mb-1">No records found</h3>
-              {searchTerm ? (
-                <p className="text-sm text-muted-foreground mb-4">
-                  No results for{" "}
-                  <span className="font-medium text-foreground">"{searchTerm}"</span>
-                </p>
-              ) : (
-                <p className="text-sm text-muted-foreground mb-4">
-                  There are no records yet. Add your first one.
-                </p>
-              )}
-              <div className="flex gap-2">
-                {searchTerm && (
-                  <Button variant="outline" size="sm" onClick={() => setSearchTerm("")}>
-                    Clear search
-                  </Button>
-                )}
-                {canCreate && (
-                  <Button size="sm" onClick={() => setShowAddModal(true)}>
-                    <Plus className="h-4 w-4 mr-1.5" />
-                    Add New
-                  </Button>
-                )}
-              </div>
-            </div>
+            <EmptyState
+              className="m-4 py-16"
+              icon={FileX}
+              message={searchTerm ? "No matching records" : "No records yet"}
+              description={
+                searchTerm
+                  ? `Nothing matches "${searchTerm}". Try a different search.`
+                  : "Nothing here yet. Add your first record to get started."
+              }
+              action={
+                <>
+                  {searchTerm && (
+                    <Button variant="outline" size="sm" onClick={() => setSearchTerm("")}>
+                      Clear search
+                    </Button>
+                  )}
+                  {canCreate && (
+                    <Button size="sm" onClick={() => setShowAddModal(true)}>
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      Add New
+                    </Button>
+                  )}
+                </>
+              }
+            />
           ) : (
             <Table>
               <TableHeader>

@@ -93,11 +93,16 @@ const PRApprovalScreen: React.FC = () => {
   useEffect(() => {
     socket.emit(SOCKET_JOIN_PR_APPROVAL);
 
-    const onApprovalUpdated = (data: { pr_no: string; approved_by: string }) => {
-      if (data.approved_by === userData[0]?.ecno) return; // own action — list already updated locally
+    const onApprovalUpdated = (data: { pr_no?: string; approved_by?: string; action?: string }) => {
+      if (data.approved_by && data.approved_by === userData[0]?.ecno) return; // own action — list already updated locally
       setRefreshKey(k => k + 1);
       setContextKey(k => k + 1);
-      setToast({ message: `PR ${data.pr_no} was actioned — refreshing list…`, type: 'success' });
+      setToast({
+        message: data.action === 'approver_changed'
+          ? 'An approver was changed in the workflow — refreshing list…'
+          : `PR ${data.pr_no} was actioned — refreshing list…`,
+        type: 'success',
+      });
     };
 
     socket.on(SOCKET_PR_APPROVAL_UPDATED, onApprovalUpdated);

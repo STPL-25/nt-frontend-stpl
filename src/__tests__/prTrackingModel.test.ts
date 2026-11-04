@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildDeliveryLanes, buildPrApprovalSteps, buildPoApproval, buildSummary,
+  alternateCutoffPassed, buildDeliveryLanes, buildPrApprovalSteps, buildPoApproval, buildSummary,
   type PRTrackingTimelineData,
 } from "@/Application/PRTracking/prTrackingModel";
 
@@ -359,5 +359,19 @@ describe("buildPrApprovalSteps — conditional approval engine", () => {
     const plain = buildPrApprovalSteps(base());
     expect(buildPrApprovalSteps(base({ approvalEngine: null }))).toEqual(plain);
     expect(buildPrApprovalSteps(base({ approvalEngine: { summary: { has_instance: false }, stages: [], log: [] } }))).toEqual(plain);
+  });
+});
+
+describe("alternateCutoffPassed", () => {
+  const since = "2026-11-02T11:42:30.230Z"; // local 11:42 marked Z
+  const at = (h: number, m: number) => new Date(2026, 10, 2, h, m).getTime();
+  it("is false before the cut-off and true from it", () => {
+    expect(alternateCutoffPassed(since, 1, at(12, 41))).toBe(false);
+    expect(alternateCutoffPassed(since, 1, at(12, 43))).toBe(true);
+  });
+  it("is false for missing or bad input", () => {
+    expect(alternateCutoffPassed(null, 1)).toBe(false);
+    expect(alternateCutoffPassed("nonsense", 1)).toBe(false);
+    expect(alternateCutoffPassed(since, undefined)).toBe(false);
   });
 });

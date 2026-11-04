@@ -10,14 +10,17 @@ import {
 import {
   CreditCard, Plus, Trash2, AlertCircle, CheckCircle2, Info,
 } from 'lucide-react';
-import { formatINR } from './helpers';
+import { formatINR, calcAdvanceSplit } from './helpers';
 import type { AdvancePaymentData, AdvancePaymentStage } from './types';
 
 interface AdvancePaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Grand total incl. GST (reference only) */
   totalAmount: number;
-  /** Default GST % auto-filled from the quotation items' tax rate */
+  /** Net value excluding GST — the base the advance % is taken on */
+  netAmount?: number;
+  /** Default GST % auto-filled from the quotation items' GST rate */
   defaultTaxPct?: number;
   initialData?: AdvancePaymentData;
   onSave: (data: AdvancePaymentData) => void;
@@ -38,10 +41,12 @@ const AdvancePaymentDialog: React.FC<AdvancePaymentDialogProps> = ({
   open,
   onOpenChange,
   totalAmount,
+  netAmount,
   defaultTaxPct = 0,
   initialData,
   onSave,
 }) => {
+  const baseAmount = netAmount ?? totalAmount;
   const [data, setData] = useState<AdvancePaymentData>(DEFAULT_DATA);
   const [roundOffMode, setRoundOffMode] = useState(false);
 
@@ -57,23 +62,20 @@ const AdvancePaymentDialog: React.FC<AdvancePaymentDialogProps> = ({
       setData(d);
       setRoundOffMode(false);
       lastChangedBy.current = 'pct';
-      const base = totalAmount * (d.advance_pct / 100);
+      const base = baseAmount * (d.advance_pct / 100);
       setAdvanceAmtStr(d.advance_pct > 0 ? base.toFixed(0) : '');
     }
   }, [open]); // intentionally omit deps to run only on open toggle
 
   // ── Computed values ────────────────────────────────────────────────────────
-  const advanceBase = useMemo(
-    () => totalAmount * (data.advance_pct / 100),
-    [totalAmount, data.advance_pct],
+  // Advance % is taken on the net value (excl. GST). With GST: GST is added on the advance.
+  const split = useMemo(
+    () => calcAdvanceSplit(baseAmount, data.advance_pct, data.gst_applicable, defaultTaxPct),
+    [baseAmount, data.advance_pct, data.gst_applicable, defaultTaxPct],
   );
-
-  const gstOnAdvance = useMemo(
-    () => (data.gst_applicable ? advanceBase * (data.gst_pct / 100) : 0),
-    [data.gst_applicable, data.gst_pct, advanceBase],
-  );
-
-  const totalAdvance = advanceBase + gstOnAdvance;
+  const advanceBase = split.base;
+  const gstOnAdvance = split.gst;
+  const totalAdvance = split.total;
 
   const stagedTotal = useMemo(
     () => data.stages.reduce((s, st) => s + st.amount, 0),
@@ -92,7 +94,7 @@ const AdvancePaymentDialog: React.FC<AdvancePaymentDialogProps> = ({
     const clamped = Math.min(100, Math.max(0, pct));
     lastChangedBy.current = 'pct';
     setData(d => ({ ...d, advance_pct: clamped }));
-    const computed = totalAmount * (clamped / 100);
+    const computed = baseAmount * (clamped / 100);
     setAdvanceAmtStr(clamped > 0 ? computed.toFixed(0) : '');
   };
 
@@ -101,7 +103,7 @@ const AdvancePaymentDialog: React.FC<AdvancePaymentDialogProps> = ({
     lastChangedBy.current = 'amt';
     setAdvanceAmtStr(val);
     const amt = parseFloat(val) || 0;
-    const pct = totalAmount > 0 ? Math.min(100, Math.max(0, (amt / totalAmount) * 100)) : 0;
+    const pct = baseAmount > 0 ? Math.min(100, Math.max(0, (amt / baseAmount) * 100)) : 0;
     setData(d => ({ ...d, advance_pct: parseFloat(pct.toFixed(4)) }));
   };
 
@@ -110,8 +112,8 @@ const AdvancePaymentDialog: React.FC<AdvancePaymentDialogProps> = ({
     setData(d => ({
       ...d,
       gst_applicable: applicable,
-      // Auto-fill from quotation tax rate only when turning ON and no rate set yet
-      gst_pct: applicable && d.gst_pct === 0 ? defaultTaxPct : d.gst_pct,
+      // GST is not a separate rate: it is the items' own GST on the advance
+      gst_pct: applicable ? defaultTaxPct : 0,
     }));
   };
 
@@ -156,7 +158,7 @@ const AdvancePaymentDialog: React.FC<AdvancePaymentDialogProps> = ({
   };
 
   const handleSave = () => {
-    onSave(data);
+    onSave({ ...data, gst_pct: data.gst_applicable ? defaultTaxPct : 0 });
     onOpenChange(false);
   };
 
@@ -175,7 +177,10 @@ const AdvancePaymentDialog: React.FC<AdvancePaymentDialogProps> = ({
         {/* Order total reference */}
         <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 rounded px-3 py-2">
           <Info size={13} className="shrink-0" />
-          <span>Order value (net payable): <span className="font-semibold text-foreground">{formatINR(totalAmount)}</span></span>
+          <span>
+            Grand total (incl. GST): <span className="font-semibold text-foreground">{formatINR(totalAmount)}</span>
+            {' · '}Net value (excl. GST): <span className="font-semibold text-foreground">{formatINR(baseAmount)}</span>
+          </span>
         </div>
 
         {/* ── Section 1: Advance % + Amount (bidirectional) ─────────────────── */}
@@ -210,7 +215,7 @@ const AdvancePaymentDialog: React.FC<AdvancePaymentDialogProps> = ({
 
             {/* Advance Amount — editable, recalculates % */}
             <div className="space-y-1">
-              <label className="text-xs font-medium">Advance Amount (₹)</label>
+              <label className="text-xs font-medium">Advance Amount (₹, excl. GST)</label>
               <div className="flex items-center gap-1.5">
                 <span className="text-sm text-muted-foreground shrink-0">₹</span>
                 <Input
@@ -225,7 +230,7 @@ const AdvancePaymentDialog: React.FC<AdvancePaymentDialogProps> = ({
               </div>
               {data.advance_pct > 0 && lastChangedBy.current === 'amt' && (
                 <p className="text-[11px] text-amber-700">
-                  = {data.advance_pct.toFixed(2)}% of order
+                  = {data.advance_pct.toFixed(2)}% of net value
                 </p>
               )}
             </div>
@@ -260,51 +265,43 @@ const AdvancePaymentDialog: React.FC<AdvancePaymentDialogProps> = ({
             </div>
           </div>
 
-          {/* GST % row — only when With GST */}
-          {data.gst_applicable && (
-            <div className="grid grid-cols-3 gap-4 rounded-lg bg-amber-50 border border-amber-200 p-3">
+          {/* GST on advance — items' own GST, simply paid or not */}
+          {data.gst_applicable && data.advance_pct > 0 && (
+            <div className="grid grid-cols-2 gap-4 rounded-lg bg-amber-50 border border-amber-200 p-3">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-amber-800">
-                  GST % on Advance
-                  {defaultTaxPct > 0 && (
-                    <span className="ml-1 text-[10px] text-amber-600 font-normal">(from items: {defaultTaxPct}%)</span>
-                  )}
+                  GST Amount{defaultTaxPct > 0 && <span className="ml-1 text-[10px] text-amber-600 font-normal">(items GST {defaultTaxPct}%)</span>}
                 </label>
-                <div className="flex items-center gap-1">
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.5}
-                    value={data.gst_pct || ''}
-                    onChange={e => updateField('gst_pct', Math.min(100, Math.max(0, Number(e.target.value))))}
-                    placeholder={String(defaultTaxPct || 18)}
-                    className="h-7 text-xs text-right"
-                  />
-                  <span className="text-xs text-amber-700 shrink-0">%</span>
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-amber-800">GST Amount</label>
-                <p className="h-7 flex items-center text-sm font-semibold text-amber-700">
-                  {formatINR(gstOnAdvance)}
-                </p>
+                <p className="h-7 flex items-center text-sm font-semibold text-amber-700">{formatINR(gstOnAdvance)}</p>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-amber-800">Total Advance (incl. GST)</label>
-                <p className="h-7 flex items-center text-sm font-bold text-amber-800">
-                  {formatINR(totalAdvance)}
-                </p>
+                <p className="h-7 flex items-center text-sm font-bold text-amber-800">{formatINR(totalAdvance)}</p>
               </div>
             </div>
           )}
 
-          {!data.gst_applicable && data.advance_pct > 0 && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Total Advance:</span>
-              <span className="font-semibold text-foreground">{formatINR(totalAdvance)}</span>
-            </div>
-          )}
+          {/* Both options side by side — the chosen one is highlighted and is what gets saved */}
+          {data.advance_pct > 0 && (() => {
+            const rate = defaultTaxPct;
+            const preview = calcAdvanceSplit(baseAmount, data.advance_pct, true, rate);
+            const optCls = (on: boolean) =>
+              `rounded-lg border p-2.5 space-y-0.5 ${on ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : 'border-border opacity-70'}`;
+            return (
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className={optCls(!data.gst_applicable)}>
+                  <p className="font-semibold">Without GST {!data.gst_applicable && '✓'}</p>
+                  <p className="text-muted-foreground">Advance ({data.advance_pct.toFixed(2)}% of {formatINR(baseAmount)})</p>
+                  <p className="text-sm font-bold">{formatINR(preview.base)}</p>
+                </div>
+                <div className={optCls(data.gst_applicable)}>
+                  <p className="font-semibold">With GST {data.gst_applicable && '✓'}</p>
+                  <p className="text-muted-foreground">{formatINR(preview.base)} + GST {rate}% {formatINR(preview.gst)}</p>
+                  <p className="text-sm font-bold">{formatINR(preview.total)}</p>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* ── Section 2: Reason ─────────────────────────────────────────────── */}
@@ -502,7 +499,7 @@ const AdvancePaymentDialog: React.FC<AdvancePaymentDialogProps> = ({
             </div>
             {data.gst_applicable && (
               <div>
-                <p className="text-[10px] uppercase tracking-wide text-amber-600/80">GST ({data.gst_pct}%)</p>
+                <p className="text-[10px] uppercase tracking-wide text-amber-600/80">GST ({defaultTaxPct}%)</p>
                 <p className="text-sm font-bold text-amber-800">{formatINR(gstOnAdvance)}</p>
               </div>
             )}

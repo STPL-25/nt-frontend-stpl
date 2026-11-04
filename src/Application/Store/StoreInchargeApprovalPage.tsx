@@ -276,7 +276,7 @@ const StoreInchargeApprovalPage: React.FC = () => {
         <Button
           variant="outline"
           size="sm"
-          className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+          className="border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
           onClick={() => setRefreshKey(k => k + 1)}
           disabled={fetchLoading}
         >

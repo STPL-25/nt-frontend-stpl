@@ -13,6 +13,7 @@ import {
   purchaseTeamGetApprovedPRs,
   purchaseTeamGetVendors,
   purchaseTeamCreateQuotation,
+  purchaseTeamUpdateQuotation,
   purchaseTeamGetQuotations,
   purchaseTeamSelectQuotation,
   purchaseTeamCreatePO,
@@ -37,7 +38,7 @@ import type {
   QuotationFormState, POFormState, POGroup, POConfirmationData, POConfirmItem,
 } from './PurchaseTeam/types';
 import {
-  normalisePRRows, extractQuotationItems, getPRDisplayNo,
+  normalisePRRows, extractQuotationItems, getPRDisplayNo, warrantyAmcIssue,
 } from './PurchaseTeam/helpers';
 
 import PRListSidebar from './PurchaseTeam/PRListSidebar';
@@ -99,6 +100,8 @@ const PurchaseTeamPage: React.FC = () => {
   const [quotationItems, setQuotationItems] = useState<QuotationItem[]>([]);
   const [quotationSplitGroup, setQuotationSplitGroup] = useState<number | undefined>(undefined);
   const [defaultQuotationRefNo, setDefaultQuotationRefNo] = useState('');
+  // Set while the quotation dialog is editing a saved (still pending) quotation.
+  const [editingQuotation, setEditingQuotation] = useState<Quotation | null>(null);
 
   // Compare dialog
   const [showCompareDialog, setShowCompareDialog] = useState(false);
@@ -184,6 +187,7 @@ const PurchaseTeamPage: React.FC = () => {
             total_amount: Number(it.total_amount ?? 0),
             delivery_days: Number(it.delivery_days ?? 0),
             remarks: it.remarks ?? '',
+            additional: Array.isArray(it.additional) ? it.additional : [],
           }));
         } catch { /* ignore parse errors */ }
       }
@@ -210,6 +214,13 @@ const PurchaseTeamPage: React.FC = () => {
         buyback_available: row.buyback_available ?? false,
         buyback_value: Number(row.buyback_value ?? 0),
         supplier_advance: row.supplier_advance,
+        freight_charges: Number(row.freight_charges ?? 0),
+        other_charges: Number(row.other_charges ?? 0),
+        freight_gst_pct: Number(row.freight_gst_pct ?? 0),
+        other_charges_gst_pct: Number(row.other_charges_gst_pct ?? 0),
+        is_msme: row.is_msme ?? null,
+        msme_type: row.msme_type ?? null,
+        is_intrastate: row.is_intrastate ?? null,
       } as Quotation;
     });
   }, [quotationsRaw]);
@@ -232,20 +243,12 @@ const PurchaseTeamPage: React.FC = () => {
   useEffect(() => {
     socket.emit(SOCKET_JOIN_PURCHASE_TEAM);
 
-    // The backend pushes the full, freshly-queried approvedPRs list as
-    // { data: approvedPRs } whenever any teammate saves a split group. Replace
-    // the sidebar list live so every connected client stays in sync without a
-    // manual refresh.
-    const onSplitUpdated = (payload: { data?: any[] }) => {
-      if (!Array.isArray(payload?.data)) return;
-      const normalised = normalisePRRows(payload.data);
-      setPrList(normalised);
-      const current = selectedPRRef.current;
-      if (current?.pr_basic_sno) {
-        const updated = normalised.find(p => p.pr_basic_sno === current.pr_basic_sno);
-        setSelectedPR(updated ?? null);
-      }
-      toast.info('Purchase requisitions updated');
+    // The broadcast payload is the approved-PR list queried WITHOUT any user's
+    // org scope, which the scoped procedure turns into an empty list — applying
+    // it blanked the sidebar until a manual refresh. Treat the event as a signal
+    // only and re-fetch this user's own scoped list instead.
+    const onSplitUpdated = () => {
+      setPrRefreshKey(k => k + 1);
     };
 
     socket.on(SOCKET_PT_SPLIT_UPDATED, onSplitUpdated);
@@ -330,6 +333,7 @@ const PurchaseTeamPage: React.FC = () => {
   // splitGroup: undefined = main/all items, 0 = ungrouped items only, N = specific group N
   const handleOpenQuotation = (vendor: Vendor, splitGroup?: number) => {
     if (!selectedPR && poGroups.length === 0) { toast.error('Select a PR first'); return; }
+    setEditingQuotation(null);
     setSelectedVendor(vendor);
     setQuotationSplitGroup(splitGroup);
 
@@ -379,6 +383,16 @@ const PurchaseTeamPage: React.FC = () => {
     setShowQuotationDialog(true);
   };
 
+  const handleEditQuotation = (q: Quotation) => {
+    const vendor = vendors.find(v => (v.kyc_basic_info_sno ?? v.vendor_sno) === q.vendor_sno)
+      ?? ({ vendor_sno: q.vendor_sno, kyc_basic_info_sno: q.vendor_sno, company_name: q.vendor_name || q.company_name } as Vendor);
+    setEditingQuotation(q);
+    setSelectedVendor(vendor);
+    setQuotationSplitGroup(q.split_group);
+    setQuotationItems(q.items);
+    setShowQuotationDialog(true);
+  };
+
   const handleSubmitQuotation = async (form: QuotationFormState, items: QuotationItem[], file: File | null) => {
     if (!selectedPR && poGroups.length === 0) return;
     if (!selectedVendor) return;
@@ -386,6 +400,8 @@ const PurchaseTeamPage: React.FC = () => {
     if (!form.valid_upto) { toast.error('Valid upto date required'); return; }
     if (items.length === 0) { toast.error('Select at least one item for this quotation'); return; }
     if (items.some(it => it.unit_price <= 0)) { toast.error('Enter unit price for all selected items'); return; }
+    const warrantyAmcError = items.map(warrantyAmcIssue).find(Boolean);
+    if (warrantyAmcError) { toast.error(warrantyAmcError); return; }
     if (Number(form.freight_charges) < 0 || Number(form.other_charges) < 0) { toast.error('Freight / other charges cannot be negative'); return; }
     if ([form.freight_gst_pct, form.other_charges_gst_pct].some(p => Number(p) < 0 || Number(p) > 100)) { toast.error('Charges GST % must be between 0 and 100'); return; }
 
@@ -409,25 +425,29 @@ const PurchaseTeamPage: React.FC = () => {
       }),
     };
 
+    const isEdit = !!editingQuotation?.sq_basic_sno;
+    const url = isEdit ? purchaseTeamUpdateQuotation : purchaseTeamCreateQuotation;
+    const body = isEdit ? { ...payload, sq_basic_sno: editingQuotation!.sq_basic_sno } : payload;
+
     try {
       if (file) {
         // Multipart: encrypted metadata in `_ep`, binary file appended raw.
         const fd = new FormData();
-        fd.append('_ep', await encryptFormMeta(payload));
+        fd.append('_ep', await encryptFormMeta(body));
         fd.append('quotation_file', file);
-        await postQuotation(purchaseTeamCreateQuotation, fd, {
+        await postQuotation(url, fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
           withCredentials: true,
         });
       } else {
-        await postQuotation(purchaseTeamCreateQuotation, payload, { withCredentials: true });
+        await postQuotation(url, body, { withCredentials: true });
       }
 
-      toast.success('Supplier quotation created');
+      toast.success(isEdit ? 'Supplier quotation updated' : 'Supplier quotation created');
       setShowQuotationDialog(false);
       setQuotationsRefreshKey(k => k + 1);
     } catch (err: any) {
-      const msg = err?.response?.data?.error ?? 'Failed to create quotation';
+      const msg = err?.response?.data?.error ?? (isEdit ? 'Failed to update quotation' : 'Failed to create quotation');
       if (msg.toLowerCase().includes('database error')) {
         toast.warning('Quotation data recorded. SP may not be deployed yet.');
       } else {
@@ -725,6 +745,7 @@ const PurchaseTeamPage: React.FC = () => {
                     existingQuotations={existingQuotations}
                     loadingQuotations={loadingQuotations}
                     onOpenQuotation={canCreate("PurchaseTeamPage") ? handleOpenQuotation : undefined}
+                    onEditQuotation={canEdit("PurchaseTeamPage") || canCreate("PurchaseTeamPage") ? handleEditQuotation : undefined}
                     /* QUOTATION-SELECTION (now done at PO Approvals via the stage's can_select_quotation flag):
                         re-enable to let Purchase pick the quotation again.
                     onSelectQuotation={handleSelectQuotation}
@@ -750,6 +771,7 @@ const PurchaseTeamPage: React.FC = () => {
         quotationItems={quotationItems}
         defaultQuotationRefNo={defaultQuotationRefNo}
         vendor={selectedVendor}
+        editing={editingQuotation}
         comSno={confirmedData?.billing_com_sno ?? selectedPR?.com_sno}
         onSubmit={handleSubmitQuotation}
       />

@@ -211,6 +211,18 @@ export function buildPrApprovalSteps(data: PRTrackingTimelineData): ApprovalStep
 }
 
 /**
+ * Has the stage waited past its cut-off, so the alternate may act? The API sends the database's local
+ * time marked "Z" (see lib/formatDate), so the "Z" is dropped and the time read as local.
+ */
+export function alternateCutoffPassed(currentSince: unknown, escalationHours: unknown, now: number = Date.now()): boolean {
+  if (typeof currentSince !== "string") return false;
+  const hours = Number(escalationHours);
+  const since = new Date(currentSince.replace(/Z$/, "")).getTime();
+  if (!Number.isFinite(since) || !Number.isFinite(hours)) return false;
+  return now >= since + hours * 3_600_000;
+}
+
+/**
  * The PR approval trail from the conditional-approval engine. Unlike the plain history, it knows which
  * stages the PR's own values required: a stage whose condition was not met is left out (instead of showing
  * as approved by someone who never saw it), a stage the approver forwarded past is left out too, and the
@@ -263,7 +275,11 @@ export function buildEngineApprovalSteps(engine: NonNullable<PRTrackingTimelineD
         at: formatDateTime(st.acted_at), comment: back?.comments || st.comments || null,
         note: `Sent back to ${back?.target_name ?? holder} — returns here once they respond` });
     } else if (st.state === "CURRENT") {
-      const alts = st.alternate_names ? `Alternate: ${st.alternate_names} (can act after ${st.escalation_hours}h)` : null;
+      const alts = st.alternate_names
+        ? (alternateCutoffPassed(engine.summary.current_since, st.escalation_hours)
+            ? `Cut-off of ${st.escalation_hours}h passed — alternate ${st.alternate_names} can approve now`
+            : `Alternate: ${st.alternate_names} (can act after ${st.escalation_hours}h)`)
+        : null;
       steps.push({ key, label, person: approver, state: "pending", note: alts });
     } else {
       steps.push({ key, label, person: approver, state: "upcoming" });

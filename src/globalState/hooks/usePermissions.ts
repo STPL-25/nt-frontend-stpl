@@ -31,6 +31,16 @@ export const PERM_CREATE = 3;
 export const PERM_EDIT   = 4;
 export const PERM_DELETE = 5;
 
+/**
+ * Per-master access rows (backend sql/151). Each tile on the Masters grid has its own screen row whose comp is
+ * "masters.<master key>" (e.g. "masters.CompanyMaster"), so Role Permissions can grant View / Create / Edit / Delete
+ * master by master. They carry permissions only — there is no page behind them, so the sidebar skips them.
+ */
+export const MASTER_SCREEN_PREFIX = "masters.";
+export const masterScreenComp = (masterKey: string) => `${MASTER_SCREEN_PREFIX}${masterKey}`;
+export const isMasterAccessComp = (comp?: string | null) =>
+  !!comp && comp.toLowerCase().startsWith(MASTER_SCREEN_PREFIX);
+
 export const usePermissions = () => {
   const sidebarData = useAppSelector(selectSidebarData);
   const screens = sidebarData?.screens ?? [];
@@ -46,6 +56,8 @@ export const usePermissions = () => {
     getPermissionIds(screenComp).includes(permId);
 
   return {
+    /** false until the signed-in user's screens have been fetched — "no permission yet" is not "no access". */
+    loaded: sidebarData != null,
     canView:   (screenComp: string) => hasPermission(screenComp, PERM_VIEW),
     canCreate: (screenComp: string) => hasPermission(screenComp, PERM_CREATE),
     canEdit:   (screenComp: string) => hasPermission(screenComp, PERM_EDIT),

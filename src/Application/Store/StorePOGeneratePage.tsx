@@ -396,16 +396,16 @@ const StorePOGeneratePage: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+            className="border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
             onClick={() => setShowDrafts(true)}
           >
             <ClipboardList size={16} className="mr-1" />
-            PO Drafts {drafts.length > 0 && <Badge className="ml-1 bg-primary-foreground/20 text-primary-foreground border-0">{drafts.length}</Badge>}
+            PO Drafts {drafts.length > 0 && <Badge className="ml-1 border-0 bg-primary/15 text-primary">{drafts.length}</Badge>}
           </Button>
           <Button
             variant="outline"
             size="sm"
-            className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20"
+            className="border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
             onClick={fetchPRs}
             disabled={loadingPR}
           >
@@ -690,7 +690,7 @@ const StorePOGeneratePage: React.FC = () => {
                     <CardTitle className="text-sm font-semibold flex items-center gap-2">
                       <Package size={16} className="text-orange-600" />
                       Order Items
-                      <span className="text-xs font-normal text-muted-foreground/70">(pre-filled from PR — enter unit price &amp; tax)</span>
+                      <span className="text-xs font-normal text-muted-foreground/70">(pre-filled from PR — enter unit price &amp; GST)</span>
                     </CardTitle>
                   </div>
                 </CardHeader>
@@ -707,7 +707,7 @@ const StorePOGeneratePage: React.FC = () => {
                             <TableHead className="text-xs text-center w-28">Qty</TableHead>
                             <TableHead className="text-xs text-center w-24">Unit</TableHead>
                             <TableHead className="text-xs text-right w-36">Unit Price (₹) <span className="text-red-500">*</span></TableHead>
-                            <TableHead className="text-xs text-right w-28">Tax %</TableHead>
+                            <TableHead className="text-xs text-right w-28">GST %</TableHead>
                             <TableHead className="text-xs text-right w-36">Total (₹)</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -783,7 +783,7 @@ const StorePOGeneratePage: React.FC = () => {
                         <span className="font-medium">{formatINR(subtotal)}</span>
                       </div>
                       <div className="flex justify-between text-muted-foreground">
-                        <span>Total Tax</span>
+                        <span>Total GST</span>
                         <span className="font-medium">{formatINR(taxTotal)}</span>
                       </div>
                       <div className="flex justify-between border-t pt-2 text-base font-bold">

@@ -29,10 +29,14 @@ export interface PayableBillNet {
   reserved_amount?: number;
   outstanding: number; invoice_amount: number; taxable_value: number | null;
   tds_section_code: string | null; itc_status: string | null; payment_hold_override: 'Y' | 'N' | null;
+  /** (sql/75) TDS rate % typed on an earlier payment of this invoice; null = the section's own rate */
+  tds_rate_override?: number | null;
   gst_supplier: boolean; gst_booked: boolean; grn_state: 'Done' | 'Pending approval' | 'No GRN' | 'NA'; on_hold_2b: boolean;
   /** (sql/70) the GST share of this bill; the part of it kept back until the invoice shows in GSTR-2B; what can be paid today
    *  (below `outstanding` while that GST is held). taxable_known = the invoice carries a taxable value, so it can be split. */
   gst_amount?: number; gst_held?: number; payable_now?: number; taxable_known?: boolean;
+  /** the company / division / branch the bill is paid under (invoice's own, else its PO's) */
+  com_sno?: number | null; div_sno?: number | null; brn_sno?: number | null; com_name?: string | null;
 }
 
 export interface GrnPendingPayment {
@@ -50,6 +54,8 @@ export interface LedgerInvoice {
   invoice_sno: number; invoice_no: string; supplier_invoice_no: string | null; po_basic_sno: number; po_no: string | null;
   vendor_sno: number; invoice_date: string | null; due_date: string | null; invoice_amount: number; match_status: string | null;
   verification_status: string | null; invoice_file_url: string | null;
+  /** (sql/75) */
+  taxable_value?: number | null; itc_status?: string | null; payment_hold_override?: 'Y' | 'N' | null;
   release_total: number; paid_total: number; reserved_total?: number; outstanding: number; payment_status: InvoicePaymentStatus;
   payment_nos: string | null; dup_count: number;
 }
@@ -57,6 +63,8 @@ export interface LedgerGrn {
   grn_basic_sno: number; grn_no: number; po_basic_sno: number; po_no: string | null; vendor_sno: number; status: string;
   received_date: string | null; invoice_no: string | null; invoice_date: string | null; invoice_amount: number | null;
   invoice_doc_url: string | null; has_invoice_data: boolean; dup_count: number;
+  /** (sql/75) taxable value typed on the GRN, and the payable invoice the GRN's invoice became */
+  invoice_taxable_value?: number | null; payable_invoice_sno?: number | null;
 }
 export interface InvoiceLedger { invoices: LedgerInvoice[]; grns: LedgerGrn[] }
 
@@ -103,6 +111,7 @@ export interface NetPreview { summary: NetSummary | null; invoices: NetInvoiceLi
 /** What POST /release returns (sql/65): the saved payment and where it went. */
 export interface SavedPayment {
   payment_sno: number; payment_no: string; net_paid: number; status: PaymentStatus; current_approver_id: string | null; is_final: boolean;
+  com_sno?: number | null; div_sno?: number | null; brn_sno?: number | null;
 }
 
 // ── approval + Payment Run (sql/65) ─────────────────────────────────────────
@@ -112,8 +121,12 @@ export const payNetApprove = `${base}/approve`;
 /** The approver pays less now (sql/70): { payment_sno, reason, allocations: [{ invoice_sno, amount }] }; the rest stays on the invoice. */
 export const payNetRevise = `${base}/revise`;
 export const payNetCancel = `${base}/cancel`;
+/** Ties payments saved together (several suppliers, one company / division / branch) into a group (sql/74): { payment_snos } -> the group. */
+export const payNetGroup = `${base}/group`;
 export const payNetRunProceed = `${base}/run/proceed`;
 export const payNetRunBatches = `${base}/run/batches`;
+/** One past run with what it paid: { batch, items, lines } (lines = per invoice, sql/70) */
+export const payNetRunBatchDetail = (batch_sno: number) => `${base}/run/batches/${batch_sno}`;
 export const payNetRunBatchFile = (batch_sno: number) => `${base}/run/batches/${batch_sno}/file`;
 /** The sheet the auditor / payment inputter checks the bank's screen against (invoice-wise, part payments, TDS, balance left) */
 export const payNetRunBatchVerification = (batch_sno: number) => `${base}/run/batches/${batch_sno}/verification`;
@@ -127,7 +140,7 @@ export type PortalMode = 'UPI' | 'Credit Card' | 'Debit Card' | 'Net Banking' | 
 export interface PortalPayment {
   txn_sno: number; payment_sno: number; payment_no: string; vendor_name: string | null; supp_code: string | null; portal_name: string | null;
   txn_mode: PortalMode; txn_id: string; txn_date: string; net_paid: number; amount_paid: number; discount_amount: number;
-  remarks: string | null; recorded_by: string | null; recorded_at: string; com_name: string | null;
+  remarks: string | null; recorded_by: string | null; recorded_at: string; com_sno?: number | null; com_name: string | null;
 }
 export interface TdsRecord {
   deduction_sno: number; payment_sno: number; payment_no: string; payment_status: PaymentStatus; payment_date: string | null;
@@ -150,6 +163,8 @@ export type MsmeClass = 'MICRO' | 'SMALL' | 'MEDIUM' | 'MSME';
 export interface PaymentEntry {
   /** ADVANCE = the quotation's advance, due once its PO is approved (sql/69); it has no invoices, and paying it creates a supplier advance */
   payment_type?: 'BILL' | 'ADVANCE'; po_basic_sno?: number | null; adv_stage_no?: number | null;
+  /** (sql/74) the payment group this payment was saved in with other suppliers' payments of the same company / division / branch */
+  group_sno?: number | null; group_no?: string | null; group_size?: number | null;
   payment_sno: number; payment_no: string; vendor_sno: number; vendor_name: string | null; supp_code: string | null; vendor_email: string | null;
   mode: string; debit_account: string | null; reference_no: string | null; remarks: string | null; payment_date: string | null;
   status: PaymentStatus; current_approver_id: string | null; workflow_types_id: number | null;
@@ -167,12 +182,17 @@ export interface PaymentEntry {
   invoice_count: number; invoice_nos: string | null; supplier_invoice_nos: string | null; po_nos: string | null; gate_entry_nos: string | null; grn_nos: string | null;
   first_gate_entry_date: string | null; first_grn_date: string | null; accepted_date: string | null; due_date: string | null; statutory_due_date: string | null;
   days_to_due: number | null; is_overdue: boolean;
+  /** GST kept back on this payment's invoices until they show in GSTR-2B (not part of net_paid) */
+  gst_held?: number;
+  /** (sql/83) the bank rejected / returned it in an earlier run - it is waiting here to be paid again */
+  bank_failure?: BankFailure;
 }
 
 export interface PaymentEntryLine {
   payment_sno: number; invoice_sno: number; invoice_no: string; supplier_invoice_no: string | null; po_no: string | null; invoice_date: string | null;
   amount: number; bucket_type: string | null; gate_entry_nos: string | null; gate_entry_date: string | null; grn_nos: string | null; grn_date: string | null;
   received_date: string | null; due_date: string | null;
+  gst_held?: number;
 }
 
 export interface PaymentEntries {
@@ -231,6 +251,13 @@ export interface PaymentInvoiceFigures {
   /** left to pay after this payment */
   balance_after: number;
   on_hold_2b: boolean; hold_2b: number;
+  /** (sql/75) the rest of the invoice for the approver */
+  invoice_date?: string | null; due_date?: string | null; po_no?: string | null; taxable_value?: number | null; itc_status?: string | null;
+  invoice_file_url?: string | null; supplier_gstin?: string | null;
+  gstr2b_status?: 'No GST' | 'In GSTR-2B' | 'Hold released by Accounts' | 'Not in GSTR-2B'; gstr2b_period?: string | null;
+  tds_section?: string | null; tds_rate_pct?: number | null; tds_base?: number | null; tds_this_payment?: number | null;
+  grn_label?: string | null; grn_invoice_no?: string | null; grn_invoice_date?: string | null; grn_invoice_amount?: number | null;
+  grn_invoice_doc_url?: string | null; grn_taxable_value?: number | null;
 }
 export interface PaymentDetail {
   entry: PaymentEntry; lines: PaymentEntryLine[]; invoices?: PaymentInvoiceFigures[]; history: PaymentHistoryItem[]; adjustments: PaymentAdjustmentLine[]; stages: PaymentStage[];
@@ -254,11 +281,78 @@ export interface PaymentBatch {
   /** the account the run was paid from (null for a run from before the Payment Bank master, or one with no bank transfer) */
   file_no?: number | null; file_type?: string | null; payment_bank_sno?: number | null; sender_name?: string | null; sender_bank_name?: string | null;
   sender_ac_last4?: string | null; sender_client_code?: string | null;
+  /** payment history list only: who and what the run paid (empty for a run whose lines were not kept) */
+  vendor_names?: string[]; supp_codes?: string[]; payment_nos?: string[];
+  /** (sql/83) the bank's answer: NEFT / RTGS lines of the file, and how many the bank paid / still has / did not pay / has not answered */
+  bank_lines?: number; bank_paid?: number; bank_pending?: number; bank_failed?: number; bank_unconfirmed?: number;
+  bank_paid_amount?: number; bank_failed_amount?: number; reverse_files?: number; last_reverse_at?: string | null;
 }
+/** The bank's answer on one transfer (sql/83). REJECTED / RETURNED = not paid: the payment went back to Payment Run. */
+export type BankLineStatus = 'PAID' | 'PENDING' | 'REJECTED' | 'RETURNED';
 export interface PaymentBatchItem {
   payment_sno: number; payment_no: string; line_no: number; vendor_name: string | null; amount: number; mode: string | null; channel: PayChannel;
   beneficiary_name: string | null; account_no: string | null; ifsc: string | null; invoice_nos: string | null;
+  batch_item_sno?: number; supp_code?: string | null; bank_name?: string | null; branch_name?: string | null; supplier_invoice_nos?: string | null; msme_label?: string | null;
+  narration?: string | null; gross_amount?: number | null; tds_amount?: number | null; advance_amount?: number | null; note_amount?: number | null;
+  vendor_sno?: number | null;
+  /** (sql/83) the reference the bank file gave this transfer - what the reverse file quotes back; null when it is not in the file */
+  reference?: string | null;
+  bank_status?: BankLineStatus | null; utr_no?: string | null; bank_ref_no?: string | null; bank_debit_date?: string | null; bank_credit_at?: string | null;
+  bank_reason_code?: string | null; bank_reason?: string | null; bank_updated_at?: string | null; bank_updated_by?: string | null;
+  returned_to_run?: 'Y' | 'N'; reversal_journal_no?: string | null;
+  /** where the payment is now, and the run that paid it again after the bank returned it */
+  payment_status?: PaymentStatus | null; paid_again_batch_no?: string | null;
 }
+/** One reverse file uploaded for a run (sql/83). */
+export interface ReverseFileRecord {
+  reverse_file_sno: number; batch_sno: number; file_name: string; line_count: number; paid_count: number; failed_count: number; pending_count: number;
+  unchanged_count: number; error_count: number; unmatched_count: number; uploaded_by: string; uploaded_at: string;
+}
+/** What a line of the uploaded reverse file will do (preview) - or why it is not used (problem). */
+export type ReverseAction = 'MARK_PAID' | 'UPDATE_UTR' | 'MARK_PENDING' | 'RETURN_TO_RUN' | 'NO_CHANGE' | 'IGNORED';
+export interface ReverseLine {
+  row_no: number; reference: string; status: BankLineStatus | null; status_text: string;
+  utr_no: string | null; bank_ref_no: string | null; debit_date: string | null; credit_at: string | null; reason_code: string | null; reason: string | null; amount: number | null;
+  batch_item_sno?: number; payment_no?: string; vendor_name?: string | null; line_no?: number; run_amount?: number; current_status?: BankLineStatus | null;
+  action?: ReverseAction; action_text?: string; problem: string | null;
+}
+export interface ReverseMissing { batch_item_sno: number; payment_no: string; vendor_name: string | null; line_no: number; amount: number; reference: string; current_status: BankLineStatus | null }
+export interface ReversePreview {
+  file_name: string; batch_no: string; run_file_name: string | null; lines: ReverseLine[]; missing: ReverseMissing[];
+  summary: { lines: number; matched: number; problems: number; paid: number; pending: number; failed: number; no_change: number };
+}
+export type ReverseResultCode = 'PAID' | 'UPDATED' | 'PENDING' | 'FAILED' | 'UNCHANGED' | 'IGNORED' | 'ERROR';
+export interface ReverseApplyResult {
+  file: ReverseFileRecord | null;
+  results: Array<{ batch_item_sno: number; payment_sno: number; payment_no: string; line_no: number; vendor_name: string | null; amount: number;
+    old_status: BankLineStatus | null; new_status: BankLineStatus | null; result: ReverseResultCode; message: string | null; utr_no: string | null;
+    bank_reason: string | null; reversal_journal_no: string | null; payment_status: PaymentStatus }>;
+  problems: ReverseLine[]; missing: ReverseMissing[];
+}
+/** On a payment waiting in Payment Run: the bank did not pay it in an earlier run (sql/83). */
+export interface BankFailure {
+  payment_sno: number; batch_item_sno: number; batch_sno: number; batch_no: string; file_name: string | null;
+  bank_status: 'REJECTED' | 'RETURNED'; bank_reason_code: string | null; bank_reason: string | null; utr_no: string | null; failed_at: string | null;
+  amount: number; mode: string | null; account_last4: string | null; ifsc: string | null; bank_name: string | null; beneficiary_name: string | null;
+  attempts: number;
+  /** the supplier's KYC bank account is not the one the bank refused any more */
+  kyc_bank_changed: boolean;
+}
+/** How a payment the bank did not pay may be paid next time (grn-service sql/83). */
+export const RETRY_MODES = ['NEFT', 'RTGS', 'CHEQUE', 'DD', 'CASH'] as const;
+export type RetryMode = typeof RETRY_MODES[number];
+/** Upload the bank's reverse file for a run: { file_name, content } -> ReversePreview (changes nothing) / ReverseApplyResult */
+export const payNetRunReversePreview = (batch_sno: number) => `${base}/run/batches/${batch_sno}/reverse-file/preview`;
+export const payNetRunReverseApply = (batch_sno: number) => `${base}/run/batches/${batch_sno}/reverse-file`;
+/** { payment_sno, mode, reason? } - only for a payment the bank did not pay */
+export const payNetRunChangeMode = `${base}/run/change-mode`;
+/** What one payment of a run paid on one invoice (sql/70). kind: FULL | PART | FINAL */
+export interface PaymentBatchLine {
+  batch_item_sno: number; payment_sno: number; invoice_sno: number; invoice_no: string | null; supplier_invoice_no: string | null; invoice_date: string | null;
+  invoice_amount: number | null; gst_amount: number | null; payable_total: number | null; paid_before: number | null; this_gross: number | null;
+  tds_amount: number | null; balance_after: number | null; awaiting_2b: boolean | null; part_no: number | null; kind: string | null;
+}
+export interface PaymentBatchDetail { batch: PaymentBatch; items: PaymentBatchItem[]; lines: PaymentBatchLine[]; reverse_files?: ReverseFileRecord[] }
 export interface PaymentFile { file_name: string; mime_type: string; content: string; line_count?: number; total_amount?: number }
 export interface SkippedPayment { payment_no: string; vendor_name: string | null; amount: number; channel: PayChannel; reason: string }
 export interface RunResult {
@@ -269,3 +363,88 @@ export interface RunResult {
 
 /** Pushed on socket `payment:updated` whenever a payment is saved, approved, rejected, cancelled or paid. */
 export interface PaymentUpdatedEvent { payment_sno: number; payment_no: string; status: PaymentStatus; batch_no?: string; payment_snos?: number[] }
+
+// ── statutory payments (grn-service sql/73) ─────────────────────────────────
+// TDS payable, GST payable and other amounts owed to the government / others: their own register, run and bank file, apart from
+// the supplier Payment Run. One run = one kind.
+export type StatutoryKind = 'TDS' | 'GST' | 'OTHER';
+export const payNetStatutoryPayables = `${base}/statutory/payables`;
+export const payNetStatutoryPayablesCancel = `${base}/statutory/payables/cancel`;
+export const payNetStatutoryPayees = `${base}/statutory/payees`;
+export const payNetStatutoryRun = `${base}/statutory/run`;
+export const payNetStatutoryRuns = `${base}/statutory/runs`;
+export const payNetStatutoryRunFile = (batch_sno: number) => `${base}/statutory/runs/${batch_sno}/file`;
+/** sql/82: the ticked amounts of one online payee were paid on its portal - record it (no bank file) */
+export const payNetStatutoryOnlinePay = `${base}/statutory/online-payment`;
+
+/** How a statutory payment was made on a portal (grn-service sql/82 accepts exactly these). */
+export const STATUTORY_ONLINE_MODES = ['Net Banking', 'UPI', 'Debit Card', 'Credit Card', 'NEFT/RTGS', 'Other'] as const;
+/** BANK_FILE: paid in a statutory bank upload file (SB-...); ONLINE: paid on the payee's portal and recorded (SO-...) */
+export type StatutoryPayChannel = 'BANK_FILE' | 'ONLINE';
+
+export interface StatutoryPayable {
+  stat_sno: number; kind: StatutoryKind; source_type: 'TDS' | 'MANUAL';
+  com_sno: number | null; com_name: string | null; div_sno: number | null; brn_sno: number | null;
+  head_name: string; ref_no: string | null; period_label: string | null; party_name: string | null;
+  payment_sno: number | null; payment_no: string | null; payee_sno: number | null; payee_name: string | null; payee_ref: string | null;
+  amount: number; due_date: string | null; days_overdue: number | null; narration: string | null;
+  status: 'Open' | 'Paid'; batch_sno: number | null; batch_no: string | null; paid_at: string | null; created_by: string | null; created_at: string;
+  /** sql/82, open amounts only: who it will be paid to (its own payee, else the kind's default) and whether that payee is paid online */
+  pay_to_sno?: number | null; pay_to_name?: string | null; pay_to_online?: 'Y' | 'N' | null;
+  pay_to_portal_name?: string | null; pay_to_portal_url?: string | null; pay_to_instructions?: string | null;
+  /** sql/82, paid amounts: how they were paid */
+  pay_channel?: StatutoryPayChannel | null; txn_mode?: string | null; txn_id?: string | null; txn_date?: string | null;
+}
+/** GST on supplier bills kept back until GSTR-2B shows the invoice: shown, not paid here - it is paid with the bill on the Payment screen. */
+export interface GstHeldRow { invoice_sno: number; invoice_no: string | null; supplier_invoice_no: string | null; vendor_name: string | null; gst_amount: number }
+export interface StatutoryPayableList { payables: StatutoryPayable[]; gstHeld: GstHeldRow[] }
+
+export interface StatutoryPayee {
+  payee_sno: number; kind: StatutoryKind; payee_name: string;
+  /** null for a payee paid online (sql/82) */
+  ac_number: string | null; ac_last4: string | null; ifsc: string | null;
+  bank_name: string | null; branch_name: string | null; reference_no: string | null; pay_mode: 'NEFT' | 'RTGS';
+  com_sno: number | null; com_name: string | null; is_default: 'Y' | 'N'; is_active: 'Y' | 'N';
+  /** sql/82: 'Y' = paid on a website / portal (the same details as a supplier's KYC portal payment), no bank account */
+  pay_via_portal?: 'Y' | 'N'; payment_portal_name?: string | null; payment_portal_url?: string | null; payment_instructions?: string | null;
+}
+export interface StatutoryPayeeInput {
+  payee_sno?: number; kind: StatutoryKind; payee_name: string; reference_no?: string; is_default: boolean; is_active: boolean;
+  /** false: bank account (ac_number, ifsc, bank, branch, pay_mode); true: online (portal name, URL, instructions) */
+  pay_via_portal: boolean;
+  ac_number: string; ifsc: string; bank_name?: string; branch_name?: string; pay_mode: 'NEFT' | 'RTGS';
+  payment_portal_name: string; payment_portal_url: string; payment_instructions?: string;
+}
+export interface StatutoryOnlinePaymentInput {
+  stat_snos: number[]; txn_mode: string; txn_id: string; txn_date: string; remarks?: string;
+}
+export interface StatutoryPayableInput {
+  kind: Exclude<StatutoryKind, 'TDS'>; head_name: string; ref_no?: string; period_label?: string; amount: number; due_date?: string;
+  narration?: string; payee_sno?: number; com_sno: number; div_sno?: number | null; brn_sno?: number | null;
+}
+export interface StatutoryBatch {
+  batch_sno: number; batch_no: string; batch_date: string; kind: StatutoryKind; com_sno: number | null; com_name?: string | null;
+  div_sno: number | null; brn_sno: number | null; total_amount: number; item_count: number; status: string; file_name: string | null; has_file?: boolean;
+  sender_bank_name: string | null; sender_ac_last4: string | null; sender_client_code: string | null; created_by: string | null; created_at: string;
+  /** sql/82: an online payment (SO-...) has a payee, portal and transaction instead of a file */
+  pay_channel?: StatutoryPayChannel | null; payee_sno?: number | null; payee_name?: string | null; portal_name?: string | null; portal_url?: string | null;
+  txn_mode?: string | null; txn_id?: string | null; txn_date?: string | null; remarks?: string | null;
+}
+export interface StatutoryRunResult { batch: StatutoryBatch; items: { stat_sno: number; head_name: string; amount: number; payee_name: string | null }[]; file: PaymentFile }
+export interface StatutoryOnlineResult { batch: StatutoryBatch; items: { stat_sno: number; head_name: string; amount: number; payee_name: string | null }[] }
+
+// ── unpaid GST (sql/75): invoices paid without their GST because GSTR-2B did not have them ──
+export const payNetUnpaidGst = `${base}/unpaid-gst`;
+export const payNetUnpaidGstCheck = `${base}/unpaid-gst/check`;
+export type UnpaidGstStatus = 'Awaiting 2B' | 'Released' | 'Closed';
+export interface UnpaidGstRow {
+  invoice_sno: number; invoice_no: string; supplier_invoice_no: string | null; invoice_date: string | null; invoice_amount: number; taxable_value: number | null;
+  vendor_sno: number; vendor_name: string | null; supplier_gstin: string | null; po_no: string | null;
+  status: UnpaidGstStatus;
+  /** GST still unpaid / already moved to Payment Run */
+  gst_unpaid: number; gst_released: number; paid_before: number;
+  gstr2b_status: 'In GSTR-2B' | 'Hold released by Accounts' | 'Not in GSTR-2B'; gstr2b_period: string | null;
+  noted_at: string; days_waiting: number; released_at: string | null; released_payment_no: string | null; released_payment_status: string | null;
+  earlier_payment_nos: string | null;
+}
+export interface UnpaidGstCheckResult { released: Array<{ payment_sno: number; payment_no: string; vendor_sno: number; net_paid: number; invoice_nos: string | null }> }

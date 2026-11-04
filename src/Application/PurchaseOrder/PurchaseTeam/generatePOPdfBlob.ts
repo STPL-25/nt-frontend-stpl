@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
 import type { PRRecord, Quotation, POFormState } from './types';
-import { formatDate, formatINR, getPRDisplayNo, calcQuotationTotals } from './helpers';
+import { formatDate, formatINR, getPRDisplayNo, calcQuotationTotals, calcChargesTotal } from './helpers';
 
 export interface POPdfInput {
   pr: PRRecord;
@@ -12,7 +12,10 @@ export interface POPdfInput {
 
 /** Renders the PO as a PDF Blob (client-side) so it can be uploaded to the backend and emailed to the supplier. */
 export function buildPOPdfBlob({ pr, quotation, form, poNo }: POPdfInput): Blob {
-  const { subtotal, discount, tax, grandTotal } = calcQuotationTotals(quotation.items);
+  const totals = calcQuotationTotals(quotation.items);
+  const { subtotal, discount, tax } = totals;
+  const charges = calcChargesTotal(quotation);
+  const grandTotal = totals.grandTotal + charges.total;
   const vendorName = quotation.vendor_name ?? quotation.company_name ?? '-';
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
@@ -63,7 +66,7 @@ export function buildPOPdfBlob({ pr, quotation, form, poNo }: POPdfInput): Blob 
 
   autoTable(doc, {
     startY: 74,
-    head: [['#', 'Item', 'Qty', 'Unit', 'Rate', 'Disc%', 'Tax%', 'Amount']],
+    head: [['#', 'Item', 'Qty', 'Unit', 'Rate', 'Disc%', 'GST%', 'Amount']],
     body: rows,
     theme: 'grid',
     styles: { font: 'helvetica', fontSize: 8, cellPadding: 2 },
@@ -91,8 +94,23 @@ export function buildPOPdfBlob({ pr, quotation, form, poNo }: POPdfInput): Blob 
   doc.text('Discount', totalsX, y);
   doc.text(`- ${formatINR(discount)}`, 196, y, { align: 'right' });
   y += 6;
-  doc.text('Tax', totalsX, y);
+  doc.text('GST', totalsX, y);
   doc.text(`+ ${formatINR(tax)}`, 196, y, { align: 'right' });
+  if (charges.freight > 0) {
+    y += 6;
+    doc.text('Freight Charges', totalsX, y);
+    doc.text(`+ ${formatINR(charges.freight)}`, 196, y, { align: 'right' });
+  }
+  if (charges.other > 0) {
+    y += 6;
+    doc.text('Other Charges', totalsX, y);
+    doc.text(`+ ${formatINR(charges.other)}`, 196, y, { align: 'right' });
+  }
+  if (charges.gst > 0) {
+    y += 6;
+    doc.text('GST on Freight / Other Charges', totalsX, y);
+    doc.text(`+ ${formatINR(charges.gst)}`, 196, y, { align: 'right' });
+  }
   y += 8;
   doc.setFillColor(79, 70, 229);
   doc.rect(totalsX - 2, y - 5, 68, 8, 'F');

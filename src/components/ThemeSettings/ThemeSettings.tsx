@@ -48,6 +48,13 @@ const MODE_OPTIONS: ModeOption[] = [
   { id: "system", label: "System", icon: <Monitor className="h-3.5 w-3.5" /> },
 ];
 
+const COLOR_GROUPS = [
+  { label: "Vibrant", colors: THEME_COLORS.slice(0, 16) },
+  { label: "Soft", colors: THEME_COLORS.slice(16) },
+];
+
+const DARK_INK_THEMES = new Set<ThemeColor>(["amber", "lemon"]);
+
 // ---------------------------------------------------------------------------
 // Helpers — apply classes to <html>
 // ---------------------------------------------------------------------------
@@ -149,43 +156,61 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({ open, onOpenChange }) => 
 
           {/* ── Color theme ───────────────────────────────────────────── */}
           <section>
-            <SectionLabel>Color</SectionLabel>
-            <div className="grid grid-cols-4 gap-2">
-              {THEME_COLORS.map((theme) => (
-                <button
-                  key={theme.id}
-                  onClick={() => handleColorChange(theme.id)}
-                  className={cn(
-                    "group relative flex flex-col overflow-hidden rounded-xl border-2 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                    currentColor === theme.id
-                      ? "border-foreground/70 shadow-md"
-                      : "border-border/40 hover:border-border hover:shadow-sm"
-                  )}
-                  title={theme.label}
-                >
-                  {/* Color band */}
-                  <span
-                    className="flex h-12 w-full items-center justify-center"
-                    style={{
-                      background: `linear-gradient(145deg, ${theme.previewHex}bb 0%, ${theme.previewHex} 60%, ${theme.previewHex}dd 100%)`,
-                    }}
-                  >
-                    {currentColor === theme.id && (
-                      <Check className="h-[15px] w-[15px] text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)]" />
-                    )}
-                  </span>
-                  {/* Label */}
-                  <span
-                    className={cn(
-                      "py-1.5 text-center text-[10px] font-medium leading-none transition-colors duration-150",
-                      currentColor === theme.id
-                        ? "text-foreground"
-                        : "text-muted-foreground group-hover:text-foreground/80"
-                    )}
-                  >
-                    {theme.label}
-                  </span>
-                </button>
+            <div className="mb-3 flex items-center justify-between">
+              <SectionLabel>Color</SectionLabel>
+              <span className="mb-2.5 rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-semibold text-primary">
+                {THEME_COLORS.length} themes
+              </span>
+            </div>
+            <div className="space-y-4">
+              {COLOR_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <p className="mb-2 text-[10px] font-medium text-muted-foreground">
+                    {group.label}
+                  </p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {group.colors.map((theme) => (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        aria-label={`${theme.label} color theme`}
+                        aria-pressed={currentColor === theme.id}
+                        onClick={() => handleColorChange(theme.id)}
+                        className={cn(
+                          "group relative flex flex-col overflow-hidden rounded-xl border-2 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                          currentColor === theme.id
+                            ? "border-foreground/70 shadow-md"
+                            : "border-border/40 hover:-translate-y-0.5 hover:border-border hover:shadow-sm"
+                        )}
+                        title={theme.label}
+                      >
+                        <span
+                          className="flex h-10 w-full items-center justify-center"
+                          style={{
+                            background: `linear-gradient(145deg, color-mix(in oklab, ${theme.lightPrimary} 28%, white) 0%, ${theme.lightPrimary} 100%)`,
+                          }}
+                        >
+                          {currentColor === theme.id && (
+                            <Check className={cn(
+                              "h-[15px] w-[15px] drop-shadow-[0_1px_3px_rgba(0,0,0,0.25)]",
+                              DARK_INK_THEMES.has(theme.id) ? "text-slate-900" : "text-white"
+                            )} />
+                          )}
+                        </span>
+                        <span
+                          className={cn(
+                            "flex min-h-7 items-center justify-center px-1 py-1 text-center text-[9px] font-medium leading-tight transition-colors duration-150",
+                            currentColor === theme.id
+                              ? "text-foreground"
+                              : "text-muted-foreground group-hover:text-foreground/80"
+                          )}
+                        >
+                          {theme.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </section>

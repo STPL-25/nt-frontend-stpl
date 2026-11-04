@@ -373,6 +373,9 @@ console.log(selectedPO);
     if (!form.doc_ref_no.trim()) { toast.error('Invoice number is required'); return; }
     if (!form.invoice_date) { toast.error('Invoice date is required'); return; }
     if (!(Number(form.invoice_amount) > 0)) { toast.error('Invoice amount is required'); return; }
+    if (String(form.invoice_taxable_value ?? '').trim() !== '' && (!(Number(form.invoice_taxable_value) > 0) || Number(form.invoice_taxable_value) > Number(form.invoice_amount))) {
+      toast.error('Taxable value must be more than zero and not more than the invoice amount'); return;
+    }
     if (!form.invoice_file) { toast.error('Upload the supplier invoice document'); return; }
     if (items.length === 0) { toast.error('Select at least one item to receive'); return; }
     if (items.some(it => it.received_qty <= 0)) {
@@ -407,6 +410,7 @@ console.log(selectedPO);
         doc_ref_no: form.doc_ref_no.trim(),
         invoice_date: form.invoice_date,
         invoice_amount: Number(form.invoice_amount),
+        invoice_taxable_value: String(form.invoice_taxable_value ?? '').trim() !== '' ? Number(form.invoice_taxable_value) : undefined,
         vehicle_no: form.vehicle_no,
         challan_no: form.challan_no,
         remarks: form.remarks,

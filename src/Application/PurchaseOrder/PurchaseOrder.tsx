@@ -202,7 +202,7 @@ const POPage: React.FC = () => {
         title="Purchase Orders"
         description="Manage and track all purchase orders"
       >
-        <button className="bg-primary-foreground/15 hover:bg-primary-foreground/25 text-primary-foreground px-4 py-2 rounded-lg flex items-center gap-2 transition border border-primary-foreground/20">
+        <button className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2 text-primary transition hover:bg-primary/10">
           <Plus size={18} />
           Create PO
         </button>
@@ -404,7 +404,7 @@ const POPage: React.FC = () => {
                         <th className="px-4 py-2 text-left">Item</th>
                         <th className="px-4 py-2 text-center">Qty</th>
                         <th className="px-4 py-2 text-right">Unit Price</th>
-                        <th className="px-4 py-2 text-right">Tax</th>
+                        <th className="px-4 py-2 text-right">GST</th>
                         <th className="px-4 py-2 text-right">Total</th>
                       </tr>
                     </thead>
@@ -434,7 +434,7 @@ const POPage: React.FC = () => {
                         <span className="text-sm font-medium">{formatCurrency(selectedPO.subtotal)}</span>
                       </div>
                       <div className="flex justify-between mb-2">
-                        <span className="text-sm text-muted-foreground">Tax:</span>
+                        <span className="text-sm text-muted-foreground">GST:</span>
                         <span className="text-sm font-medium">{formatCurrency(selectedPO.taxAmount)}</span>
                       </div>
                       <div className="flex justify-between border-t pt-2">

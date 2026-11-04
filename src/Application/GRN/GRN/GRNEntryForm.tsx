@@ -163,6 +163,18 @@ const GRNEntryForm: React.FC<GRNEntryFormProps> = ({
             />
           </div>
           <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground" title="Invoice amount before GST. Optional - with it the GST can be held back until GSTR-2B shows the invoice">Taxable Value</Label>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="before GST"
+              value={form.invoice_taxable_value ?? ''}
+              onChange={e => setFormField('invoice_taxable_value', e.target.value)}
+              className="h-8 text-sm"
+            />
+          </div>
+          <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">Invoice Document *</Label>
             <Input
               type="file"

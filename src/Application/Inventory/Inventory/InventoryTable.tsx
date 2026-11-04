@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, FileDown, Search, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, FileDown, PackageSearch, Search, Trash2, X } from 'lucide-react';
+import { EmptyState } from '@/CustomComponent/PageComponents/EmptyState';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -272,9 +273,16 @@ const InventoryTable: React.FC<InventoryTableProps> = ({
           </TableBody>
         </Table>
         {rows.length === 0 && (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            {loading ? 'Loading inventory…' : 'No items match your search or filters.'}
-          </div>
+          loading ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">Loading inventory…</div>
+          ) : (
+            <EmptyState
+              className="m-4"
+              icon={PackageSearch}
+              message="No items found"
+              description="No items match your search or filters. Try adjusting them."
+            />
+          )
         )}
       </Card>
     </div>

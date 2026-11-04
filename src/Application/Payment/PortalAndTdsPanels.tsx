@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { CheckCircle2, ExternalLink, Globe, Loader2, Receipt } from 'lucide-react';
@@ -13,8 +13,8 @@ import { Panel, SearchInput } from '@/CustomComponent/ServiceComponents/ServiceP
 import { getErrorMessage } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 import {
-  payNetPortalPay, payNetPortalPayments, payNetTdsRecords,
-  type PaymentEntry, type PortalPayment, type TdsRecord,
+  payNetPortalPay, payNetTdsRecords,
+  type PaymentEntry, type TdsRecord,
 } from '@/Services/GrnService/paymentNetApi';
 import { PORTAL_MODES, paidAfterDiscount, portalProblem, rupees } from './paymentRunModel';
 
@@ -32,21 +32,14 @@ const today = () => new Date().toISOString().slice(0, 10);
  * Suppliers whose KYC says "pay via portal": no bank file, no run. They are approved like any payment, then paid on the supplier's
  * portal (UPI, card ...) and the transaction is recorded here: how it was paid, transaction id, date, amount and any discount.
  */
-export const PortalPaymentsSection: React.FC<{ entries: PaymentEntry[]; canRecord: boolean; onRecorded: () => void; version: unknown }> = ({ entries, canRecord, onRecorded, version }) => {
-  const [recorded, setRecorded] = useState<PortalPayment[]>([]);
+export const PortalPaymentsSection: React.FC<{
+  entries: PaymentEntry[]; canRecord: boolean; onRecorded: () => void;
+  /** how many are already recorded as paid on a portal - listed in Payment history */
+  paidCount: number; onShowPaid: () => void;
+}> = ({ entries, canRecord, onRecorded, paidCount, onShowPaid }) => {
   const [target, setTarget] = useState<PaymentEntry | null>(null);
   const [form, setForm] = useState({ mode: '', txnId: '', txnDate: today(), paid: '', discount: '', remarks: '' });
   const [saving, setSaving] = useState(false);
-
-  const loadRecorded = useCallback(async () => {
-    try {
-      const res = await axios.get(payNetPortalPayments);
-      setRecorded(res.data?.data ?? []);
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'Failed to load the portal payments'));
-    }
-  }, []);
-  useEffect(() => { loadRecorded(); }, [loadRecorded, version]);
 
   const net = Number(target?.net_paid ?? 0);
   const problem = target ? portalProblem(net, { mode: form.mode, txnId: form.txnId, txnDate: form.txnDate, paid: form.paid, discount: form.discount }, today()) : null;
@@ -74,11 +67,16 @@ export const PortalPaymentsSection: React.FC<{ entries: PaymentEntry[]; canRecor
     }
   };
 
-  if (entries.length === 0 && recorded.length === 0) return null;
+  if (entries.length === 0) return null;
   return (
     <>
       {entries.length > 0 && (
-        <Panel icon={Globe} title={`Pay on supplier portals (${entries.length})`} description="These suppliers are paid on their own portal - no bank file. Pay there, then record the transaction." bodyClassName="p-0">
+        <Panel
+          icon={Globe} title={`Pay on supplier portals (${entries.length})`} description="These suppliers are paid on their own portal - no bank file. Pay there, then record the transaction." bodyClassName="p-0"
+          action={paidCount > 0 ? (
+            <Button type="button" variant="ghost" size="sm" className="h-8 shrink-0 text-xs" onClick={onShowPaid}>{paidCount} paid on portal · history</Button>
+          ) : undefined}
+        >
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -90,7 +88,7 @@ export const PortalPaymentsSection: React.FC<{ entries: PaymentEntry[]; canRecor
               <TableBody>
                 {entries.map((e) => (
                   <TableRow key={e.payment_sno}>
-                    <TableCell className="text-xs"><span className="block font-semibold">{e.vendor_name ?? '—'}</span><span className="block text-muted-foreground">{e.payment_no}{e.invoice_nos ? ` · ${e.invoice_nos}` : ''}</span></TableCell>
+                    <TableCell className="text-xs"><span className="block font-semibold">{e.vendor_name ?? '—'}</span><span className="block text-muted-foreground">{e.supplier_invoice_nos ? `Invoice ${e.supplier_invoice_nos}` : 'Invoice no. not entered'}</span></TableCell>
                     <TableCell className="text-xs">
                       {e.payment_portal_url ? (
                         <a href={/^https?:\/\//i.test(e.payment_portal_url) ? e.payment_portal_url : `https://${e.payment_portal_url}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-primary hover:underline">
@@ -103,35 +101,6 @@ export const PortalPaymentsSection: React.FC<{ entries: PaymentEntry[]; canRecor
                     <TableCell className="text-right">
                       {canRecord && <Button type="button" size="sm" className="h-8 text-xs" onClick={() => open(e)}><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />Record payment</Button>}
                     </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </Panel>
-      )}
-
-      {recorded.length > 0 && (
-        <Panel icon={CheckCircle2} title="Paid on portals" description="Transactions recorded for portal suppliers" bodyClassName="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
-                  <TableHead className={th}>Date</TableHead><TableHead className={th}>Payment</TableHead><TableHead className={th}>Supplier</TableHead><TableHead className={th}>Mode</TableHead>
-                  <TableHead className={th}>Transaction id</TableHead><TableHead className={cn(th, 'text-right')}>Paid</TableHead><TableHead className={cn(th, 'text-right')}>Discount</TableHead><TableHead className={th}>By</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recorded.map((r) => (
-                  <TableRow key={r.txn_sno}>
-                    <TableCell className="whitespace-nowrap text-xs">{showDate(r.txn_date)}</TableCell>
-                    <TableCell className="text-xs font-medium">{r.payment_no}</TableCell>
-                    <TableCell className="text-xs">{r.vendor_name ?? '—'}{r.portal_name && <span className="block text-muted-foreground">{r.portal_name}</span>}</TableCell>
-                    <TableCell className="text-xs">{r.txn_mode}</TableCell>
-                    <TableCell className="text-xs font-mono">{r.txn_id}</TableCell>
-                    <TableCell className="text-right text-xs font-semibold tabular-nums">{rupees(r.amount_paid)}</TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">{Number(r.discount_amount) ? rupees(r.discount_amount) : '—'}</TableCell>
-                    <TableCell className="text-xs">{r.recorded_by ?? '—'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -202,7 +171,7 @@ export const TdsRecordsPanel: React.FC<{ version: unknown }> = ({ version }) => 
   }, [version]);
 
   const q = search.trim().toLowerCase();
-  const shown = useMemo(() => (q ? rows.filter((r) => [r.invoice_no, r.supplier_invoice_no, r.vendor_name, r.payment_no, r.section_code, r.deductor_name].some((v) => String(v ?? '').toLowerCase().includes(q))) : rows), [rows, q]);
+  const shown = useMemo(() => (q ? rows.filter((r) => [r.supplier_invoice_no, r.vendor_name, r.payment_no, r.section_code, r.deductor_name].some((v) => String(v ?? '').toLowerCase().includes(q))) : rows), [rows, q]);
   const total = shown.reduce((s, r) => s + Number(r.tds_amount || 0), 0);
 
   return (
@@ -218,7 +187,7 @@ export const TdsRecordsPanel: React.FC<{ version: unknown }> = ({ version }) => 
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50 hover:bg-muted/50">
-                <TableHead className={th}>Invoice</TableHead><TableHead className={th}>Payment</TableHead><TableHead className={th}>Deductee (supplier)</TableHead>
+                <TableHead className={th}>Supplier invoice</TableHead><TableHead className={th}>Payment</TableHead><TableHead className={th}>Deductee (supplier)</TableHead>
                 <TableHead className={th}>Deductor (company)</TableHead><TableHead className={th}>Section</TableHead>
                 <TableHead className={cn(th, 'text-right')}>Base</TableHead><TableHead className={cn(th, 'text-right')}>Rate</TableHead><TableHead className={cn(th, 'text-right')}>TDS</TableHead>
               </TableRow>
@@ -226,7 +195,7 @@ export const TdsRecordsPanel: React.FC<{ version: unknown }> = ({ version }) => 
             <TableBody>
               {shown.map((r) => (
                 <TableRow key={r.deduction_sno}>
-                  <TableCell className="text-xs font-medium">{r.invoice_no ?? '—'}{r.supplier_invoice_no && <span className="block font-normal text-muted-foreground">{r.supplier_invoice_no}</span>}</TableCell>
+                  <TableCell className="text-xs font-medium">{r.supplier_invoice_no || <span className="font-normal text-muted-foreground">Not entered</span>}</TableCell>
                   <TableCell className="text-xs">{r.payment_no}<span className="block text-muted-foreground">{r.payment_status}{r.payment_date ? ` · ${showDate(r.payment_date)}` : ''}</span></TableCell>
                   <TableCell className="text-xs">{r.vendor_name ?? '—'}<span className="block text-muted-foreground">{r.vendor_pan ? `PAN ${r.vendor_pan}` : 'No PAN on file'}</span></TableCell>
                   <TableCell className="text-xs">{r.deductor_name ?? '—'}<span className="block text-muted-foreground">{r.deductor_tan ? `TAN ${r.deductor_tan}` : ''}</span></TableCell>

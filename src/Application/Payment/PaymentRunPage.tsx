@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Banknote, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ClipboardCheck, Download, History, Info, Loader2, RefreshCw, Wallet, XCircle,
+  AlertTriangle, ArrowRight, Banknote, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ClipboardCheck, Download, History, Info, Loader2, RefreshCw, Send, Wallet, XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -13,17 +13,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PageHeader } from '@/CustomComponent/PageComponents';
-import { Callout, Panel, SearchInput, StatusPill } from '@/CustomComponent/ServiceComponents/ServiceParts';
+import { Callout, FilterChips, Panel, SearchInput, StatusPill } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import { TONE } from '@/CustomComponent/ServiceComponents/serviceUtils';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { getErrorMessage } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 import { downloadTextFile } from '@/utils/downloadTextFile';
 import {
-  payNetCancel, payNetEntries, payNetRunBatchFile, payNetRunBatches, payNetRunBatchVerification, payNetRunProceed, payNetRunSenders,
-  type PaymentBatch, type PaymentEntries, type PaymentEntry, type PaymentFile, type PaymentSender, type RunResult,
+  payNetCancel, payNetEntries, payNetPortalPayments, payNetRunBatches, payNetRunProceed, payNetRunSenders,
+  type PaymentBatch, type PaymentEntries, type PaymentEntry, type PaymentFile, type PaymentSender, type PortalPayment, type RunResult,
 } from '@/Services/GrnService/paymentNetApi';
-import { PortalPaymentsSection, TdsRecordsPanel } from './PortalAndTdsPanels';
+import { PortalPaymentsSection } from './PortalAndTdsPanels';
+import { PaymentHistoryTab } from './PaymentHistory';
+import { BankFailureBox } from './BankReply';
+import { bankFailureText } from './bankReplyModel';
+import { compactRupees, localYmd, monthSummary, toHistoryItems } from './paymentHistoryModel';
 import { socket, SOCKET_CONNECT, SOCKET_JOIN_PAYMENT, SOCKET_LEAVE_PAYMENT, SOCKET_PAYMENT_UPDATED } from '@/Services/Socket';
 import {
   PRIORITY_MODES, amountInWords, blockReason, dueState, groupLines, inBankFile, msmeNote, notInFileReason, parseAmountInput, pickSender, planFund,
@@ -33,6 +37,14 @@ import {
 
 const SCREEN = 'PaymentRunPage';
 const QUICK_FUNDS = ['10 lakh', '25 lakh', '50 lakh', '1 crore'];
+/** how many previous runs the History tab loads (newest first) */
+const HISTORY_LIMIT = 500;
+type Tab = 'pay' | 'history';
+const TAB_KEY = 'paymentRun.tab';
+const readTab = (): Tab => { try { return localStorage.getItem(TAB_KEY) === 'history' ? 'history' : 'pay'; } catch { return 'pay'; } };
+type ListFilter = 'ALL' | 'PAYING' | 'WAITING' | 'OVERDUE' | 'MSME' | 'ADVANCE' | 'BANK_FAILED' | 'BLOCKED';
+interface RunScope { key: string; com_sno: number | null; div_sno: number | null; brn_sno: number | null; label: string; entries: PaymentEntry[]; fileLines: number; total: number }
+
 const EMPTY: PaymentEntries = { entries: [], lines: [], settings: {} };
 
 const ymd = (d: string | null | undefined) => (d ? String(d).slice(0, 10) : '');
@@ -53,7 +65,13 @@ const PaymentRunPage: React.FC = () => {
 
   const [data, setData] = useState<PaymentEntries>(EMPTY);
   const [batches, setBatches] = useState<PaymentBatch[]>([]);
+  const [portalPaid, setPortalPaid] = useState<PortalPayment[]>([]);   // recorded as paid on a supplier's portal (shown in history)
   const [loading, setLoading] = useState(true);
+  const [tab, setTabState] = useState<Tab>(readTab);
+  const setTab = (t: Tab) => { setTabState(t); try { localStorage.setItem(TAB_KEY, t); } catch { /* remembered for this visit only */ } };
+  const [openRunId, setOpenRunId] = useState<number | null>(null);   // the past run open in the History side panel
+  const showRun = (batch_sno: number) => { setTab('history'); setOpenRunId(batch_sno); };
+  const [listFilter, setListFilter] = useState<ListFilter>('ALL');
 
   const [fundText, setFundText] = useState('');
   const [mode, setMode] = useState<PriorityMode>('MSME_FIRST');
@@ -63,26 +81,30 @@ const PaymentRunPage: React.FC = () => {
   const [open, setOpen] = useState<Set<number>>(new Set());
 
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [payDate, setPayDate] = useState(() => localYmd(new Date()));
   // the company's bank accounts (Payment Bank master) the file can be paid from; read when the dialog opens so it is current
-  const [senders, setSenders] = useState<PaymentSender[]>([]);
-  const [sendersLoading, setSendersLoading] = useState(false);
-  const [sendersError, setSendersError] = useState('');
+  // one entry per company/division/branch being paid: a run (and its file) is made for each
+  const [senderState, setSenderState] = useState<Record<string, { list: PaymentSender[]; loading: boolean; error: string }>>({});
   const sendersReq = useRef(0);                      // only the newest read of the accounts may answer
-  const [snapKey, setSnapKey] = useState('');        // what the open confirmation was opened for: company + payments
-  const [senderSno, setSenderSno] = useState('');
+  const [snapKey, setSnapKey] = useState('');        // what the open confirmation was opened for: companies + payments
+  const [senderPick, setSenderPick] = useState<Record<string, string>>({});
   const [proceeding, setProceeding] = useState(false);
-  const [result, setResult] = useState<RunResult | null>(null);
+  const [results, setResults] = useState<RunResult[] | null>(null);
   const [cancelFor, setCancelFor] = useState<PaymentEntry | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
-  const [downloading, setDownloading] = useState<number | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
-      const [e, b] = await Promise.all([axios.get(payNetEntries, { params: { view: 'run' } }), axios.get(payNetRunBatches)]);
+      const [e, b, p] = await Promise.all([
+        axios.get(payNetEntries, { params: { view: 'run' } }),
+        axios.get(payNetRunBatches, { params: { limit: HISTORY_LIMIT } }),
+        // history still works without the portal list (e.g. before grn-service sql/69)
+        axios.get(payNetPortalPayments, { params: { limit: HISTORY_LIMIT } }).catch(() => null),
+      ]);
       setData(e.data?.data ?? EMPTY);
       setBatches(b.data?.data ?? []);
+      if (p) setPortalPaid(p.data?.data ?? []);
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to load the pending payments'));
     } finally {
@@ -129,7 +151,8 @@ const PaymentRunPage: React.FC = () => {
     }
     return [...m.values()];
   }, [data.entries]);
-  const activeScope = scopes.find((s) => s.key === scopeKey) ?? scopes[0] ?? null;
+  // every approved payment is listed; narrowing to one company/division/branch is optional (a file still covers only one)
+  const activeScope = scopes.length === 1 ? scopes[0] : scopes.find((s) => s.key === scopeKey) ?? null;
   const scoped = useMemo(() => activeScope
     ? data.entries.filter((e) => `${e.com_sno}|${e.div_sno}|${e.brn_sno}` === activeScope.key)
     : data.entries, [data.entries, activeScope]);
@@ -156,7 +179,10 @@ const PaymentRunPage: React.FC = () => {
   const toggle = (e: PaymentEntry) => {
     if (blockReason(e)) return;
     const next = new Set(picked);
-    if (next.has(e.payment_sno)) next.delete(e.payment_sno); else next.add(e.payment_sno);
+    // payments saved together (one group) are paid together: tick / untick the whole group
+    const mates = e.group_sno ? ranked.filter((x) => x.group_sno === e.group_sno && !blockReason(x)) : [e];
+    const on = !next.has(e.payment_sno);
+    mates.forEach((x) => (on ? next.add(x.payment_sno) : next.delete(x.payment_sno)));
     setManual(next);
   };
 
@@ -166,98 +192,139 @@ const PaymentRunPage: React.FC = () => {
   const overFund = pickedTotal > fundNum + 0.005;
   const notInFile = pickedEntries.filter((e) => !inBankFile(e));
   const fileLines = pickedEntries.length - notInFile.length;
-  const sender = pickSender(senders, senderSno);
-  const blockedBySender = senderProblem(fileLines, senders, senderSno);
   const blocked = ranked.filter((e) => blockReason(e));
   const waitingForFund = ranked.filter((e) => !picked.has(e.payment_sno) && !blockReason(e));
   const overdueCount = visible.filter((e) => e.is_overdue).length;
   const msmeCount = visible.filter((e) => e.msme_class).length;
 
+  const advanceCount = visible.filter((e) => e.payment_type === 'ADVANCE').length;
+  const bankFailedCount = visible.filter((e) => e.bank_failure).length;
+  const inList = (e: PaymentEntry): boolean => {
+    switch (listFilter) {
+      case 'PAYING': return picked.has(e.payment_sno);
+      case 'WAITING': return !picked.has(e.payment_sno) && !blockReason(e);
+      case 'OVERDUE': return !!e.is_overdue;
+      case 'MSME': return !!e.msme_class;
+      case 'ADVANCE': return e.payment_type === 'ADVANCE';
+      case 'BANK_FAILED': return !!e.bank_failure;
+      case 'BLOCKED': return !!blockReason(e);
+      default: return true;
+    }
+  };
+  const listOptions = ([
+    { value: 'ALL', label: 'All', count: ranked.length },
+    { value: 'PAYING', label: 'Paying today', count: picked.size },
+    { value: 'WAITING', label: 'Waiting for fund', count: waitingForFund.length },
+    { value: 'OVERDUE', label: 'Overdue', count: overdueCount },
+    { value: 'MSME', label: 'MSME', count: msmeCount },
+    { value: 'ADVANCE', label: 'Advances', count: advanceCount },
+    { value: 'BANK_FAILED', label: 'Not paid by bank', count: bankFailedCount },
+    { value: 'BLOCKED', label: 'Cannot pay', count: blocked.length },
+  ] as { value: ListFilter; label: string; count: number }[]).filter((o) => o.value === 'ALL' || o.count > 0 || o.value === listFilter);
   const q = search.trim().toLowerCase();
-  const shown = q
-    ? ranked.filter((e) => [e.vendor_name, e.payment_no, e.supp_code, e.po_nos, e.invoice_nos, e.supplier_invoice_nos, e.grn_nos, e.gate_entry_nos].some((v) => String(v ?? '').toLowerCase().includes(q)))
-    : ranked;
+  const shown = ranked.filter((e) => inList(e) && (!q
+    || [e.vendor_name, e.payment_no, e.supp_code, e.po_nos, e.invoice_nos, e.supplier_invoice_nos, e.grn_nos, e.gate_entry_nos].some((v) => String(v ?? '').toLowerCase().includes(q))));
+  const today = localYmd(new Date());
+  const month = monthSummary(toHistoryItems(batches, portalPaid), today);
+  const lastRun = batches[0] ?? null;
+  const usedPct = fundNum > 0 ? Math.round((pickedTotal / fundNum) * 100) : 0;
 
   const toggleOpen = (id: number) => setOpen((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  // Opens the confirmation and reads this company/division/branch's bank accounts.
-  const currentKey = `${activeScope?.key ?? ''}|${pickedEntries.map((e) => e.payment_sno).join(',')}`;
+  // The ticked payments may belong to several companies / branches. A bank file is made for one company's account, so the
+  // run is split: one run + one file per company/division/branch, all created by the one click.
+  const scopeKeyOf = (e: PaymentEntry) => `${e.com_sno}|${e.div_sno}|${e.brn_sno}`;
+  const runScopes: RunScope[] = [];
+  for (const e of pickedEntries) {
+    const key = scopeKeyOf(e);
+    let sc = runScopes.find((x) => x.key === key);
+    if (!sc) {
+      const made: RunScope = { key, com_sno: e.com_sno, div_sno: e.div_sno, brn_sno: e.brn_sno, label: `${e.com_name ?? `Company ${e.com_sno}`} · Division ${e.div_sno} · Branch ${e.brn_sno}`, entries: [], fileLines: 0, total: 0 };
+      runScopes.push(made);
+      sc = made;
+    }
+    sc.entries.push(e);
+    sc.total += Number(e.net_paid) || 0;
+    if (inBankFile(e)) sc.fileLines += 1;
+  }
+  const multiScope = runScopes.length > 1;
+  const senderOf = (sc: RunScope) => pickSender(senderState[sc.key]?.list ?? [], senderPick[sc.key] ?? '');
+  const problemOf = (sc: RunScope) => senderProblem(sc.fileLines, senderState[sc.key]?.list ?? [], senderPick[sc.key] ?? '');
+  const sendersLoading = runScopes.some((sc) => senderState[sc.key]?.loading);
+  const sendersError = runScopes.map((sc) => senderState[sc.key]?.error).find(Boolean) ?? '';
+  const blockedBySender = runScopes.map(problemOf).find(Boolean) ?? null;
+  const currentKey = `${runScopes.map((x) => x.key).join(';')}|${pickedEntries.map((e) => e.payment_sno).join(',')}`;
   // The list can reload under an open confirmation (live updates): then what it was opened for is no longer what would be paid.
   const stale = confirmOpen && snapKey !== '' && snapKey !== currentKey;
 
   const loadSenders = async () => {
     const mine = ++sendersReq.current;
-    setSenders([]);
-    setSendersError('');
-    setSendersLoading(true);
-    try {
-      const res = await axios.get(payNetRunSenders, { params: activeScope ? {
-        com_sno: activeScope.com_sno, div_sno: activeScope.div_sno, brn_sno: activeScope.brn_sno,
-      } : undefined });
-      if (mine === sendersReq.current) setSenders(res.data?.data ?? []);
-    } catch (err) {
-      if (mine === sendersReq.current) setSendersError(getErrorMessage(err, 'Could not read the bank accounts to pay from'));
-    } finally {
-      if (mine === sendersReq.current) setSendersLoading(false);
-    }
+    const wanted = runScopes.filter((sc) => sc.fileLines > 0);
+    setSenderState(Object.fromEntries(wanted.map((sc) => [sc.key, { list: [], loading: true, error: '' }])));
+    await Promise.all(wanted.map(async (sc) => {
+      let next = { list: [] as PaymentSender[], loading: false, error: '' };
+      try {
+        const res = await axios.get(payNetRunSenders, { params: { com_sno: sc.com_sno, div_sno: sc.div_sno, brn_sno: sc.brn_sno } });
+        next = { ...next, list: res.data?.data ?? [] };
+      } catch (err) {
+        next = { ...next, error: getErrorMessage(err, `Could not read the bank accounts of ${sc.label}`) };
+      }
+      if (mine === sendersReq.current) setSenderState((prev) => ({ ...prev, [sc.key]: next }));
+    }));
   };
 
   const openConfirm = async () => {
-    setPayDate(new Date().toISOString().slice(0, 10));
-    setSenderSno('');
+    setPayDate(localYmd(new Date()));
+    setSenderPick({});
     setSnapKey(currentKey);
     setConfirmOpen(true);
     await loadSenders();
   };
 
+  // Each company's share of the day's fund plan, in proportion to what it pays (the shares add up to the fund plan).
+  const fundShares = (): number[] => {
+    const shares: number[] = [];
+    let used = 0;
+    runScopes.forEach((sc, i) => {
+      const raw = i === runScopes.length - 1 ? fundNum - used : Math.round((fundNum * sc.total / (pickedTotal || 1)) * 100) / 100;
+      const share = Math.max(Math.round(raw * 100) / 100, Math.round(sc.total * 100) / 100);
+      shares.push(share);
+      used += share;
+    });
+    return shares;
+  };
+
   const proceed = async () => {
     setProceeding(true);
+    const made: RunResult[] = [];
+    const shares = fundShares();
     try {
-      const res = await axios.post(payNetRunProceed, {
-        payment_snos: pickedEntries.map((e) => e.payment_sno),   // in priority order: the order of the lines in the file
-        fund_plan_amount: fundNum,
-        payment_date: payDate,
-        payment_bank_sno: fileLines > 0 && sender ? sender.payment_bank_sno : undefined,
-      });
-      const run: RunResult = res.data?.data;
+      for (const [i, sc] of runScopes.entries()) {
+        const sender = senderOf(sc);
+        const res = await axios.post(payNetRunProceed, {
+          payment_snos: sc.entries.map((e) => e.payment_sno),   // in priority order: the order of the lines in the file
+          fund_plan_amount: runScopes.length === 1 ? fundNum : shares[i],
+          payment_date: payDate,
+          payment_bank_sno: sc.fileLines > 0 && sender ? sender.payment_bank_sno : undefined,
+        });
+        const run: RunResult = res.data?.data;
+        made.push(run);
+        if (run.file.line_count) saveFile(run.file);
+      }
       setConfirmOpen(false);
-      setResult(run);
+      setResults(made);
       setManual(null);
-      if (run.file.line_count) saveFile(run.file);
-      toast.success(`Payment run ${run.batch.batch_no} created${run.file.line_count ? ' - file downloaded' : ''}`);
+      toast.success(made.length === 1 ? `Payment run ${made[0].batch.batch_no} created${made[0].file.line_count ? ' - file downloaded' : ''}` : `${made.length} payment runs created - ${made.filter((r) => r.file.line_count).length} file(s) downloaded`);
       await load();
     } catch (err) {
       const message = getErrorMessage(err, 'Could not create the payment run');
-      toast.error(message);
-      if (/was created/.test(message)) { setConfirmOpen(false); setManual(null); }   // paid, only the file failed: do not offer the same payments again
+      const done = made.length > 0 ? ` ${made.length} of ${runScopes.length} run(s) were already created (${made.map((r) => r.batch.batch_no).join(', ')}); the rest were not.` : '';
+      toast.error(message + done);
+      if (made.length > 0) { setConfirmOpen(false); setResults(made); setManual(null); }
+      else if (/was created/.test(message)) { setConfirmOpen(false); setManual(null); }   // paid, only the file failed: do not offer the same payments again
       await load();   // most often a payment another user just paid or cancelled
     } finally {
       setProceeding(false);
-    }
-  };
-
-  const downloadBatch = async (b: PaymentBatch) => {
-    setDownloading(b.batch_sno);
-    try {
-      const res = await axios.get(payNetRunBatchFile(b.batch_sno));
-      saveFile(res.data?.data);
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'Could not download the file'));
-    } finally {
-      setDownloading(null);
-    }
-  };
-
-  // the sheet the auditor / payment inputter checks the bank's screen against (invoice-wise, part payments, TDS)
-  const downloadVerification = async (b: PaymentBatch) => {
-    setDownloading(b.batch_sno);
-    try {
-      const res = await axios.get(payNetRunBatchVerification(b.batch_sno));
-      saveFile(res.data?.data);
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'Could not download the verification sheet'));
-    } finally {
-      setDownloading(null);
     }
   };
 
@@ -278,13 +345,24 @@ const PaymentRunPage: React.FC = () => {
   };
 
   const th = 'text-xs';
-  const tile = (label: string, value: React.ReactNode, hint?: React.ReactNode, tone = '') => (
-    <div className="min-w-0 rounded-xl border bg-card px-4 py-3">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={cn('mt-0.5 truncate text-lg font-bold tabular-nums', tone)}>{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
-    </div>
+  // one line of the fund meter's legend
+  const legend = (dot: string, label: string, value: React.ReactNode, hint: React.ReactNode, onClick?: () => void) => (
+    <button
+      type="button" onClick={onClick} disabled={!onClick}
+      className="flex min-w-0 items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors enabled:hover:bg-card disabled:cursor-default"
+    >
+      <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', dot)} aria-hidden />
+      <span className="min-w-0">
+        <span className="block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+        <span className="block truncate text-sm font-bold tabular-nums">{value}</span>
+        <span className="block truncate text-xs text-muted-foreground">{hint}</span>
+      </span>
+    </button>
   );
+  const TABS: { key: Tab; label: string; short: string; icon: typeof Send; count: number }[] = [
+    { key: 'pay', label: 'Make payment', short: 'Pay', icon: Send, count: visible.length },
+    { key: 'history', label: 'Payment history', short: 'History', icon: History, count: batches.length + portalPaid.length },
+  ];
 
   const fundPill = (e: PaymentEntry) => {
     if (picked.has(e.payment_sno)) return <StatusPill tone="success">Paying today</StatusPill>;
@@ -310,35 +388,50 @@ const PaymentRunPage: React.FC = () => {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50 hover:bg-muted/50">
-                    <TableHead className={th}>Invoice</TableHead>
                     <TableHead className={th}>Supplier invoice</TableHead>
                     <TableHead className={th}>PO</TableHead>
                     <TableHead className={th}>Gate entry</TableHead>
                     <TableHead className={th}>GRN</TableHead>
                     <TableHead className={th}>Due</TableHead>
-                    <TableHead className={cn(th, 'text-right')}>Paying</TableHead>
+                    <TableHead className={cn(th, 'text-right')}>Invoice amount paying</TableHead>
+                    <TableHead className={cn(th, 'text-right')}>GST held</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {lines.map((l) => (
                     <TableRow key={l.invoice_sno}>
-                      <TableCell className="text-xs font-medium">{l.invoice_no}<p className="font-normal text-muted-foreground">{showDate(l.invoice_date)}</p></TableCell>
-                      <TableCell className="text-xs">{l.supplier_invoice_no ?? '—'}</TableCell>
+                      <TableCell className="text-xs font-medium">{l.supplier_invoice_no || <span className="font-normal text-muted-foreground">Not entered</span>}<p className="font-normal text-muted-foreground">{showDate(l.invoice_date)}</p></TableCell>
                       <TableCell className="text-xs">{l.po_no ?? '—'}</TableCell>
                       <TableCell className="text-xs">{showDate(l.gate_entry_date)}<p className="text-muted-foreground">{l.gate_entry_nos ?? ''}</p></TableCell>
                       <TableCell className="text-xs">{showDate(l.grn_date)}<p className="text-muted-foreground">{l.grn_nos ?? ''}</p></TableCell>
                       <TableCell className="text-xs">{showDate(l.due_date)}</TableCell>
                       <TableCell className="text-right text-xs font-medium tabular-nums">{rupees(l.amount)}</TableCell>
+                      <TableCell className={cn('text-right text-xs tabular-nums', Number(l.gst_held) > 0 ? 'font-semibold text-red-600 dark:text-red-400' : 'text-muted-foreground')}>
+                        {Number(l.gst_held) > 0 ? rupees(l.gst_held) : '—'}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </div>
             )}
+            <div className="max-w-md overflow-hidden rounded-lg border bg-card text-xs">
+              <p className="border-b bg-muted/50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Payment breakup</p>
+              <dl className="divide-y">
+                <div className="flex justify-between gap-3 px-3 py-2"><dt>Gross (invoices being paid)</dt><dd className="font-semibold tabular-nums">{rupees(e.gross_amount)}</dd></div>
+                <div className="flex justify-between gap-3 px-3 py-2"><dt className="text-muted-foreground">Less TDS</dt><dd className="tabular-nums">- {rupees(e.tds_amount)}</dd></div>
+                <div className="flex justify-between gap-3 px-3 py-2"><dt className="text-muted-foreground">Less advance adjusted</dt><dd className="tabular-nums">- {rupees(e.advance_adjusted)}</dd></div>
+                <div className="flex justify-between gap-3 px-3 py-2"><dt className="text-muted-foreground">Less debit / credit notes</dt><dd className="tabular-nums">- {rupees(e.note_adjusted)}</dd></div>
+                <div className="flex justify-between gap-3 bg-muted/30 px-3 py-2 text-sm font-semibold"><dt>Net payable</dt><dd className="tabular-nums">{rupees(e.net_paid)}</dd></div>
+                {Number(e.gst_held) > 0 && (
+                  <div className="flex justify-between gap-3 bg-red-50 px-3 py-2 font-semibold text-red-600 dark:bg-red-950/20 dark:text-red-400">
+                    <dt>GST held - not paid now<span className="block text-[11px] font-normal">Paid after the invoice shows in GSTR-2B</span></dt>
+                    <dd className="tabular-nums">{rupees(e.gst_held)}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs sm:grid-cols-4">
-              <div><dt className="text-[11px] uppercase tracking-wide text-muted-foreground">Gross</dt><dd className="font-semibold tabular-nums">{rupees(e.gross_amount)}</dd></div>
-              <div><dt className="text-[11px] uppercase tracking-wide text-muted-foreground">TDS / advance / notes</dt>
-                <dd className="font-semibold tabular-nums">- {rupees(Number(e.tds_amount || 0) + Number(e.advance_adjusted || 0) + Number(e.note_adjusted || 0))}</dd></div>
               <div><dt className="text-[11px] uppercase tracking-wide text-muted-foreground">Mode</dt><dd className="font-semibold">{e.mode}{notInFileReason(e) ? ` · ${e.channel === 'BANK' ? 'not in the bank file' : notInFileReason(e)}` : ''}</dd></div>
               <div><dt className="text-[11px] uppercase tracking-wide text-muted-foreground">Debit account</dt><dd className="font-semibold">{e.debit_account || '—'}</dd></div>
               <div><dt className="text-[11px] uppercase tracking-wide text-muted-foreground">Supplier bank</dt>
@@ -350,6 +443,7 @@ const PaymentRunPage: React.FC = () => {
             {e.pay_via_portal && (
               <Callout tone="info" icon={Info}>This supplier is paid on their own portal{e.payment_portal_name ? ` (${e.payment_portal_name})` : ''} - it will not be in the bank file.</Callout>
             )}
+            {e.bank_failure && <BankFailureBox entry={e} canChange={canProceed} onChanged={load} />}
             {canCancel && (
               <div className="flex justify-end">
                 <Button type="button" variant="outline" size="sm" className="h-8 border-red-200 text-xs text-red-700 hover:bg-red-50" onClick={() => { setCancelFor(e); setCancelReason(''); }}>
@@ -368,25 +462,61 @@ const PaymentRunPage: React.FC = () => {
       <PageHeader
         icon={Banknote}
         title="Payment Run"
-        description="Approved payments waiting to be paid - plan today's fund, pay in priority order and generate the payment file"
         stats={[
           { label: 'Waiting', value: visible.length, icon: Wallet },
+          { label: 'Waiting amount', value: `₹${amountInWords(waitingTotal) || Math.round(waitingTotal).toLocaleString('en-IN')}`, icon: Banknote },
           { label: 'Overdue', value: overdueCount, icon: CalendarClock },
           { label: 'MSME suppliers', value: msmeCount, icon: Info },
-          { label: 'Advances', value: visible.filter((e) => e.payment_type === 'ADVANCE').length, icon: Wallet },
-          { label: 'Waiting amount', value: `₹${amountInWords(waitingTotal) || Math.round(waitingTotal).toLocaleString('en-IN')}`, icon: Banknote },
+          { label: 'Paid this month', value: compactRupees(month.thisMonth.amount), icon: History },
         ]}
       >
         <Button
           variant="outline" size="sm"
-          className="border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
+          className="border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
           onClick={load} disabled={loading}
         >
           <RefreshCw size={15} className={loading ? 'mr-1 animate-spin' : 'mr-1'} /> Refresh
         </Button>
       </PageHeader>
 
-      <div className="container mx-auto space-y-6 px-4 py-6">
+      <div className="container mx-auto space-y-6 px-4 pb-6 pt-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <nav role="tablist" aria-label="Payment Run sections" className="flex w-full gap-1 rounded-xl bg-muted p-1 sm:w-auto">
+            {TABS.map((t) => {
+              const active = tab === t.key;
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.key} type="button" role="tab" aria-selected={active} onClick={() => setTab(t.key)}
+                  className={cn(
+                    'inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-2.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-none sm:px-4',
+                    active ? 'bg-card text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="sm:hidden">{t.short}</span>
+                  <span className="hidden sm:inline">{t.label}</span>
+                  <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-foreground/10 px-1.5 text-[11px] font-semibold tabular-nums text-foreground/70">{t.count}</span>
+                </button>
+              );
+            })}
+          </nav>
+          {tab === 'pay' && lastRun && (
+            <button
+              type="button" onClick={() => showRun(lastRun.batch_sno)}
+              className="group inline-flex min-w-0 items-center gap-2 self-start rounded-lg px-2 py-1.5 text-xs text-muted-foreground hover:bg-card hover:text-foreground sm:self-auto"
+            >
+              <History className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Last run <b className="font-semibold text-foreground">{lastRun.batch_no}</b> · {showDate(lastRun.batch_date)} · {rupees(lastRun.total_amount)}</span>
+              <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" />
+            </button>
+          )}
+        </div>
+
+        {tab === 'history' ? (
+          <PaymentHistoryTab runs={batches} portal={portalPaid} loading={loading} limit={HISTORY_LIMIT} openRunId={openRunId} onOpenRun={setOpenRunId}
+            canUpload={canProceed} onChanged={load} />
+        ) : (<>
         <Panel icon={Wallet} title="Today's fund plan" description="Enter the money available to pay out today - the payments it covers are picked in priority order">
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -414,40 +544,41 @@ const PaymentRunPage: React.FC = () => {
                 </Select>
                 <p className="text-xs text-muted-foreground">{PRIORITY_MODES.find((m) => m.value === mode)?.hint}</p>
               </div>
-              {scopes.length > 1 && activeScope && (
+              {scopes.length > 1 && (
                 <div className="space-y-1.5">
                   <Label className="text-xs">Payment scope</Label>
-                  <Select value={activeScope.key} onValueChange={changeScope}>
+                  <Select value={activeScope?.key ?? 'ALL'} onValueChange={(v) => changeScope(v === 'ALL' ? '' : v)}>
                     <SelectTrigger className="h-10 w-full" aria-label="Payment scope"><SelectValue /></SelectTrigger>
-                    <SelectContent>{scopes.map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
+                    <SelectContent>
+                      <SelectItem value="ALL">All companies / branches</SelectItem>
+                      {scopes.map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
+                    </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">One payment file covers one company, division and branch.</p>
+                  <p className="text-xs text-muted-foreground">Pick one to look at a single company. Payments of several companies can be paid together - each gets its own run and file.</p>
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-              {tile('Waiting', visible.length, rupees(waitingTotal))}
-              {tile('Paying today', picked.size, rupees(pickedTotal), 'text-emerald-700 dark:text-emerald-300')}
-              {tile('Fund left', rupees(fundNum - pickedTotal), fund == null ? 'No fund entered' : `of ${rupees(fundNum)}`, overFund ? 'text-red-600 dark:text-red-400' : '')}
-              {tile('Waiting for fund', waitingForFund.length, rupees(waitingForFund.reduce((s, e) => s + Number(e.net_paid || 0), 0)), waitingForFund.length ? 'text-amber-700 dark:text-amber-300' : '')}
-              {tile('Cannot pay yet', blocked.length, blocked.length ? 'Bank details missing' : undefined, blocked.length ? 'text-red-600 dark:text-red-400' : '')}
-            </div>
-
-            {fundNum > 0 && (
-              <div className="space-y-1.5">
-                <div role="progressbar" aria-label="Fund used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round((pickedTotal / fundNum) * 100))} className="h-2 overflow-hidden rounded-full bg-muted">
-                  <div className={cn('h-full rounded-full transition-all', overFund ? 'bg-red-500' : 'bg-emerald-500')} style={{ width: `${Math.min(100, (pickedTotal / fundNum) * 100)}%` }} />
-                </div>
-                <p className="text-xs text-muted-foreground">{rupees(pickedTotal)} of {rupees(fundNum)} used · {Math.round((pickedTotal / fundNum) * 100)}%</p>
+            <div className="space-y-3 rounded-xl border bg-muted/30 p-3 sm:p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <p className="text-sm text-muted-foreground">
+                  <span className={cn('text-2xl font-bold tabular-nums', overFund ? 'text-red-600 dark:text-red-400' : 'text-foreground')}>{rupees(pickedTotal)}</span>
+                  {' '}{fund == null ? 'selected · no fund entered yet' : `of ${rupees(fundNum)} fund`}
+                </p>
+                <p className={cn('text-xs font-medium tabular-nums', overFund ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground')}>
+                  {fund == null ? "Enter today's fund to plan the run" : overFund ? `${rupees(pickedTotal - fundNum)} over the fund` : `${usedPct}% used · ${rupees(fundNum - pickedTotal)} left`}
+                </p>
               </div>
-            )}
-
-            <Callout tone="info" icon={Info}>
-              Micro and Small MSME suppliers must be paid within <b>{limitDays} days</b> of the goods being received (MSMED Act). The due date shown is that limit, counted
-              from the earlier of the gate entry and GRN date, or the invoice's own due date if that comes first; everyone else is due on the invoice due date
-              (else {data.settings.DEFAULT_CREDIT_DAYS ?? 30} days after receipt). A payment that does not fit the fund is skipped so a smaller one below it can still be paid.
-            </Callout>
+              <div role="progressbar" aria-label="Fund used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, usedPct)} className="h-2.5 overflow-hidden rounded-full bg-muted ring-1 ring-inset ring-border">
+                <div className={cn('h-full rounded-full transition-all', overFund ? 'bg-red-500' : 'bg-emerald-500')} style={{ width: `${fundNum > 0 ? Math.min(100, (pickedTotal / fundNum) * 100) : 0}%` }} />
+              </div>
+              <div className="grid grid-cols-2 gap-1 lg:grid-cols-4">
+                {legend('bg-emerald-500', 'Paying today', `${picked.size} · ${compactRupees(pickedTotal)}`, rupees(pickedTotal), picked.size ? () => setListFilter('PAYING') : undefined)}
+                {legend('bg-amber-500', 'Waiting for fund', `${waitingForFund.length} · ${compactRupees(waitingForFund.reduce((s, e) => s + Number(e.net_paid || 0), 0))}`, waitingForFund.length ? 'Not covered by the fund' : 'Nothing left out', waitingForFund.length ? () => setListFilter('WAITING') : undefined)}
+                {legend('bg-red-500', 'Cannot pay yet', blocked.length, blocked.length ? 'Bank details missing' : 'All payable', blocked.length ? () => setListFilter('BLOCKED') : undefined)}
+                {legend('bg-muted-foreground/40', 'All waiting', `${visible.length} · ${compactRupees(waitingTotal)}`, rupees(waitingTotal), () => setListFilter('ALL'))}
+              </div>
+            </div>
           </div>
         </Panel>
 
@@ -460,8 +591,9 @@ const PaymentRunPage: React.FC = () => {
             <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => setManual(null)}>Re-apply fund plan</Button>
           ) : undefined}
         >
-          <div className="border-b px-4 py-3 sm:px-5">
-            <SearchInput value={search} onChange={setSearch} placeholder="Search supplier, payment, PO, invoice, GRN…" className="max-w-md" />
+          <div className="flex flex-col gap-3 border-b px-4 py-3 sm:px-5 xl:flex-row xl:items-center xl:justify-between">
+            <FilterChips options={listOptions} value={listFilter} onChange={setListFilter} />
+            <SearchInput value={search} onChange={setSearch} placeholder="Search supplier, payment, PO, invoice, GRN…" className="w-full xl:max-w-sm" />
           </div>
           {loading && data.entries.length === 0 ? (
             <div className="flex h-40 items-center justify-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div>
@@ -472,13 +604,14 @@ const PaymentRunPage: React.FC = () => {
               <p className="mx-auto mt-1 max-w-md text-xs">Save a payment on the Payment page. Once it is approved it appears here, ready to be paid against the day's fund.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            // @container: the detail row's boxes size themselves to the visible width (cqw) while the table scrolls sideways
+            <div className="@container overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50 hover:bg-muted/50">
                     <TableHead className="w-10" />
                     <TableHead className={cn(th, 'w-10')}>#</TableHead>
-                    <TableHead className={th}>Supplier</TableHead>
+                    <TableHead className={th}>Supplier / invoice</TableHead>
                     <TableHead className={th}>MSME</TableHead>
                     <TableHead className={th}>Gate entry</TableHead>
                     <TableHead className={th}>GRN</TableHead>
@@ -512,8 +645,16 @@ const PaymentRunPage: React.FC = () => {
                               {e.vendor_name ?? '—'}
                               {e.payment_type === 'ADVANCE' && <span className={cn('ml-1.5 inline-flex items-center rounded-md border px-1.5 py-px align-middle text-[10px] font-medium', TONE.violet)} title="Advance on an approved PO - not a bill">Advance</span>}
                             </span>
-                            <span className="block text-muted-foreground">{e.payment_no}{e.po_nos ? ` · ${e.po_nos}` : ''}</span>
+                            <span className="block text-muted-foreground" title="Supplier invoice no.">
+                              {e.payment_type === 'ADVANCE' ? 'Advance' : `Invoice ${e.supplier_invoice_nos || 'no. not entered'}`}{e.po_nos ? ` · PO ${e.po_nos}` : ''}
+                            </span>
                             {notInFileReason(e) && <span className="mt-1 inline-block rounded border bg-muted px-1.5 py-px text-[10px] text-muted-foreground">{notInFileReason(e)}</span>}
+                            {e.bank_failure && (
+                              <button type="button" onClick={() => { if (!isOpen) toggleOpen(e.payment_sno); }} title={bankFailureText(e.bank_failure)}
+                                className={cn('mt-1 flex max-w-64 items-center gap-1 truncate rounded border px-1.5 py-px text-left text-[10px] font-medium', TONE.danger)}>
+                                <XCircle className="h-3 w-3 shrink-0" /><span className="truncate">Not paid by bank{e.bank_failure.bank_reason ? ` · ${e.bank_failure.bank_reason}` : ''}</span>
+                              </button>
+                            )}
                           </TableCell>
                           <TableCell className="text-xs">
                             {msme ? (
@@ -529,6 +670,7 @@ const PaymentRunPage: React.FC = () => {
                           <TableCell className="whitespace-nowrap text-right text-xs font-semibold tabular-nums">
                             {rupees(e.net_paid)}
                             {Number(e.gross_amount) !== Number(e.net_paid) && <span className="block font-normal text-muted-foreground">gross {rupees(e.gross_amount)}</span>}
+                            {Number(e.gst_held) > 0 && <span className="block font-medium text-red-600 dark:text-red-400" title="GST kept back until the invoice shows in GSTR-2B">GST held {rupees(e.gst_held)}</span>}
                           </TableCell>
                           <TableCell>{fundPill(e)}</TableCell>
                           <TableCell>
@@ -551,7 +693,7 @@ const PaymentRunPage: React.FC = () => {
               <div className="min-w-0 text-sm">
                 <p className="font-semibold tabular-nums">{picked.size} payment{picked.size === 1 ? '' : 's'} · {rupees(pickedTotal)}</p>
                 <p className={cn('text-xs', overFund ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground')}>
-                  {fund == null ? "Enter today's fund plan above" : overFund ? `${rupees(pickedTotal - fundNum)} more than the fund - untick some payments` : `${rupees(fundNum - pickedTotal)} of the fund left`}
+                  {fund == null ? "Enter today's fund plan above" : overFund ? `${rupees(pickedTotal - fundNum)} more than the fund - untick some payments` : `${rupees(fundNum - pickedTotal)} of the fund left`}{multiScope ? ` · ${runScopes.length} companies / branches - a separate run and file for each` : ''}
                 </p>
               </div>
               {canProceed && (
@@ -563,64 +705,8 @@ const PaymentRunPage: React.FC = () => {
           )}
         </Panel>
 
-        <PortalPaymentsSection entries={portalEntries} canRecord={canProceed} onRecorded={load} version={data} />
-        <TdsRecordsPanel version={data} />
-
-        <Panel icon={History} title="Previous payment runs" description="Download the payment file of an earlier run again" bodyClassName="p-0">
-          {batches.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-muted-foreground">No payment run yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50 hover:bg-muted/50">
-                    <TableHead className={th}>Run</TableHead>
-                    <TableHead className={th}>Date</TableHead>
-                    <TableHead className={th}>Company</TableHead>
-                    <TableHead className={th}>Paid from</TableHead>
-                    <TableHead className={cn(th, 'text-right')}>Payments</TableHead>
-                    <TableHead className={cn(th, 'text-right')}>Paid</TableHead>
-                    <TableHead className={cn(th, 'text-right')}>Fund plan</TableHead>
-                    <TableHead className={th}>By</TableHead>
-                    <TableHead className="w-32" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {batches.map((b) => (
-                    <TableRow key={b.batch_sno}>
-                      <TableCell className="text-xs font-medium">{b.batch_no}</TableCell>
-                      <TableCell className="text-xs">{showDate(b.batch_date)}</TableCell>
-                      <TableCell className="text-xs">
-                        {b.com_name ?? '—'}
-                        {(b.div_name || b.brn_name) && <span className="block text-muted-foreground">{[b.div_name, b.brn_name].filter(Boolean).join(' · ')}</span>}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {b.sender_bank_name ? <>{b.sender_bank_name}<span className="block text-muted-foreground">••••{b.sender_ac_last4}{b.sender_client_code ? ` · ${b.sender_client_code}` : ''}</span></> : '—'}
-                      </TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">{b.item_count}</TableCell>
-                      <TableCell className="text-right text-xs font-medium tabular-nums">{rupees(b.total_amount)}</TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">{rupees(b.fund_plan_amount)}</TableCell>
-                      <TableCell className="text-xs">{b.created_by ?? '—'}</TableCell>
-                      <TableCell className="text-right">
-                        {b.has_file || b.file_type ? (
-                          <>
-                            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" disabled={downloading === b.batch_sno} onClick={() => downloadBatch(b)}>
-                              {downloading === b.batch_sno ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}File
-                            </Button>
-                            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" disabled={downloading === b.batch_sno} onClick={() => downloadVerification(b)}
-                              title="Invoice-wise sheet to check the bank file against - part payments, TDS and what is left">
-                              <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" />Check sheet
-                            </Button>
-                          </>
-                        ) : <span className="text-xs text-muted-foreground" title="No bank transfer in this run">No file</span>}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </Panel>
+        <PortalPaymentsSection entries={portalEntries} canRecord={canProceed} onRecorded={load} paidCount={portalPaid.length} onShowPaid={() => setTab('history')} />
+        </>)}
       </div>
 
       {/* confirm */}
@@ -637,31 +723,42 @@ const PaymentRunPage: React.FC = () => {
             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Left after this run</dt><dd className="font-semibold tabular-nums">{rupees(fundNum - pickedTotal)}</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">In the bank file</dt><dd className="font-semibold tabular-nums">{fileLines} line{fileLines === 1 ? '' : 's'}</dd></div>
           </dl>
-          {fileLines > 0 && (
-            <div className="space-y-1.5">
-              <Label className="text-xs">Pay from</Label>
-              {sendersLoading ? (
-                <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Reading the company's bank accounts…</p>
-              ) : sendersError ? (
-                <Callout tone="danger" icon={AlertTriangle}>
-                  {sendersError}.{' '}<button type="button" className="font-semibold underline" onClick={loadSenders}>Try again</button>
-                </Callout>
-              ) : senders.length === 0 ? (
-                <Callout tone="danger" icon={AlertTriangle}>{blockedBySender}</Callout>
-              ) : (
-                <>
-                  <Select value={sender ? String(sender.payment_bank_sno) : ''} onValueChange={setSenderSno}>
-                    <SelectTrigger className="h-10 w-full" aria-label="Pay from"><SelectValue placeholder="Choose the bank account" /></SelectTrigger>
-                    <SelectContent>
-                      {senders.map((s) => <SelectItem key={s.payment_bank_sno} value={String(s.payment_bank_sno)}>{senderLabel(s)}{s.is_default === 'Y' ? ' · default' : ''}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <p className={cn('text-xs', sender ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-300')}>
-                    {sender ? `Bank upload file for ${sender.bank_name} (client code ${sender.client_code}; daily file numbers start at .${sender.file_code}). Each supplier's account, IFSC and bank come from their KYC.` : blockedBySender}
-                  </p>
-                </>
-              )}
-            </div>
+          {runScopes.filter((sc) => sc.fileLines > 0).map((sc) => {
+            const st = senderState[sc.key];
+            const sender = senderOf(sc);
+            const problem = problemOf(sc);
+            return (
+              <div key={sc.key} className="space-y-1.5">
+                <Label className="text-xs">{multiScope ? `Pay from - ${sc.label} (${sc.fileLines} line${sc.fileLines === 1 ? '' : 's'}, ${rupees(sc.total)})` : 'Pay from'}</Label>
+                {!st || st.loading ? (
+                  <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Reading the company's bank accounts…</p>
+                ) : st.error ? (
+                  <Callout tone="danger" icon={AlertTriangle}>
+                    {st.error}.{' '}<button type="button" className="font-semibold underline" onClick={loadSenders}>Try again</button>
+                  </Callout>
+                ) : st.list.length === 0 ? (
+                  <Callout tone="danger" icon={AlertTriangle}>{problem}</Callout>
+                ) : (
+                  <>
+                    <Select value={sender ? String(sender.payment_bank_sno) : ''} onValueChange={(v) => setSenderPick((prev) => ({ ...prev, [sc.key]: v }))}>
+                      <SelectTrigger className="h-10 w-full" aria-label={`Pay from - ${sc.label}`}><SelectValue placeholder="Choose the bank account" /></SelectTrigger>
+                      <SelectContent>
+                        {st.list.map((x) => <SelectItem key={x.payment_bank_sno} value={String(x.payment_bank_sno)}>{senderLabel(x)}{x.is_default === 'Y' ? ' · default' : ''}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <p className={cn('text-xs', sender ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-300')}>
+                      {sender ? `Bank upload file for ${sender.bank_name} (client code ${sender.client_code}; daily file numbers start at .${sender.file_code}). Each supplier's account, IFSC and bank come from their KYC.` : problem}
+                    </p>
+                  </>
+                )}
+              </div>
+            );
+          })}
+          {multiScope && (
+            <Callout tone="info" icon={Info}>
+              The ticked payments belong to {runScopes.length} companies / branches. One payment run and one bank file is created for each ({runScopes.map((x) => x.label).join(' | ')}),
+              and the fund plan is split between them in proportion to what each pays.
+            </Callout>
           )}
           {notInFile.length > 0 && (
             <Callout tone="warning" icon={AlertTriangle}>
@@ -684,58 +781,74 @@ const PaymentRunPage: React.FC = () => {
       </Dialog>
 
       {/* result */}
-      <Dialog open={result != null} onOpenChange={(o) => { if (!o) setResult(null); }}>
+      <Dialog open={results != null} onOpenChange={(o) => { if (!o) setResults(null); }}>
         <DialogContent className="max-h-[92vh] w-[calc(100%-1rem)] gap-4 overflow-y-auto sm:w-full sm:max-w-lg">
           <DialogHeader className="flex-row items-start gap-3 text-left">
             <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full border', TONE.success)}><CheckCircle2 className="h-5 w-5" /></span>
             <div className="min-w-0 space-y-1 pr-6">
-              <DialogTitle>Payment run {result?.batch.batch_no} created</DialogTitle>
-              <DialogDescription>{result?.items.length} payment{result?.items.length === 1 ? '' : 's'} · {rupees(result?.batch.total_amount)} paid against a fund of {rupees(result?.batch.fund_plan_amount)}.</DialogDescription>
+              <DialogTitle>{results && results.length > 1 ? `${results.length} payment runs created` : `Payment run ${results?.[0]?.batch.batch_no} created`}</DialogTitle>
+              <DialogDescription>
+                {results?.reduce((t, r) => t + r.items.length, 0)} payment{results?.reduce((t, r) => t + r.items.length, 0) === 1 ? '' : 's'} · {rupees(results?.reduce((t, r) => t + Number(r.batch.total_amount || 0), 0))} paid.
+              </DialogDescription>
             </div>
           </DialogHeader>
-          {result && result.file.line_count ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
-              <div className="min-w-0 text-sm">
-                <p className="truncate font-semibold">{result.file.file_name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {result.file.line_count} bank transfer{result.file.line_count === 1 ? '' : 's'} · {rupees(result.file.total_amount)}
-                  {result.batch.sender_bank_name ? ` · from ${result.batch.sender_bank_name} ••••${result.batch.sender_ac_last4}` : ''} · saved to your Downloads folder
-                </p>
-              </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => saveFile(result.file)}><Download className="mr-1.5 h-4 w-4" />Download again</Button>
+          {(results ?? []).map((result) => (
+            <div key={result.batch.batch_no} className="space-y-3">
+              {results && results.length > 1 && (
+                <p className="text-sm font-semibold">{result.batch.batch_no} · {rupees(result.batch.total_amount)} · {result.items.length} payment{result.items.length === 1 ? '' : 's'}</p>
+              )}
+              {result.file.line_count ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                  <div className="min-w-0 text-sm">
+                    <p className="truncate font-semibold">{result.file.file_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {result.file.line_count} bank transfer{result.file.line_count === 1 ? '' : 's'} · {rupees(result.file.total_amount)}
+                      {result.batch.sender_bank_name ? ` · from ${result.batch.sender_bank_name} ••••${result.batch.sender_ac_last4}` : ''} · saved to your Downloads folder
+                    </p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => saveFile(result.file)}><Download className="mr-1.5 h-4 w-4" />Download again</Button>
+                </div>
+              ) : (
+                <Callout tone="info" icon={Info}>None of these payments is a NEFT / RTGS bank transfer, so there is no payment file for this run.</Callout>
+              )}
+              {result.verification && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed p-3">
+                  <div className="min-w-0 text-sm">
+                    <p className="font-semibold">Check sheet for the bank upload</p>
+                    <p className="text-xs text-muted-foreground">
+                      Invoice-wise: what each transfer pays, part payments, TDS and what is left. The auditor / payment inputter checks the bank's screen against it - the bank only shows the file's lines.
+                    </p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => saveFile(result.verification!)}><ClipboardCheck className="mr-1.5 h-4 w-4" />Download check sheet</Button>
+                </div>
+              )}
+              {result.skipped.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-sm font-semibold">Not in the file - pay these separately</p>
+                  <div className="overflow-hidden rounded-lg border">
+                    <Table>
+                      <TableBody>
+                        {result.skipped.map((sk) => (
+                          <TableRow key={sk.payment_no}>
+                            <TableCell className="text-xs"><span className="font-medium">{sk.vendor_name ?? sk.payment_no}</span><span className="block text-muted-foreground">{sk.payment_no} · {sk.reason}</span></TableCell>
+                            <TableCell className="text-right text-xs font-semibold tabular-nums">{rupees(sk.amount)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
             </div>
-          ) : (
-            <Callout tone="info" icon={Info}>None of these payments is a NEFT / RTGS bank transfer, so there is no payment file for this run.</Callout>
-          )}
-          {result && result.verification && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed p-3">
-              <div className="min-w-0 text-sm">
-                <p className="font-semibold">Check sheet for the bank upload</p>
-                <p className="text-xs text-muted-foreground">
-                  Invoice-wise: what each transfer pays, part payments, TDS and what is left. The auditor / payment inputter checks the bank's screen against it - the bank only shows the file's lines.
-                </p>
-              </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => saveFile(result.verification!)}><ClipboardCheck className="mr-1.5 h-4 w-4" />Download check sheet</Button>
-            </div>
-          )}
-          {result && result.skipped.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-sm font-semibold">Not in the file - pay these separately</p>
-              <div className="overflow-hidden rounded-lg border">
-                <Table>
-                  <TableBody>
-                    {result.skipped.map((s) => (
-                      <TableRow key={s.payment_no}>
-                        <TableCell className="text-xs"><span className="font-medium">{s.vendor_name ?? s.payment_no}</span><span className="block text-muted-foreground">{s.payment_no} · {s.reason}</span></TableCell>
-                        <TableCell className="text-right text-xs font-semibold tabular-nums">{rupees(s.amount)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          )}
-          <DialogFooter><Button type="button" onClick={() => setResult(null)}>Done</Button></DialogFooter>
+          ))}
+          <DialogFooter className="gap-2 sm:gap-2">
+            {results?.[0]?.batch.batch_sno != null && (
+              <Button type="button" variant="outline" onClick={() => { const id = results[0].batch.batch_sno; setResults(null); showRun(id); }}>
+                <History className="mr-1.5 h-4 w-4" />View in history
+              </Button>
+            )}
+            <Button type="button" onClick={() => setResults(null)}>Done</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

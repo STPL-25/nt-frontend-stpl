@@ -53,7 +53,11 @@ const maskAccount = (n: string | null) => (n ? `••••${String(n).slice(-4
 const th = 'px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground';
 const ADJ_LABEL: Record<string, string> = { TDS: 'TDS', ADVANCE: 'Advance adjusted', DEBIT_NOTE: 'Debit note', CREDIT_NOTE: 'Credit note' };
 // ApprovalActivity knows APPROVED / REJECTED / SUBMITTED; the others are passed as the label they should show
-const HISTORY_LABEL: Record<string, string> = { AUTO_APPROVED: 'Auto-approved', CANCELLED: 'Cancelled', PAID: 'Paid', REVISED: 'Paying less now' };
+const HISTORY_LABEL: Record<string, string> = {
+  AUTO_APPROVED: 'Auto-approved', CANCELLED: 'Cancelled', PAID: 'Paid', REVISED: 'Paying less now',
+  // the bank's reverse file (grn-service sql/83)
+  BANK_PAID: 'Paid by the bank', BANK_FAILED: 'Not paid by the bank', MODE_CHANGED: 'Mode changed',
+};
 
 /** Saved payments: the ones waiting on the signed-in approver, and every payment with where it stands. */
 const PaymentApprovalPage: React.FC = () => {
@@ -171,6 +175,33 @@ const PaymentApprovalPage: React.FC = () => {
     }
   };
 
+  // Payments saved together for several suppliers of one company / division / branch share a group (sql/74): the approver can
+  // approve every one of them that is waiting on them in one go. Each is still decided (and checked) on its own by the server.
+  const groupMates = useMemo(() => {
+    const me = detail ? mine.find((m) => m.payment_sno === detail.entry.payment_sno) : null;
+    return me?.group_sno ? mine.filter((m) => m.group_sno === me.group_sno) : [];
+  }, [detail, mine]);
+
+  const approveGroup = async () => {
+    if (groupMates.length < 2) return;
+    setBusy(true);
+    const done: string[] = [];
+    const failed: string[] = [];
+    for (const m of groupMates) {
+      try {
+        await axios.post(payNetApprove, decisionBody(m.payment_sno, 'approve', comments, ''));
+        done.push(m.payment_no);
+      } catch (err) {
+        failed.push(`${m.payment_no}: ${getErrorMessage(err, 'failed')}`);
+      }
+    }
+    if (failed.length === 0) toast.success(`${done.length} payments of ${groupMates[0].group_no} approved`);
+    else toast.error(`${done.length} approved, ${failed.length} not: ${failed.join(' | ')}`);
+    setComments('');
+    await Promise.all([load(), detail ? loadDetail(detail.entry.payment_sno) : Promise.resolve()]);
+    setBusy(false);
+  };
+
   const openDialog = (action: 'forward' | 'send_back') => {
     setTarget(defaultTarget(action, approvalCtx));
     setDialogRemarks(comments);
@@ -256,15 +287,14 @@ const PaymentApprovalPage: React.FC = () => {
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40">
                 <tr>
-                  <th className={th}>Invoice</th><th className={th}>Supplier invoice</th><th className={th}>PO</th><th className={th}>Gate entry</th>
+                  <th className={th}>Supplier invoice</th><th className={th}>PO</th><th className={th}>Gate entry</th>
                   <th className={th}>GRN</th><th className={th}>Due</th><th className={cn(th, 'text-right')}>Paying</th>
                 </tr>
               </thead>
               <tbody>
                 {detail.lines.map((l) => (
                   <tr key={l.invoice_sno} className="border-b last:border-0">
-                    <td className="px-3 py-2 font-medium">{l.invoice_no}<span className="block text-xs font-normal text-muted-foreground">{showDate(l.invoice_date)}</span></td>
-                    <td className="px-3 py-2">{l.supplier_invoice_no ?? '—'}</td>
+                    <td className="px-3 py-2 font-medium">{l.supplier_invoice_no || <span className="font-normal text-muted-foreground">Not entered</span>}<span className="block text-xs font-normal text-muted-foreground">{showDate(l.invoice_date)}</span></td>
                     <td className="px-3 py-2">{l.po_no ?? '—'}</td>
                     <td className="px-3 py-2">{showDate(l.gate_entry_date)}<span className="block text-xs text-muted-foreground">{l.gate_entry_nos ?? ''}</span></td>
                     <td className="px-3 py-2">{showDate(l.grn_date)}<span className="block text-xs text-muted-foreground">{l.grn_nos ?? ''}</span></td>
@@ -288,6 +318,80 @@ const PaymentApprovalPage: React.FC = () => {
           </div>
         </Panel>
 
+        {(detail.invoices?.length ?? 0) > 0 && (() => {
+          const inv = detail.invoices ?? [];
+          const waiting2b = inv.filter((f) => f.gstr2b_status === 'Not in GSTR-2B' && Number(f.hold_2b) > 0.005);
+          const notIn2b = inv.filter((f) => f.gstr2b_status === 'Not in GSTR-2B' && Number(f.hold_2b) <= 0.005 && Number(f.gst_amount) > 0.005);
+          const tone2b = (s?: string): Tone => (s === 'In GSTR-2B' ? 'success' : s === 'Not in GSTR-2B' ? 'danger' : s === 'Hold released by Accounts' ? 'info' : 'neutral');
+          return (
+            <Panel icon={FileText} title="Invoice details" description="Everything on each invoice: as uploaded at GRN, its GST, GSTR-2B status and the TDS taken" bodyClassName="p-0">
+              {waiting2b.length > 0 && (
+                <div className="p-3 pb-0">
+                  <Callout tone="warning" icon={Info}>
+                    {waiting2b.map((f) => f.supplier_invoice_no || 'Invoice (no. not entered)').join(', ')} {waiting2b.length > 1 ? 'are' : 'is'} not in GSTR-2B. This payment covers the taxable value only; the GST ({rupees(waiting2b.reduce((s, f) => s + Number(f.hold_2b), 0))}) stays unpaid
+                    {' '}on the <b>Unpaid GST</b> screen and moves to Payment Run on its own once a GSTR-2B upload has the invoice.
+                  </Callout>
+                </div>
+              )}
+              {notIn2b.length > 0 && (
+                <div className="p-3 pb-0">
+                  <Callout tone="info" icon={Info}>
+                    {notIn2b.map((f) => f.supplier_invoice_no || 'Invoice (no. not entered)').join(', ')} {notIn2b.length > 1 ? 'are' : 'is'} not in GSTR-2B yet. Approve for the full amount: GSTR-2B is checked when the payment reaches
+                    {' '}<b>Payment Run</b>; if the invoice is still missing then, only the taxable value is paid and the GST ({rupees(notIn2b.reduce((t, f) => t + Number(f.gst_amount), 0))}) waits on the <b>Unpaid GST</b> screen.
+                  </Callout>
+                </div>
+              )}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-muted/40">
+                    <tr>
+                      <th className={th}>Invoice</th><th className={th}>Dates</th><th className={cn(th, 'text-right')}>Amount</th>
+                      <th className={th}>GSTR-2B</th><th className={th}>TDS on this payment</th><th className={th}>Uploaded at GRN</th><th className={th}>File</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inv.map((f) => (
+                      <tr key={f.invoice_sno} className="border-b align-top last:border-0">
+                        <td className="px-3 py-2 font-medium">{f.supplier_invoice_no || <span className="font-normal text-muted-foreground">Invoice no. not entered</span>}
+                          <span className="block text-xs font-normal text-muted-foreground">{f.po_no ?? 'No PO'}{f.supplier_gstin ? ` · ${f.supplier_gstin}` : ''}</span>
+                        </td>
+                        <td className="px-3 py-2 text-xs">Invoice {showDate(f.invoice_date)}<span className="block text-muted-foreground">Due {showDate(f.due_date)}</span></td>
+                        <td className="px-3 py-2 text-right text-xs tabular-nums">
+                          <span className="block text-sm font-semibold">{rupees(f.invoice_amount)}</span>
+                          {f.taxable_value != null
+                            ? <span className="block text-muted-foreground">Taxable {rupees(f.taxable_value)} · GST {rupees(f.gst_amount)}</span>
+                            : <span className="block text-muted-foreground">No invoice amount</span>}
+                          <span className="block text-muted-foreground">This payment {rupees(f.this_amount)}</span>
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          <StatusPill tone={tone2b(f.gstr2b_status)}>{f.gstr2b_status ?? '—'}</StatusPill>
+                          {f.gstr2b_period && <span className="block text-muted-foreground">Period {f.gstr2b_period}</span>}
+                          {Number(f.hold_2b) > 0.005 && <span className="block text-amber-700 dark:text-amber-400">GST {rupees(f.hold_2b)} unpaid until 2B</span>}
+                        </td>
+                        <td className="px-3 py-2 text-xs tabular-nums">
+                          {f.tds_section
+                            ? <>{f.tds_section} @ {Number(f.tds_rate_pct ?? 0)}%<span className="block font-semibold text-red-600 dark:text-red-400">- {rupees(f.tds_this_payment)}</span><span className="block text-muted-foreground">on {rupees(f.tds_base)}</span></>
+                            : <span className="text-muted-foreground">No TDS</span>}
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          {f.grn_label
+                            ? <>{f.grn_label}<span className="block text-muted-foreground">Inv {f.grn_invoice_no ?? '—'} · {showDate(f.grn_invoice_date)}</span><span className="block text-muted-foreground tabular-nums">{rupees(f.grn_invoice_amount)}{f.grn_taxable_value != null ? ` · taxable ${rupees(f.grn_taxable_value)}` : ''}</span></>
+                            : <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          {(f.grn_invoice_doc_url || f.invoice_file_url)
+                            ? <a href={(f.grn_invoice_doc_url || f.invoice_file_url) as string} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-blue-600 underline"><FileText className="h-3 w-3" />View invoice</a>
+                            : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+          );
+        })()}
+
         <Panel icon={Percent} title="TDS, advances and notes" description="What was taken off the invoices to arrive at the net amount">
           {detail.adjustments.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nothing was deducted - the net amount is the invoice amount{e.status === 'Rejected' || e.status === 'Cancelled' ? ' (the adjustments were released when this payment ended)' : ''}.</p>
@@ -295,7 +399,7 @@ const PaymentApprovalPage: React.FC = () => {
             <ul className="divide-y text-sm">
               {detail.adjustments.map((a, i) => (
                 <li key={i} className="flex items-center justify-between gap-3 py-2">
-                  <span>{ADJ_LABEL[a.adj_type] ?? a.adj_type}{a.ref_no ? ` · ${a.ref_no}` : ''}{a.invoice_no ? ` · ${a.invoice_no}` : ''}</span>
+                  <span>{ADJ_LABEL[a.adj_type] ?? a.adj_type}{a.ref_no ? ` · ${a.ref_no}` : ''}{(() => { const s = detail.lines.find((x) => x.invoice_sno === a.invoice_sno)?.supplier_invoice_no; return s ? ` · ${s}` : ''; })()}</span>
                   <span className={cn('font-semibold tabular-nums', a.adj_type === 'CREDIT_NOTE' ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-400')}>
                     {a.adj_type === 'CREDIT_NOTE' ? '+' : '-'} {rupees(a.amount)}
                   </span>
@@ -362,14 +466,14 @@ const PaymentApprovalPage: React.FC = () => {
                             const left = valid ? Number(f.balance_after) + (Number(f.this_amount) - now) : NaN;
                             return (
                               <tr key={f.invoice_sno} className="border-b last:border-0">
-                                <td className="px-3 py-2 font-medium">{f.invoice_no}<span className="block text-xs font-normal text-muted-foreground">{f.supplier_invoice_no ?? ''}</span></td>
+                                <td className="px-3 py-2 font-medium">{f.supplier_invoice_no || <span className="font-normal text-muted-foreground">Not entered</span>}</td>
                                 <td className="px-3 py-2 text-right tabular-nums">{rupees(f.payable_total)}</td>
                                 <td className="px-3 py-2 text-right tabular-nums">{Number(f.paid_other) > 0.005 ? rupees(f.paid_other) : '—'}</td>
                                 <td className="px-3 py-2 text-right tabular-nums">{rupees(f.this_amount)}</td>
                                 <td className="px-3 py-2 text-right">
                                   <Input
                                     className={cn('ml-auto h-8 w-28 text-right tabular-nums', !valid && 'border-red-500')}
-                                    inputMode="decimal" aria-label={`Pay now on ${f.invoice_no}`}
+                                    inputMode="decimal" aria-label={`Pay now on ${f.supplier_invoice_no || 'this invoice'}`}
                                     value={typed ?? Number(f.this_amount).toFixed(2)}
                                     onChange={(ev) => setReduceAmt((p) => ({ ...p, [f.invoice_sno]: ev.target.value.replace(/[^\d.]/g, '') }))}
                                   />
@@ -404,6 +508,12 @@ const PaymentApprovalPage: React.FC = () => {
               {flags.approve && (
                 <Button className="bg-green-600 hover:bg-green-700" disabled={busy} onClick={() => decide('approve', comments)}>
                   {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />} Approve
+                </Button>
+              )}
+              {flags.approve && groupMates.length > 1 && (
+                <Button className="bg-green-700 hover:bg-green-800" disabled={busy} onClick={approveGroup}
+                  title={`Approves every payment of ${groupMates[0].group_no} that is waiting on you`}>
+                  <Check className="mr-1 h-4 w-4" /> Approve all {groupMates.length} in {groupMates[0].group_no}
                 </Button>
               )}
               {flags.forward && (
@@ -448,7 +558,7 @@ const PaymentApprovalPage: React.FC = () => {
         sidebarCountQualifier={tab === 'mine' ? 'pending' : 'saved'}
         listItems={(closeSheet) => (
           <>
-            <div className="sticky top-0 z-10 -mx-2 -mt-2 space-y-2 bg-white px-2 pb-2 pt-2 sm:-mx-3 sm:-mt-3 sm:px-3 sm:pt-3 dark:bg-slate-950">
+            <div className="sticky top-0 z-10 -mx-2 -mt-2 space-y-2 bg-card/95 px-2 pb-2 pt-2 backdrop-blur sm:-mx-3 sm:-mt-3 sm:px-3 sm:pt-3">
               <FilterChips<Tab>
                 value={tab}
                 onChange={(t) => { setTab(t); selectPayment(null); }}
@@ -478,9 +588,17 @@ const PaymentApprovalPage: React.FC = () => {
             {loading && rows.length === 0 ? (
               <div className="flex h-40 items-center justify-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div>
             ) : rows.length === 0 ? (
-              <p className="p-6 text-center text-sm text-muted-foreground">
-                {search ? 'No matches found' : tab === 'mine' ? 'No payments awaiting your approval' : 'No payments yet'}
-              </p>
+              <div className="m-3 flex flex-col items-center rounded-2xl border border-dashed border-primary/20 bg-gradient-to-b from-primary/[0.07] to-card px-4 py-8 text-center">
+                <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/20">
+                  <ClipboardCheck className="h-5 w-5" />
+                </span>
+                <p className="text-sm font-semibold text-foreground">
+                  {search ? 'No matches found' : tab === 'mine' ? 'You are all caught up' : 'No payments yet'}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {search ? 'Try a different payment number, supplier, PO, or invoice.' : tab === 'mine' ? 'New payments will appear here when they need your approval.' : 'Approved payment requests will appear here.'}
+                </p>
+              </div>
             ) : rows.map((r) => {
               const active = r.payment_sno === selectedId;
               const meta = STATUS_META[r.status];
@@ -496,6 +614,7 @@ const PaymentApprovalPage: React.FC = () => {
                   <span className="mt-2.5 flex flex-wrap items-center gap-1.5">
                     <StatusPill tone={meta.tone}>{meta.label}</StatusPill>
                     {r.msme_label && <span className={cn('inline-flex items-center rounded-md border px-1.5 py-px text-[11px] font-medium', TONE.violet)}>{r.msme_label}</span>}
+                    {r.group_no && <span className={cn('inline-flex items-center rounded-md border px-1.5 py-px text-[11px] font-medium', TONE.info)} title={`Saved together with ${(r.group_size ?? 1) - 1} other payment(s)`}>{r.group_no}</span>}
                   </span>
                   <span className="mt-3 block space-y-1 text-xs">
                     <span className="flex justify-between gap-3"><span className="text-muted-foreground">Net payable</span><span className="font-semibold tabular-nums">{cardTotal(r)}</span></span>

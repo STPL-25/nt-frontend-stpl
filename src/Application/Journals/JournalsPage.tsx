@@ -112,7 +112,7 @@ const JournalsPage: React.FC = () => {
       <PageHeader icon={BookOpen} title="Journals" description="Entries posted from GRNs, invoices and payments; Suspense = the product has no account head yet">
         <Button
           variant="outline" size="sm"
-          className="border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
+          className="border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
           onClick={fetchAll} disabled={loading}
         >
           <RefreshCw size={15} className={loading ? 'mr-1 animate-spin' : 'mr-1'} /> Refresh

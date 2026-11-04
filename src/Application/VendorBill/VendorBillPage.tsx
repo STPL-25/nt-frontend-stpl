@@ -138,7 +138,7 @@ const VendorBillPage: React.FC = () => {
         toast.success(
           consolidatedNo
             ? `Consolidated bill ${consolidatedNo} raised for ${succeeded.length} PO${succeeded.length === 1 ? '' : 's'} - pay it from the Payment screen`
-            : `${succeeded.length} bill${succeeded.length === 1 ? '' : 's'} raised (${succeeded.map((r) => r.invoice_no).filter(Boolean).join(', ')})`,
+            : `${succeeded.length} bill${succeeded.length === 1 ? '' : 's'} raised`,
         );
       }
       if (failed.length > 0) {

@@ -23,7 +23,7 @@ const InvoiceMatchView: React.FC<InvoiceMatchViewProps> = ({ invoice, matching, 
       <CardHeader className="pb-3 flex flex-row items-center justify-between">
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
           <ShieldCheck size={16} className="text-primary" />
-          Match Status — {invoice.invoice_no}
+          Match Status — {invoice.vendor_invoice_no || 'Invoice'}
         </CardTitle>
         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onMatch} disabled={matching || allocations.length === 0}>
           <RefreshCw size={13} className={matching ? 'animate-spin mr-1' : 'mr-1'} />

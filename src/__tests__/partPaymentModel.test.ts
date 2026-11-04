@@ -56,7 +56,7 @@ describe('amountOf / amountProblem - what is typed for a bill', () => {
     expect(amountOf(b, { 10: '' })).toBe(0);
   });
   it('says the GST part follows once 2B has the invoice when the amount goes beyond the taxable part', () => {
-    expect(amountProblem(b, { 10: '80000' })).toMatch(/GSTR-2B/);
+    expect(amountProblem(b, { 10: '80000' })).toMatch(/At most/);
   });
   it('says what is left when the amount is more than the invoice has outstanding', () => {
     expect(amountProblem(bill({ outstanding: 500, payable_now: 500 }), { 10: '900' })).toMatch(/At most 500.00 is left/);
@@ -106,7 +106,7 @@ describe('reduceProblem - the approver pays less now', () => {
     expect(reduceProblem(two, { 9: '12000' })).toMatch(/only be reduced/);
   });
   it('refuses a blank or non-number', () => {
-    expect(reduceProblem(two, { 9: '' })).toMatch(/Enter an amount for INV-9/);
+    expect(reduceProblem(two, { 9: '' })).toMatch(/Enter an amount for S-9/);
     expect(reduceProblem(two, { 9: 'abc' })).toMatch(/Enter an amount/);
   });
   it('does not let every invoice be taken out - that is a reject / cancel', () => {

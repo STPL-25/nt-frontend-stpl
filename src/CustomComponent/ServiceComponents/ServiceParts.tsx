@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import {
   CheckCircle2, XCircle, Clock, Check, Repeat, Wallet, Layers, Search, X, ListChecks, Landmark, Users,
-  ArrowRightCircle, ArrowLeftCircle, History, User,
+  ArrowRightCircle, ArrowLeftCircle, History, User, Pencil,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -473,13 +473,20 @@ export function ApprovalStepper({ stages, currentApproverId, currentUserEcno }: 
   );
 }
 
-export function DecisionButtons({ onApprove, onReject, onForward, onSendBack, approveLabel, rejectLabel, className }: {
+/** Every approval screen shows its actions in this order: Approve, Forward, Send back, Edit, Reject. */
+export function DecisionButtons({ onApprove, onReject, onForward, onSendBack, onEdit, approveLabel, rejectLabel, className }: {
   onApprove: () => void; onReject: () => void; approveLabel: string; rejectLabel: string; className?: string;
   /** Passed only when the approver's stage allows it (see approvalRoutes). */
-  onForward?: () => void; onSendBack?: () => void;
+  onForward?: () => void; onSendBack?: () => void; onEdit?: () => void;
 }) {
   return (
     <div className={cn('flex gap-2', className)}>
+      <Button
+        onClick={onApprove}
+        className="h-11 flex-1 bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500/40"
+      >
+        <CheckCircle2 className="h-4 w-4" />{approveLabel}
+      </Button>
       {onForward && (
         <Button onClick={onForward} variant="outline" className="h-11 flex-1 gap-1.5">
           <ArrowRightCircle className="h-4 w-4" />Forward
@@ -490,12 +497,11 @@ export function DecisionButtons({ onApprove, onReject, onForward, onSendBack, ap
           <ArrowLeftCircle className="h-4 w-4" />Send back
         </Button>
       )}
-      <Button
-        onClick={onApprove}
-        className="h-11 flex-1 bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500/40"
-      >
-        <CheckCircle2 className="h-4 w-4" />{approveLabel}
-      </Button>
+      {onEdit && (
+        <Button onClick={onEdit} variant="outline" className="h-11 flex-1 gap-1.5">
+          <Pencil className="h-4 w-4" />Edit
+        </Button>
+      )}
       <Button onClick={onReject} variant="destructive" className="h-11 flex-1">
         <XCircle className="h-4 w-4" />{rejectLabel}
       </Button>
@@ -552,12 +558,17 @@ export function DetailEmptyState({ icon: Icon = Layers, title, description }: {
 }) {
   return (
     <div className="flex h-full min-h-[50vh] items-center justify-center p-6">
-      <div className="max-w-xs space-y-3 text-center">
-        <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-muted text-muted-foreground/60">
-          <Icon className="h-8 w-8" />
-        </span>
-        <h3 className="text-lg font-semibold">{title}</h3>
-        <p className="text-sm text-muted-foreground">{description}</p>
+      <div className="relative isolate w-full max-w-md overflow-hidden rounded-3xl border border-dashed border-primary/25 bg-gradient-to-b from-primary/[0.07] via-card to-card px-7 py-12 text-center shadow-sm">
+        <span aria-hidden className="pointer-events-none absolute -left-14 -top-16 -z-10 h-44 w-44 rounded-full bg-primary/10 blur-3xl" />
+        <span aria-hidden className="pointer-events-none absolute -bottom-20 -right-16 -z-10 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative mx-auto mb-5 w-fit">
+          <span aria-hidden className="absolute inset-0 -m-4 rounded-full border border-primary/15" />
+          <span className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15 text-primary shadow-sm ring-1 ring-primary/20">
+            <Icon className="h-8 w-8" strokeWidth={1.6} />
+          </span>
+        </div>
+        <h3 className="text-lg font-semibold tracking-tight text-foreground">{title}</h3>
+        <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{description}</p>
       </div>
     </div>
   );

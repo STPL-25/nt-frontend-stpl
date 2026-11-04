@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import {
   ArrowLeftCircle, ArrowRightCircle, Building2, CheckCircle2, ChevronRight, CreditCard, FileText, History,
-  Layers, MapPin, Package, ShoppingCart, User, XCircle,
+  Layers, MapPin, Package, ShieldCheck, ShoppingCart, User, XCircle,
 } from 'lucide-react';
 import type { FieldType } from '@/FieldDatas/fieldType/fieldType';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { useAppState } from '@/imports';
 import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
+import { calcChargesTotal } from '@/Application/PurchaseOrder/PurchaseTeam/helpers';
 import ApprovalActionDialog from '@/LayoutComponent/ApprovalLayout/ApprovalActionDialog';
 import {
   ApprovalStepper, Callout, DecisionButtons, DetailEmptyState, DetailHero, Fact, FactGrid, Panel,
@@ -81,7 +82,8 @@ function parseHistory(q: any): any[] { return parseJSON(q?.quotation_history ?? 
 function parseAdvStages(ad: any): any[] { return parseJSON(ad?.adv_issue_stages, []); }
 
 function calcQuotationTotal(q: any): number {
-  return parseQuotationItems(q).reduce((s: number, i: any) => s + itemTotal(i), 0);
+  // items incl. GST + freight / other charges with their own GST
+  return parseQuotationItems(q).reduce((s: number, i: any) => s + itemTotal(i), 0) + calcChargesTotal(q).total;
 }
 
 function getSelectedQuotation(pr: any): any | null {
@@ -107,6 +109,34 @@ function Tag({ tone, children }: { tone: keyof typeof TONE; children: React.Reac
     <span className={cn('inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-semibold', TONE[tone])}>
       {children}
     </span>
+  );
+}
+
+const coverName = (c: any) => (c.type === 'Other' ? c.label || 'Other' : c.type);
+const coverTone = (c: any): keyof typeof TONE => (c.cost_type === 'Free' ? 'success' : c.cost_type === 'Paid' ? 'warning' : 'info');
+
+/** Cover tags for one product; clicking a tag shows its terms & conditions (if any) right below. */
+function CoverChips({ covers }: { covers: any }) {
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  if (!Array.isArray(covers) || covers.length === 0) return null;
+  const active = openIdx != null ? covers[openIdx] : null;
+  return (
+    <div className="mt-1">
+      <div className="flex flex-wrap gap-1">
+        {covers.map((c: any, ci: number) => (
+          <button key={ci} type="button" aria-expanded={openIdx === ci} onClick={() => setOpenIdx(openIdx === ci ? null : ci)}
+            className={cn('rounded-md transition-shadow hover:shadow-sm', openIdx === ci && 'ring-1 ring-primary/50')}>
+            <Tag tone={coverTone(c)}><ShieldCheck className="h-2.5 w-2.5" />{coverName(c)} {c.years}y · {c.cost_type}</Tag>
+          </button>
+        ))}
+      </div>
+      {active && (
+        <p className="mt-1.5 whitespace-pre-line rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Terms &amp; conditions: </span>
+          {active.terms?.trim() ? active.terms : 'No terms provided.'}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -198,13 +228,25 @@ function QuotationPanel({ quotation, index, onSelect, selecting }: {
 }) {
   const items = useMemo(() => parseQuotationItems(quotation), [quotation]);
   const advanceDetails = quotation.advance_details;
-  const kycAddresses = useMemo(() => parseJSON(quotation.kyc_address, []), [quotation.kyc_address]);
+  // Only the primary address is shown (falls back to the first one when none is flagged primary).
+  const kycAddresses = useMemo(() => {
+    const all: any[] = parseJSON(quotation.kyc_address, []);
+    const primary = all.find((a: any) => String(a.address_type).toUpperCase() === 'PRIMARY' || a.is_primary === 'Y');
+    const one = primary ?? all.find((a: any) => formatAddress(a));
+    return one ? [one] : [];
+  }, [quotation.kyc_address]);
   const advStages = useMemo(() => parseAdvStages(advanceDetails), [advanceDetails]);
 
   const subTotal = items.reduce((s: number, i: any) => s + itemBase(i), 0);
   const discountTotal = items.reduce((s: number, i: any) => s + itemDiscount(i), 0);
   const taxTotal = items.reduce((s: number, i: any) => s + itemTax(i), 0);
-  const grandTotal = items.reduce((s: number, i: any) => s + itemTotal(i), 0);
+  const itemsTotal = items.reduce((s: number, i: any) => s + itemTotal(i), 0);
+  const charges = calcChargesTotal(quotation);
+  const grandTotal = itemsTotal + charges.total;
+  // Advance asked by the supplier: the sum of its payment stages, else the % of the grand total.
+  const advPct = Number(advanceDetails?.advance_payment_pct ?? quotation.advance_payment_pct) || 0;
+  const advStageSum = advStages.reduce((s: number, st: any) => s + (Number(st.amount) || 0), 0);
+  const advanceAmount = advStageSum > 0 ? advStageSum : (grandTotal * advPct) / 100;
   const hasRates = items.some((i: any) => parseFloat(i.unit_price ?? 0) > 0);
   const isSelected = !!quotation.is_selected;
 
@@ -254,7 +296,7 @@ function QuotationPanel({ quotation, index, onSelect, selecting }: {
                 <div key={i} className="flex items-start gap-2.5 rounded-lg border bg-muted/20 p-3">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <div className="min-w-0">
-                    {addr.address_type && <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{addr.address_type}</p>}
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Primary address</p>
                     <p className="text-sm font-medium leading-snug">{line}</p>
                   </div>
                 </div>
@@ -266,7 +308,8 @@ function QuotationPanel({ quotation, index, onSelect, selecting }: {
         {quotation.advance_payment_required === true && (
           <Callout tone="warning" icon={CreditCard}>
             <p className="font-semibold">
-              Advance payment required — {(advanceDetails?.advance_payment_pct ?? quotation.advance_payment_pct)?.toFixed?.(2) ?? quotation.advance_payment_pct}%
+              Advance payment required — {formatINR(advanceAmount)}
+              {advPct > 0 && <span className="ml-1 font-normal">({advPct.toFixed(2)}% of {formatINR(grandTotal)})</span>}
             </p>
             {advanceDetails?.reason && <p className="mt-1">Reason: {advanceDetails.reason}</p>}
             {advStages.length > 0 && (
@@ -291,16 +334,18 @@ function QuotationPanel({ quotation, index, onSelect, selecting }: {
             {hasRates && <>
               <th className={cn(th, 'text-right')}>Unit price</th>
               <th className={cn(th, 'text-right')}>Disc %</th>
-              <th className={cn(th, 'text-right')}>Tax %</th>
+              <th className={cn(th, 'text-right')}>GST %</th>
               <th className={cn(th, 'text-right')}>Amount</th>
             </>}
           </>}>
             {items.map((item: any, idx: number) => (
-              <tr key={item.sq_item_sno ?? idx}>
+              <Fragment key={item.sq_item_sno ?? idx}>
+              <tr>
                 <td className="px-3 py-2.5 text-xs text-muted-foreground">{idx + 1}</td>
                 <td className="px-3 py-2.5">
                   <p className="font-medium">{item.prod_name}</p>
                   {item.prod_code && <p className="text-xs text-muted-foreground">{item.prod_code}</p>}
+                  <CoverChips covers={item.additional} />
                 </td>
                 <td className="whitespace-nowrap px-3 py-2.5 text-right">
                   <span className="font-medium tabular-nums">{num(item.qty)}</span>
@@ -313,6 +358,7 @@ function QuotationPanel({ quotation, index, onSelect, selecting }: {
                   <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums">{formatINR(itemTotal(item))}</td>
                 </>}
               </tr>
+              </Fragment>
             ))}
           </ItemsTable>
         )}
@@ -323,7 +369,19 @@ function QuotationPanel({ quotation, index, onSelect, selecting }: {
             {discountTotal > 0 && (
               <div className="flex justify-between gap-3 text-red-600 dark:text-red-400"><dt>Discount</dt><dd className="tabular-nums">− {formatINR(discountTotal)}</dd></div>
             )}
-            <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Tax</dt><dd className="tabular-nums">+ {formatINR(taxTotal)}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-muted-foreground">GST</dt><dd className="tabular-nums">+ {formatINR(taxTotal)}</dd></div>
+            {charges.freight > 0 && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Freight{charges.freightGst > 0 && <span className="text-xs"> (+ GST {formatINR(charges.freightGst)})</span>}</dt>
+                <dd className="tabular-nums">+ {formatINR(charges.freight + charges.freightGst)}</dd>
+              </div>
+            )}
+            {charges.other > 0 && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Other charges{charges.otherGst > 0 && <span className="text-xs"> (+ GST {formatINR(charges.otherGst)})</span>}</dt>
+                <dd className="tabular-nums">+ {formatINR(charges.other + charges.otherGst)}</dd>
+              </div>
+            )}
             <div className="flex justify-between gap-3 border-t pt-2.5">
               <dt className="font-semibold">Grand total</dt>
               <dd className="text-lg font-bold tabular-nums text-primary">{formatINR(grandTotal)}</dd>
@@ -338,7 +396,7 @@ function QuotationPanel({ quotation, index, onSelect, selecting }: {
 function HistoryPanel({ history }: { history: any[] }) {
   const ACTION_LABELS: Record<string, string> = {
     QUOTATION_SELECTION: 'Quotation selected',
-    APPROVED: 'Approved', REJECTED: 'Rejected', FORWARDED: 'Forwarded',
+    APPROVED: 'Approved', REJECTED: 'Rejected', FORWARD: 'Forwarded', FORWARDED: 'Forwarded', BACKWARD: 'Sent back',
   };
   return (
     <Panel icon={History} title="Approval history" description={`${history.length} action${history.length !== 1 ? 's' : ''}`}>
@@ -353,7 +411,7 @@ function HistoryPanel({ history }: { history: any[] }) {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-semibold">{entry.status_by_name ?? '—'}</p>
-                  {entry.action_type && <Tag tone={rejected ? 'danger' : 'success'}>{ACTION_LABELS[entry.action_type] ?? entry.action_type}</Tag>}
+                  {entry.action_type && <Tag tone={rejected ? 'danger' : entry.action_type === 'BACKWARD' ? 'warning' : entry.action_type === 'FORWARD' ? 'info' : 'success'}>{ACTION_LABELS[entry.action_type] ?? entry.action_type}</Tag>}
                 </div>
                 {entry.status_by && <p className="mt-0.5 font-mono text-xs text-muted-foreground">{entry.status_by}</p>}
                 {entry.comment && (
@@ -399,20 +457,9 @@ function PRDetailPanel({ pr, handleAction, onSelectQuotation, selectingSno }: {
   const status = statusMeta(AGREEMENT_STATUS, selectedQ?.status ?? 'P');
   const org = [pr.com_name, pr.div_name, pr.brn_name].filter(Boolean).join(' › ');
 
-  const extraActions = (
-    <>
-      {canForward && (
-        <Button variant="outline" className="h-11 flex-1 gap-1.5" onClick={() => handleAction('forward')}>
-          <ArrowRightCircle className="h-4 w-4" />Forward
-        </Button>
-      )}
-      {canBackward && (
-        <Button variant="outline" className="h-11 flex-1 gap-1.5" onClick={() => handleAction('backward')}>
-          <ArrowLeftCircle className="h-4 w-4" />Send back
-        </Button>
-      )}
-    </>
-  );
+  // Forward / Send back sit between Approve and Reject (same order on every approval screen).
+  const onForward = canForward ? () => handleAction('forward') : undefined;
+  const onSendBack = canBackward ? () => handleAction('backward') : undefined;
 
   return (
     <div className="@container">
@@ -497,8 +544,9 @@ function PRDetailPanel({ pr, handleAction, onSelectQuotation, selectingSno }: {
                       rejectLabel="Reject quotation"
                       onApprove={() => handleAction('approve')}
                       onReject={() => handleAction('reject')}
+                      onForward={onForward}
+                      onSendBack={onSendBack}
                     />
-                    {(canForward || canBackward) && <div className="flex flex-col gap-2 [&>button]:flex-none">{extraActions}</div>}
                   </div>
                 ) : (
                   <p className="rounded-lg bg-muted/60 px-3 py-2.5 text-center text-xs text-muted-foreground">
@@ -538,8 +586,9 @@ function PRDetailPanel({ pr, handleAction, onSelectQuotation, selectingSno }: {
               rejectLabel="Reject"
               onApprove={() => handleAction('approve')}
               onReject={() => handleAction('reject')}
+              onForward={onForward}
+              onSendBack={onSendBack}
             />
-            {extraActions}
           </div>
         ) : (
           <p className="py-1 text-center text-xs text-muted-foreground">View only — you are not the current approver</p>
@@ -590,7 +639,30 @@ export default function POApprovalScreenLayout({
     return parseStages(selectedQ).find((s: any) => s.approver_ecno === currentDialogStage.next_approver_ecno) ?? null;
   }, [currentDialogStage, selectedQ]);
 
-  const dialogHistory = useMemo(() => (selectedQ ? parseHistory(selectedQ) : []), [selectedQ]);
+  // Send-back targets: approvers of earlier stages in the workflow; if the stage list has none (e.g. the
+  // current approver is first), fall back to whoever already acted in the history. Never the caller.
+  const { userData } = useAppState();
+  const userEcno = userData[0]?.ecno ?? userData[0]?.login_id;
+  const backTargets = useMemo(() => {
+    if (!selectedQ) return [] as { ecno: string; name: string; note: string }[];
+    const stages = parseStages(selectedQ);
+    const history = parseHistory(selectedQ);
+    const nameOf = (ecno: string) =>
+      history.find((h: any) => h.status_by === ecno)?.status_by_name ?? stages.find((s: any) => s.approver_ecno === ecno)?.approver_name ?? ecno;
+    const myIdx = stages.findIndex((s: any) => s.approver_ecno === userEcno);
+    const seen = new Set<string>();
+    const out: { ecno: string; name: string; note: string }[] = [];
+    const add = (ecno: any, note: string) => {
+      if (!ecno || ecno === userEcno || seen.has(ecno)) return;
+      seen.add(ecno);
+      out.push({ ecno, name: nameOf(ecno), note });
+    };
+    (myIdx > 0 ? stages.slice(0, myIdx) : []).forEach((s: any) => add(s.approver_ecno, s.stage || 'Earlier stage'));
+    history
+      .filter((h: any) => ['APPROVED', 'FORWARD', 'FORWARDED'].includes(h.action_type) || h.status === 'A')
+      .forEach((h: any) => add(h.status_by, 'Previously acted'));
+    return out;
+  }, [selectedQ, userEcno]);
   const meta = DIALOG_META[actionType];
 
   return (
@@ -681,29 +753,29 @@ export default function POApprovalScreenLayout({
         {actionType === 'backward' && (
           <div className="space-y-2">
             <Label className="text-xs sm:text-sm">Select approver to send back to <span className="text-destructive">*</span></Label>
-            {dialogHistory.length === 0 ? (
-              <p className="text-xs italic text-muted-foreground">No previous approvers found in history.</p>
+            {backTargets.length === 0 ? (
+              <p className="text-xs italic text-muted-foreground">There is no earlier approver to send this back to.</p>
             ) : (
               <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
-                {dialogHistory.map((entry: any, idx: number) => (
+                {backTargets.map((t) => (
                   <label
-                    key={entry.status_by ?? idx}
+                    key={t.ecno}
                     className={cn(
                       'flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 transition-colors',
-                      backwardTarget === entry.status_by ? 'border-primary/60 bg-primary/5' : 'hover:border-primary/40',
+                      backwardTarget === t.ecno ? 'border-primary/60 bg-primary/5' : 'hover:border-primary/40',
                     )}
                   >
                     <input
                       type="radio"
                       name="backward-target"
-                      value={entry.status_by}
-                      checked={backwardTarget === entry.status_by}
-                      onChange={() => setBackwardTarget(entry.status_by)}
+                      value={t.ecno}
+                      checked={backwardTarget === t.ecno}
+                      onChange={() => setBackwardTarget(t.ecno)}
                       className="shrink-0 accent-primary"
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">{entry.status_by_name ?? entry.status_by}</p>
-                      <p className="font-mono text-xs text-muted-foreground">{entry.status_by}</p>
+                      <p className="truncate text-sm font-semibold">{t.name}</p>
+                      <p className="truncate text-xs text-muted-foreground"><span className="font-mono">{t.ecno}</span> · {t.note}</p>
                     </div>
                   </label>
                 ))}

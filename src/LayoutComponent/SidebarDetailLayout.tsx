@@ -42,14 +42,15 @@ export default function SidebarDetailLayout({
   const closeSheet = () => setMobileOpen(false);
 
   const sidebarHeader = (
-    <div className="flex-shrink-0 p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+    <div className="relative flex-shrink-0 overflow-hidden border-b border-primary/10 bg-card/95 p-3 sm:p-4">
+      <span aria-hidden className="pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
       {/* In the mobile drawer the Sheet supplies its own close button (top-right),
           so the title just leaves room for it. */}
       <div className="pr-8 lg:pr-0">
-        <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-50">
+        <h2 className="relative text-base font-bold text-foreground sm:text-lg">
           {sidebarTitle}
         </h2>
-        <p className="text-xs text-slate-500 mt-0.5">
+        <p className="relative mt-0.5 text-xs text-muted-foreground">
           {sidebarCount} {sidebarCountQualifier}{' '}
           {sidebarCount !== 1 ? (sidebarCountLabelPlural ?? `${sidebarCountLabel}s`) : sidebarCountLabel}
         </p>
@@ -84,9 +85,9 @@ export default function SidebarDetailLayout({
         </div>
       )}
 
-      <div className="h-full bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 overflow-hidden flex">
+      <div className="flex h-full overflow-hidden bg-background">
         {/* Desktop sidebar */}
-        <div className="hidden lg:flex w-80 xl:w-96 flex-shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex-col h-full">
+        <div className="hidden h-full w-80 flex-shrink-0 flex-col border-r border-primary/10 bg-card/90 lg:flex xl:w-96">
           {sidebarBody}
         </div>
 
@@ -100,7 +101,7 @@ export default function SidebarDetailLayout({
         {/* Main content */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Mobile top bar */}
-          <div className="lg:hidden flex-shrink-0 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex items-center gap-3">
+          <div className="flex flex-shrink-0 items-center gap-3 border-b border-primary/10 bg-card/95 px-3 py-2 lg:hidden">
             <Button
               variant="outline"
               size="sm"

@@ -155,7 +155,7 @@ function KYCListContent({
       <div className="flex-1 overflow-hidden">
         <ScrollArea className="h-full">
           {suppliers.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">No records found</p>
+            <EmptyState className="m-3" icon={Users} message="No records found" description="Supplier KYC records will appear here." />
           ) : (
             <div className="p-2 sm:p-3 space-y-2">
               {suppliers.map(s => (

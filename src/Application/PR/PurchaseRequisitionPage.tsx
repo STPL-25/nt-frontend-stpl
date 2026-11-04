@@ -798,13 +798,13 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
             </Badge>
           )}
           {isPrivateDraftMode && (
-            <Badge variant="secondary" className="text-xs bg-primary-foreground/15 text-primary-foreground border-0">
+            <Badge variant="secondary" className="border-0 bg-primary/10 text-xs text-primary">
               <Save className="h-3 w-3 mr-1" />
               Private Draft
             </Badge>
           )}
           {scopeKey && (
-            <Badge variant="outline" className="text-xs bg-primary-foreground/10 text-primary-foreground border-primary-foreground/20">
+            <Badge variant="outline" className="border-primary/20 bg-primary/5 text-xs text-primary">
               Scope: {[basicFormData.com_sno, basicFormData.div_sno, basicFormData.brn_sno, basicFormData.dept_sno].filter(Boolean).join(' › ')}
             </Badge>
           )}

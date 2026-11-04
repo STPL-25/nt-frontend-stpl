@@ -2,13 +2,56 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+// On phones (see index.css) each body row becomes a card and every cell shows
+// its column heading beside the value. The heading comes from the <th> in the
+// same column, copied onto the cells as data-label whenever the rows change.
+// Pass stack={false} to keep a wide, scrollable grid on small screens.
+function labelCells(table: HTMLTableElement) {
+  const headRows = table.tHead?.rows
+  const headRow = headRows && headRows.length === 1 ? headRows[0] : null
+  const stackable =
+    !!headRow && Array.from(headRow.cells).every((c) => c.colSpan <= 1)
+  if (!stackable) {
+    table.removeAttribute("data-stackable")
+    return
+  }
+  const labels = Array.from(headRow.cells).map((c) => (c.textContent ?? "").trim())
+  table.setAttribute("data-stackable", "")
+  for (const body of Array.from(table.tBodies)) {
+    for (const row of Array.from(body.rows)) {
+      Array.from(row.cells).forEach((cell, i) => {
+        const label = cell.colSpan > 1 ? "" : labels[i] ?? ""
+        if (cell.getAttribute("data-label") !== label) {
+          cell.setAttribute("data-label", label)
+        }
+      })
+    }
+  }
+}
+
+function Table({
+  className,
+  stack = true,
+  ...props
+}: React.ComponentProps<"table"> & { stack?: boolean }) {
+  const ref = React.useRef<HTMLTableElement>(null)
+
+  React.useEffect(() => {
+    const table = ref.current
+    if (!table || !stack) return
+    labelCells(table)
+    const observer = new MutationObserver(() => labelCells(table))
+    observer.observe(table, { childList: true, subtree: true, characterData: true })
+    return () => observer.disconnect()
+  }, [stack])
+
   return (
     <div
       data-slot="table-container"
       className="relative w-full overflow-x-auto"
     >
       <table
+        ref={ref}
         data-slot="table"
         className={cn("w-full caption-bottom text-sm", className)}
         {...props}

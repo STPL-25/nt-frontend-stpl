@@ -18,7 +18,7 @@ import { useAppSelector } from '@/globalState/hooks/useAppState';
 import { selectCompanyHierarchy, type HierarchyResponse } from '@/globalState/features/hierarchyCompanyDetailsSlice';
 import { getErrorMessage } from '@/lib/errors';
 import {
-  gstr2bUpload, gstr2bUploads, gstr2bUploadDetail, gstr2bCandidates, gstr2bConfirm, gstr2bSkip, gstr2bMissing, gstr2bHoldOverride,
+  gstr2bUpload, gstr2bUploads, gstr2bUploadDetail, gstr2bCandidates, gstr2bConfirm, gstr2bEdit, gstr2bSkip, gstr2bMissing, gstr2bHoldOverride,
   type Gstr2bSummary, type Gstr2bRow, type Gstr2bCandidate, type MissingIn2B,
 } from '@/Services/GrnService/gstr2bApi';
 
@@ -58,6 +58,9 @@ const Gstr2bPage: React.FC = () => {
   const [candidates, setCandidates] = useState<Gstr2bCandidate[]>([]);
   const [candLoading, setCandLoading] = useState(false);
   const [working, setWorking] = useState(false);
+
+  const [editRow, setEditRow] = useState<Gstr2bRow | null>(null);
+  const [form, setForm] = useState<Record<string, string>>({});
 
   const [holdFor, setHoldFor] = useState<MissingIn2B | null>(null);
   const [holdReason, setHoldReason] = useState('');
@@ -149,6 +152,36 @@ const Gstr2bPage: React.FC = () => {
     }
   };
 
+  const openEdit = (r: Gstr2bRow) => {
+    setEditRow(r);
+    setForm({
+      supplier_gstin: r.supplier_gstin, trade_name: r.trade_name ?? '', invoice_no: r.invoice_no, invoice_date: r.invoice_date ?? '',
+      invoice_value: String(r.invoice_value), taxable_value: String(r.taxable_value),
+      igst: String(r.igst), cgst: String(r.cgst), sgst: String(r.sgst), cess: String(r.cess),
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editRow) return;
+    setWorking(true);
+    try {
+      const res = await axios.put(gstr2bEdit(editRow.row_sno), {
+        ...form,
+        supplier_gstin: form.supplier_gstin.trim().toUpperCase(),
+        invoice_date: form.invoice_date || null,
+      });
+      const status = res.data?.data?.match_status;
+      toast.success(`${form.invoice_no} saved — now ${status === 'Unmatched' ? 'not in books' : String(status).toLowerCase()}`);
+      setEditRow(null);
+      await Promise.all([loadUploads(), loadRows(uploadId)]);
+      if (status) setTab(status as Tab);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not save the 2B row'));
+    } finally {
+      setWorking(false);
+    }
+  };
+
   const skip = async (r: Gstr2bRow) => {
     try {
       await axios.post(gstr2bSkip(r.row_sno), {});
@@ -227,11 +260,15 @@ const Gstr2bPage: React.FC = () => {
                   {r.match_status === 'Unmatched' && canEdit(SCREEN) && (
                     <>
                       <Button size="sm" className="h-7 text-xs" onClick={() => openPick(r)}>Find supplier</Button>
+                      <Button size="sm" variant="outline" className="ml-1 h-7 text-xs" onClick={() => openEdit(r)}>Edit</Button>
                       <Button size="sm" variant="ghost" className="ml-1 h-7 text-xs" onClick={() => skip(r)}>Skip</Button>
                     </>
                   )}
                   {r.match_status === 'Mismatch' && canEdit(SCREEN) && (
-                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => skip(r)}>Dismiss</Button>
+                    <>
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openEdit(r)}>Edit</Button>
+                      <Button size="sm" variant="ghost" className="ml-1 h-7 text-xs" onClick={() => skip(r)}>Dismiss</Button>
+                    </>
                   )}
                 </TableCell>
               )}
@@ -247,7 +284,7 @@ const Gstr2bPage: React.FC = () => {
       <PageHeader icon={FileSpreadsheet} title="GSTR-2B Reconciliation" description="Match supplier invoices with your GSTR-2B, claim ITC and release payment holds">
         <Button
           variant="outline" size="sm"
-          className="border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
+          className="border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
           onClick={refresh} disabled={loading}
         >
           <RefreshCw size={15} className={loading ? 'mr-1 animate-spin' : 'mr-1'} /> Refresh
@@ -340,7 +377,6 @@ const Gstr2bPage: React.FC = () => {
                         <TableRow className="bg-muted/50 hover:bg-muted/50">
                           <TableHead className="text-xs">Supplier</TableHead>
                           <TableHead className="text-xs">GSTIN</TableHead>
-                          <TableHead className="text-xs">Our ref</TableHead>
                           <TableHead className="text-xs">Supplier invoice</TableHead>
                           <TableHead className="text-xs">Date</TableHead>
                           <TableHead className="text-xs text-right">Amount</TableHead>
@@ -353,7 +389,6 @@ const Gstr2bPage: React.FC = () => {
                           <TableRow key={m.invoice_sno}>
                             <TableCell className="text-xs">{m.vendor_name ?? '—'}</TableCell>
                             <TableCell className="text-xs font-mono">{m.gst_no}</TableCell>
-                            <TableCell className="text-xs font-medium">{m.invoice_no}</TableCell>
                             <TableCell className="text-xs">{m.vendor_invoice_no ?? '—'}</TableCell>
                             <TableCell className="text-xs">{m.invoice_date ?? '—'}</TableCell>
                             <TableCell className="text-xs text-right">₹{money(m.invoice_amount)}</TableCell>
@@ -414,6 +449,40 @@ const Gstr2bPage: React.FC = () => {
             </div>
           </div>
           <DialogFooter className="border-t p-3"><Button variant="ghost" onClick={() => setPick(null)}>Close</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* edit a 2B row */}
+      <Dialog open={editRow != null} onOpenChange={o => { if (!o) setEditRow(null); }}>
+        <DialogContent className="flex max-h-[92vh] w-[calc(100%-1rem)] flex-col gap-0 overflow-hidden p-0 sm:w-full sm:max-w-2xl">
+          <DialogHeader className="border-b p-4">
+            <DialogTitle>Edit 2B row {editRow?.invoice_no}</DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              Fix a typo from the portal file. The row is matched against your books again as soon as you save.
+            </p>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {([
+                ['supplier_gstin', 'Supplier GSTIN', 'text'], ['trade_name', 'Supplier name', 'text'],
+                ['invoice_no', 'Invoice no', 'text'], ['invoice_date', 'Invoice date', 'date'],
+                ['invoice_value', 'Invoice value', 'number'], ['taxable_value', 'Taxable value', 'number'],
+                ['igst', 'IGST', 'number'], ['cgst', 'CGST', 'number'], ['sgst', 'SGST', 'number'], ['cess', 'Cess', 'number'],
+              ] as const).map(([k, label, type]) => (
+                <div key={k} className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-muted-foreground">{label}</label>
+                  <Input
+                    type={type} step={type === 'number' ? '0.01' : undefined} value={form[k] ?? ''} className="h-9"
+                    onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter className="border-t p-3">
+            <Button variant="ghost" onClick={() => setEditRow(null)}>Cancel</Button>
+            <Button disabled={working || !form.invoice_no?.trim() || form.supplier_gstin?.trim().length !== 15} onClick={saveEdit}>Save &amp; re-match</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
