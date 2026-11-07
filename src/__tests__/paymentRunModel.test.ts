@@ -267,3 +267,45 @@ describe("parseAmountInput / amountInWords", () => {
     expect(amountInWords(NaN)).toBe("");
   });
 });
+
+describe("portalAddress", () => {
+  it("shows a KYC portal address without the scheme or a trailing slash", async () => {
+    const { portalAddress } = await import("@/Application/Payment/paymentRunModel");
+    expect(portalAddress("https://pay.acme.example/vendors/")).toBe("pay.acme.example/vendors");
+    expect(portalAddress("  HTTP://beta.example  ")).toBe("beta.example");
+    expect(portalAddress("beta.example/pay")).toBe("beta.example/pay");
+    expect(portalAddress(null)).toBe("");
+    expect(portalAddress("")).toBe("");
+  });
+});
+
+describe("portal details (sql/91)", () => {
+  it("checks the details the way the database does", async () => {
+    const { portalDetailsProblem } = await import("@/Application/Payment/paymentRunModel");
+    const ok = { name: "AWS Billing", url: "console.aws.amazon.com/billing", instructions: "" };
+    expect(portalDetailsProblem(ok)).toBeNull();
+    expect(portalDetailsProblem({ ...ok, url: "http://pay.example.com/x?y=1" })).toBeNull();
+    expect(portalDetailsProblem({ ...ok, name: "  " })).toMatch(/portal \/ website name/);
+    expect(portalDetailsProblem({ ...ok, name: "x".repeat(151) })).toMatch(/150/);
+    expect(portalDetailsProblem({ ...ok, url: "" })).toMatch(/Enter the portal address/);
+    expect(portalDetailsProblem({ ...ok, url: "ftp://files.example.com" })).toMatch(/http:\/\/ or https:\/\//);
+    expect(portalDetailsProblem({ ...ok, url: "https://pay example.com" })).toMatch(/spaces/);
+    expect(portalDetailsProblem({ ...ok, url: "https://pay.good.com@evil.example/x" })).toMatch(/name@/);
+    expect(portalDetailsProblem({ ...ok, url: "https://good.example/a@b" })).toBeNull();      // an @ after the host is fine
+    expect(portalDetailsProblem({ ...ok, url: "localhost/pay" })).toMatch(/full portal address/);
+    expect(portalDetailsProblem({ ...ok, url: "javascript:alert(1)" })).toMatch(/full portal address/);
+    expect(portalDetailsProblem({ ...ok, url: "https://pay..example.com" })).toMatch(/full portal address/);
+    expect(portalDetailsProblem({ ...ok, instructions: "x".repeat(1001) })).toMatch(/1000/);
+  });
+
+  it("adds https:// like the database, and knows when nothing changed", async () => {
+    const { portalDetailsUrl, portalDetailsUnchanged } = await import("@/Application/Payment/paymentRunModel");
+    expect(portalDetailsUrl("  pay.example.com ")).toBe("https://pay.example.com");
+    expect(portalDetailsUrl("http://pay.example.com")).toBe("http://pay.example.com");
+    expect(portalDetailsUrl("")).toBe("");
+    const kyc = { payment_portal_name: "AWS Billing", payment_portal_url: "https://console.aws.amazon.com", payment_instructions: null };
+    expect(portalDetailsUnchanged({ name: " AWS Billing ", url: "console.aws.amazon.com", instructions: " " }, kyc)).toBe(true);
+    expect(portalDetailsUnchanged({ name: "AWS Billing", url: "console.aws.amazon.com", instructions: "Pay by card" }, kyc)).toBe(false);
+    expect(portalDetailsUnchanged({ name: "", url: "", instructions: "" }, { payment_portal_name: null, payment_portal_url: null })).toBe(true);
+  });
+});

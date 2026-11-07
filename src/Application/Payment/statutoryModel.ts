@@ -7,8 +7,23 @@ import { STATUTORY_ONLINE_MODES, type StatutoryKind, type StatutoryPayable, type
 export const KINDS: { value: StatutoryKind; label: string; short: string; hint: string }[] = [
   { value: 'TDS', label: 'TDS payable', short: 'TDS', hint: 'Tax deducted from supplier payments - owed to the Income Tax Department by the 7th of the next month (30 April for March).' },
   { value: 'GST', label: 'GST payable', short: 'GST', hint: 'GST owed to the GST department. Key the amount in; GST held on supplier bills until GSTR-2B stays with the bill.' },
-  { value: 'OTHER', label: 'Others', short: 'Other', hint: 'Any other statutory amount - Provident Fund, ESI, professional tax and the like.' },
+  { value: 'OTHER', label: 'Others', short: 'Other', hint: 'Any other statutory amount - Provident Fund, ESI, professional tax and the like. Dues of approved Statutory agreements (Service Agreement screen) show here by themselves.' },
 ];
+
+/** Why an agreement due's amount cannot be entered yet, or null (sql/96: above zero, two decimals, reference up to 40). */
+export const dueAmountProblem = (f: { amount: string; ref_no?: string }): string | null => {
+  const n = Number(f.amount);
+  if (!f.amount.trim() || !Number.isFinite(n) || n <= 0) return 'Enter an amount above zero.';
+  if (Math.abs(n * 100 - Math.round(n * 100)) > 1e-6) return 'An amount has at most two decimals.';
+  if ((f.ref_no ?? '').trim().length > 40) return 'The reference / challan number can be at most 40 characters.';
+  return null;
+};
+
+/** "Comes back to wait for its amount" / "is skipped" - what cancelling an amount from an agreement does (sql/96). */
+export const cancelOutcome = (p: { source_type?: string; agreement_amount_type?: string | null }): string =>
+  p.source_type !== 'AGREEMENT' ? 'It is removed from the list and will not be paid.'
+    : p.agreement_amount_type === 'UNFIXED' ? 'It goes back to "Waiting for the amount", so the right amount can be entered.'
+      : 'This due of the agreement is skipped and will not be paid.';
 
 const IFSC = /^[A-Za-z]{4}0[A-Za-z0-9]{6}$/;
 

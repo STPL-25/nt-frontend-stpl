@@ -177,6 +177,51 @@ export const planTypeRowSync = (
   return { keep, addDepts, remove };
 };
 
+// ─── Which departments a type's Department picker offers ──────────────────────
+
+/** workflow_types rows as the type endpoint returns them — only dept and active flag matter here. */
+export interface ClaimableTypeRow {
+  dept_sno?: string | number | null;
+  is_active?: string | null;
+}
+
+/**
+ * Departments held by one workflow's active type rows. Legacy branch-only rows (no
+ * department) and inactive rows hold nothing.
+ */
+export const departmentsHeldBy = (rows: ReadonlyArray<ClaimableTypeRow>): string[] => {
+  const out = new Set<string>();
+  for (const row of rows) {
+    if (row.is_active === "N") continue;
+    const dept = row.dept_sno == null ? "" : String(row.dept_sno).trim();
+    if (dept) out.add(dept);
+  }
+  return [...out];
+};
+
+/**
+ * A department belongs to one workflow per entity type (PR routing matches company/division/
+ * branch/department exactly, so two workflows for one department is ambiguous). The picker
+ * therefore offers a department when it has no workflow yet for this entity type — e.g. one
+ * that was just added — or when it is already in the workflow being edited.
+ *
+ * `claimed` = departments held by ANOTHER workflow of the same entity type.
+ * `alreadySelected` = departments already ticked on this card; those always stay listed so a
+ * saved department never loses its chip.
+ */
+export const departmentsOfferedForWorkflow = <T extends { value: string | number }>(
+  options: T[],
+  claimed: ReadonlyMap<string, unknown> | ReadonlySet<string>,
+  alreadySelected: readonly string[]
+): T[] => {
+  if (claimed.size === 0) return options;
+  const keep = new Set(alreadySelected.map(String));
+  return options.filter((o) => {
+    const id = String(o.value);
+    return !claimed.has(id) || keep.has(id);
+  });
+};
+
 // ─── Conditional routing & alternates on a stage (sql/99) ────────────────────
 
 // Whether a workflow type supports conditions/alternates is NOT a fixed list of entity types: it is

@@ -318,7 +318,7 @@ const ServiceVendorKycPage: React.FC = () => {
         description="Separate onboarding and approval for service vendors — once approved, they become available for Service Agreements"
       />
 
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-3 py-4 sm:px-6 sm:py-6">
+      <div className="w-full space-y-5 px-2 pb-6 pt-1 sm:px-3 lg:px-5">
         <Tabs value={canSubmit ? view : 'list'} onValueChange={(v) => setView(v as 'create' | 'list')}>
           <TabsList className="h-10 w-full sm:w-fit">
             {canSubmit && (

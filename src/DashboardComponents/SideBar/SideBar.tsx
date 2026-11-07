@@ -7,7 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import BrandLogo from "@/components/BrandLogo";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import { isMasterAccessComp } from "@/globalState/hooks/usePermissions";
 import type { IconComponent, MenuItem, MenuGroup, Screen, HandleClickParams } from "./SideBar.types";
@@ -159,32 +159,20 @@ const Sidebar: React.FC = () => {
     <TooltipProvider>
       {/* ── Sidebar panel ───────────────────────────────────────────────── */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r bg-background/95 backdrop-blur-xl shadow-lg transition-transform duration-300 lg:translate-x-0
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden border-r border-sidebar-border/80 bg-sidebar/95 text-sidebar-foreground shadow-[18px_0_55px_-38px_rgba(15,23,42,0.55)] backdrop-blur-2xl transition-[transform,width] duration-300 lg:translate-x-0
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
         style={{ width: isCollapsed ? "80px" : `${sidebarWidth}px`, maxWidth: "85vw" }}
       >
         {/* ── Brand / collapse row ────────────────────────────────────── */}
-        <div className="relative flex items-center justify-between px-4 py-3 border-b border-border/60 bg-gradient-to-r from-muted/40 to-transparent">
-          <div className="flex items-center gap-3">
-            {!isCollapsed && (
-              <div className="flex items-center gap-2.5">
-                {/* Brand avatar — uses primary theme color */}
-                <Avatar className="h-9 w-9 rounded-lg ring-2 ring-primary/30">
-                  <AvatarFallback className="rounded-lg bg-primary text-primary-foreground text-xs font-extrabold">
-                    SA
-                  </AvatarFallback>
-                </Avatar>
-
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-bold text-foreground leading-tight">
-                    Space Textiles Pvt Ltd
-                  </span>
-                  <span className="text-[10px] text-muted-foreground font-medium leading-tight uppercase tracking-wider">
-                    ERP Console
-                  </span>
-                </div>
-              </div>
-            )}
+        <div className={`relative flex min-h-[66px] items-center justify-between border-b border-sidebar-border/70 bg-gradient-to-r from-primary/[0.08] to-transparent py-3 ${isCollapsed ? "px-2" : "px-3.5"}`}>
+          <div className="flex min-w-0 items-center">
+            <div className={isCollapsed ? "p-1" : "min-w-0"}>
+              <BrandLogo
+                compact={isCollapsed}
+                className={isCollapsed ? "h-7" : "h-7 max-w-[178px] xl:max-w-[194px]"}
+                priority
+              />
+            </div>
 
             {/* Collapse toggle */}
             <Tooltip>
@@ -228,11 +216,11 @@ const Sidebar: React.FC = () => {
             <p className="px-2 py-1 text-xs text-destructive">Failed to load menu</p>
           )}
 
-          <nav className="space-y-4">
+          <nav className="space-y-5">
             {groupedMenu.map((group) => (
               <div key={group.groupId} className="space-y-1">
                 {!isCollapsed && (
-                  <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary/70">
+                  <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-sidebar-foreground/45">
                     {group.groupName}
                   </p>
                 )}
@@ -243,11 +231,11 @@ const Sidebar: React.FC = () => {
                       <TooltipTrigger asChild>
                         <button
                           onClick={() => handleMenuClick(item as HandleClickParams)}
-                          className={`group flex w-full items-center rounded-xl px-2 py-2 text-sm transition-all duration-200
+                          className={`group relative flex w-full items-center rounded-xl px-2 py-2 text-sm transition-all duration-200
                             ${
                               isActive
-                                ? "bg-primary text-primary-foreground shadow-sm"
-                                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                                ? "bg-primary text-primary-foreground shadow-md shadow-primary/15"
+                                : "text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                             }`}
                         >
                           {/* Icon box */}
@@ -256,14 +244,14 @@ const Sidebar: React.FC = () => {
                               ${
                                 isActive
                                   ? "border-primary-foreground/20 bg-primary-foreground/10"
-                                  : "border-border/60 bg-background"
+                                  : "border-sidebar-border/70 bg-background/70"
                               }`}
                           >
                             <item.icon
                               className={`h-4 w-4 ${
                                 isActive
                                   ? "text-primary-foreground"
-                                  : "text-muted-foreground group-hover:text-foreground"
+                                  : "text-sidebar-foreground/55 group-hover:text-sidebar-accent-foreground"
                               }`}
                             />
                           </div>

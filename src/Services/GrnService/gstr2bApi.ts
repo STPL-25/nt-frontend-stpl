@@ -1,26 +1,27 @@
 /**
  * GSTR-2B reconciliation (grn-service /api/gstr2b, sql/45).
  * Upload the portal's Excel, see what matched our invoices, add missing ones, release payment holds.
+ * Every list is per company and limited to the companies the login has access to (sql/90).
  */
 import { GRN_SERVICE_BASE } from './base';
 
 const base = `${GRN_SERVICE_BASE}/api/gstr2b`;
 
 export const gstr2bUpload = `${base}/upload`;
-export const gstr2bUploads = `${base}/uploads`;
+export const gstr2bUploads = (comSno: number) => `${base}/uploads?com_sno=${comSno}`;
 export const gstr2bUploadDetail = (id: number, status?: string) =>
   `${base}/uploads/${id}${status ? `?status=${encodeURIComponent(status)}` : ''}`;
 export const gstr2bCandidates = (rowSno: number) => `${base}/rows/${rowSno}/candidates`;
 export const gstr2bConfirm = (rowSno: number) => `${base}/rows/${rowSno}/confirm`;
 export const gstr2bEdit = (rowSno: number) => `${base}/rows/${rowSno}`;
 export const gstr2bSkip =(rowSno: number) => `${base}/rows/${rowSno}/skip`;
-export const gstr2bMissing = `${base}/missing`;
+export const gstr2bMissing = (comSno: number) => `${base}/missing?com_sno=${comSno}`;
 export const gstr2bHoldOverride = (invoiceSno: number) => `${base}/invoices/${invoiceSno}/hold-override`;
 
 export type Gstr2bStatus = 'Matched' | 'Mismatch' | 'Unmatched' | 'Added' | 'Skipped' | 'Info' | 'New';
 
 export interface Gstr2bSummary {
-  upload_sno: number; return_period: string; file_name: string | null; row_count: number;
+  upload_sno: number; com_sno: number | null; com_name: string | null; return_period: string; file_name: string | null; row_count: number;
   uploaded_by: string | null; uploaded_at: string;
   matched: number; mismatch: number; unmatched: number; added: number; notes_info?: number;
 }
@@ -40,5 +41,5 @@ export interface Gstr2bCandidate {
 export interface MissingIn2B {
   invoice_sno: number; invoice_no: string; vendor_invoice_no: string | null; invoice_date: string | null; vendor_sno: number;
   vendor_name: string | null; gst_no: string | null; invoice_amount: number; taxable_value: number | null;
-  itc_status: string | null; payment_hold_override: 'Y' | 'N' | null;
+  itc_status: string | null; payment_hold_override: 'Y' | 'N' | null; com_sno: number | null;
 }

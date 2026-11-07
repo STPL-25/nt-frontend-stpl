@@ -124,3 +124,24 @@ describe('amountProblem', () => {
     expect(amountProblem({ ...ok, amount: '10.123' })).toMatch(/two decimals/);
   });
 });
+
+import { cancelOutcome, dueAmountProblem } from '@/Application/Payment/statutoryModel';
+
+describe('agreement dues (grn sql/96)', () => {
+  it('dueAmountProblem: an amount above zero with at most two decimals, reference up to 40 characters', () => {
+    expect(dueAmountProblem({ amount: '48250.50' })).toBeNull();
+    expect(dueAmountProblem({ amount: '' })).toMatch(/above zero/);
+    expect(dueAmountProblem({ amount: '0' })).toMatch(/above zero/);
+    expect(dueAmountProblem({ amount: '-5' })).toMatch(/above zero/);
+    expect(dueAmountProblem({ amount: 'abc' })).toMatch(/above zero/);
+    expect(dueAmountProblem({ amount: '10.255' })).toMatch(/two decimals/);
+    expect(dueAmountProblem({ amount: '10', ref_no: 'x'.repeat(41) })).toMatch(/40 characters/);
+    expect(dueAmountProblem({ amount: '10', ref_no: 'x'.repeat(40) })).toBeNull();
+  });
+
+  it('cancelOutcome tells what cancelling does: removed, back to waiting (Unfixed) or skipped (Fixed)', () => {
+    expect(cancelOutcome({ source_type: 'MANUAL' })).toMatch(/removed/);
+    expect(cancelOutcome({ source_type: 'AGREEMENT', agreement_amount_type: 'UNFIXED' })).toMatch(/Waiting for the amount/);
+    expect(cancelOutcome({ source_type: 'AGREEMENT', agreement_amount_type: 'FIXED' })).toMatch(/skipped/);
+  });
+});

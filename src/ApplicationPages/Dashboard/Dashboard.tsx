@@ -72,15 +72,16 @@ const Dashboard: React.FC = () => {
 
       {/* Main content area — offset by sidebar width, fixed to viewport height */}
       <div
-        className="flex h-screen flex-col overflow-hidden"
+        className="flex h-screen min-w-0 flex-col overflow-hidden"
         style={getMainContentStyle(isMobile, sidebarWidth)}
       >
         <Header />
 
-        <main className="relative flex-1 overflow-y-auto px-2 pb-4 pt-3 sm:px-3 lg:px-5 lg:pb-5 lg:pt-5">
+        <main className="relative flex-1 overflow-y-auto overflow-x-hidden bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_42%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_42%,transparent)_1px,transparent_1px)] bg-[size:32px_32px] px-1 pb-4 pt-2 sm:px-2 lg:px-3 lg:pb-6 lg:pt-3">
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            <div className="absolute -right-24 -top-28 h-80 w-80 rounded-full bg-primary/[0.07] blur-3xl" />
-            <div className="absolute -bottom-40 left-1/4 h-72 w-72 rounded-full bg-primary/[0.05] blur-3xl" />
+            <div className="absolute -right-24 -top-28 h-80 w-80 rounded-full bg-primary/[0.10] blur-3xl" />
+            <div className="absolute -bottom-40 left-1/4 h-72 w-72 rounded-full bg-primary/[0.07] blur-3xl" />
+            <div className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/65 to-background" />
           </div>
           <div className={`relative h-full w-full ${isFullscreen ? "mt-4" : ""}`}>
             <Suspense

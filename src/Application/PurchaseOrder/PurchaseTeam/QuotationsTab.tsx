@@ -11,10 +11,12 @@ import {
   Search, Users, Plus, Loader2, ClipboardCheck, RefreshCw,
   Eye, CheckCircle2, Package, ChevronDown, ChevronUp,
   FileText, Download, X, Pencil,
-  ShoppingCart, CreditCard,
+  ShoppingCart, CreditCard, Send,
 } from 'lucide-react';
 import { useVendorFields, useQuotationItemFields } from '@/FieldDatas/PurchaseTeamFieldDatas';
-import type { PRRecord, Vendor, Quotation, POGroup, POConfirmItem, SupplierAdvance, SupplierAdvanceStage } from './types';
+import type {
+  PRRecord, Vendor, Quotation, POGroup, POConfirmItem, SupplierAdvance, SupplierAdvanceStage, RfqSupplierContact,
+} from './types';
 import { formatDate, formatINR, getPRDisplayNo, getQuotationTotal, describeCover } from './helpers';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -142,7 +144,39 @@ interface QuotationsTabProps {
   confirmedSplitGroups?: Array<{ groupNum: number; items: POConfirmItem[] }>;
   /** Unsplit remainder — items that stay on the main PO */
   mainPOItems?: POConfirmItem[];
+  /** Request For Quotation: e-mail the ticked suppliers (splitGroup as for onOpenQuotation). Omitted = no tick boxes. */
+  onSendRfq?: (vendors: Vendor[], splitGroup?: number) => void;
+  /** Portal-login status per vendor_sno, so suppliers who cannot log in are flagged before an RFQ goes out. */
+  rfqContacts?: Record<number, RfqSupplierContact>;
+  /** The RFQ status panel (rendered by the page), shown between the supplier list and the quotations. */
+  rfqPanel?: React.ReactNode;
 }
+
+const vendorSnoOf = (v: Vendor): number => (v.kyc_basic_info_sno ?? v.vendor_sno) as number;
+
+/** Tick-box selection of suppliers for one supplier table. */
+const useVendorSelection = () => {
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const toggle = (sno: number) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(sno)) next.delete(sno); else next.add(sno);
+    return next;
+  });
+  const setAll = (snos: number[], on: boolean) => setSelected(prev => {
+    const next = new Set(prev);
+    snos.forEach(s => (on ? next.add(s) : next.delete(s)));
+    return next;
+  });
+  return { selected, toggle, setAll };
+};
+
+/** Small "Portal" cell: a supplier without a portal login cannot answer an RFQ. */
+const PortalCell: React.FC<{ contact?: RfqSupplierContact }> = ({ contact }) => {
+  if (!contact) return <span className="text-muted-foreground/60">—</span>;
+  return contact.has_login
+    ? <span className="text-emerald-700">Active</span>
+    : <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700" title="No supplier-portal login yet - send an invite from the KYC screen">No login</span>;
+};
 
 // ── Quotation card (shared) ───────────────────────────────────────────────────
 const QuotationCard: React.FC<{
@@ -209,6 +243,11 @@ const QuotationCard: React.FC<{
                   <CheckCircle2 size={10} /> Selected
                 </Badge>
               )}
+              {q.rfq_sno ? (
+                <Badge variant="outline" className="text-[11px] font-medium text-sky-700 border-sky-300 bg-sky-50 gap-1" title="Given by the supplier in the portal against a request for quotation">
+                  <Send size={10} /> Via RFQ
+                </Badge>
+              ) : null}
             </div>
 
             {/* Meta info — label / value rows */}
@@ -385,10 +424,15 @@ const QuotationCard: React.FC<{
                           {(it.additional?.length ?? 0) > 0 && (
                             <TableRow className={iIdx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
                               <TableCell />
-                              <TableCell colSpan={tableFields.length} className="pt-0 pb-2 text-[11px] text-muted-foreground space-y-0.5">
-                                {it.additional!.map((c, ci) => (
-                                  <p key={ci}><span className="font-semibold text-blue-700">{describeCover(c)}</span></p>
-                                ))}
+                              {/* TableCell is whitespace-nowrap by default, so long warranty/AMC terms stayed on one line and
+                                  pushed Qty / Rate off to the right. whitespace-normal + a zero-intrinsic-width wrapper makes
+                                  the text wrap line by line inside the columns it spans, without widening the table. */}
+                              <TableCell colSpan={tableFields.length} className="whitespace-normal pt-0 pb-2 text-[11px] text-muted-foreground">
+                                <div className="w-0 min-w-full space-y-0.5 whitespace-pre-line [overflow-wrap:anywhere]">
+                                  {it.additional!.map((c, ci) => (
+                                    <p key={ci}><span className="font-semibold text-blue-700">{describeCover(c)}</span></p>
+                                  ))}
+                                </div>
                               </TableCell>
                             </TableRow>
                           )}
@@ -514,14 +558,18 @@ const GroupPanel: React.FC<{
   onSelectQuotation?: (q: Quotation) => void;
   onEditQuotation?: (q: Quotation) => void;
   onCreatePO?: (q: Quotation) => void;
+  onSendRfq?: (vendors: Vendor[], splitGroup?: number) => void;
+  rfqContacts?: Record<number, RfqSupplierContact>;
 }> = ({
   label, badgeClass, borderClass, bgClass, textClass,
   items, vendors, loadingVendors, quotations, loadingQuotations, splitGroup,
   viewVendorFields, viewQuotItemFields,
   onAddQuotation, onSelectQuotation, onEditQuotation, onCreatePO,
+  onSendRfq, rfqContacts,
 }) => {
   const [search, setSearch] = useState('');
   const [itemsOpen, setItemsOpen] = useState(false);
+  const { selected, toggle, setAll } = useVendorSelection();
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -585,6 +633,19 @@ const GroupPanel: React.FC<{
               className="pl-8 h-7 text-xs"
             />
           </div>
+          {onSendRfq && (
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] text-muted-foreground">Tick several suppliers to e-mail them one request for quotation.</p>
+              <Button
+                size="sm"
+                className="h-7 gap-1 text-xs"
+                disabled={selected.size === 0}
+                onClick={() => onSendRfq(vendors.filter(v => selected.has(vendorSnoOf(v))), splitGroup)}
+              >
+                <Send size={12} /> Request quotation{selected.size ? ` (${selected.size})` : ''}
+              </Button>
+            </div>
+          )}
           {loadingVendors ? (
             <div className="flex items-center gap-2 text-muted-foreground/70 py-3 justify-center">
               <Loader2 size={13} className="animate-spin" />
@@ -595,20 +656,42 @@ const GroupPanel: React.FC<{
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/40">
+                    {onSendRfq && (
+                      <TableHead className="w-8 py-1.5">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all listed suppliers"
+                          checked={filtered.slice(0, 15).length > 0 && filtered.slice(0, 15).every(v => selected.has(vendorSnoOf(v)))}
+                          onChange={e => setAll(filtered.slice(0, 15).map(vendorSnoOf), e.target.checked)}
+                        />
+                      </TableHead>
+                    )}
                     {viewVendorFields.map((f: any) => (
                       <TableHead key={f.field} className="text-xs py-1.5">{f.label}</TableHead>
                     ))}
+                    {onSendRfq && <TableHead className="text-xs py-1.5">Portal</TableHead>}
                     <TableHead className="text-xs w-24 py-1.5" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.slice(0, 15).map(v => (
                     <TableRow key={v.kyc_basic_info_sno ?? v.vendor_sno} className="hover:bg-primary/10/50">
+                      {onSendRfq && (
+                        <TableCell className="py-1.5">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${v.company_name ?? v.vendor_name}`}
+                            checked={selected.has(vendorSnoOf(v))}
+                            onChange={() => toggle(vendorSnoOf(v))}
+                          />
+                        </TableCell>
+                      )}
                       {viewVendorFields.map((f: any) => (
                         <TableCell key={f.field} className={`text-xs py-1.5 ${f.field === 'company_name' ? 'font-medium' : 'text-muted-foreground'}`}>
                           {getVendorFieldValue(v, f.field)}
                         </TableCell>
                       ))}
+                      {onSendRfq && <TableCell className="py-1.5 text-xs"><PortalCell contact={rfqContacts?.[vendorSnoOf(v)]} /></TableCell>}
                       <TableCell className="py-1.5">
                         {onAddQuotation && (
                           <Button
@@ -673,10 +756,12 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
   poGroups = [],
   confirmedSplitGroups = [],
   mainPOItems = [],
+  onSendRfq, rfqContacts, rfqPanel,
 }) => {
   const vendorFields = useVendorFields();
   const quotationItemFields = useQuotationItemFields();
   const [searchVendor, setSearchVendor] = useState('');
+  const rfqSelection = useVendorSelection();
 
   const viewVendorFields = vendorFields.filter((f: any) => f.view);
   const viewQuotItemFields = quotationItemFields.filter((f: any) => f.view);
@@ -721,6 +806,8 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
 
     return (
       <div className="space-y-4">
+        {rfqPanel}
+
         {/* Per-group panels */}
         {confirmedSplitGroups.map(({ groupNum, items }) => {
           const col = gc(groupNum);
@@ -744,6 +831,8 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
               onSelectQuotation={onSelectQuotation}
               onEditQuotation={onEditQuotation}
               onCreatePO={onCreatePO}
+              onSendRfq={onSendRfq}
+              rfqContacts={rfqContacts}
             />
           );
         })}
@@ -768,6 +857,8 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
             onSelectQuotation={onSelectQuotation}
             onEditQuotation={onEditQuotation}
             onCreatePO={onCreatePO}
+            onSendRfq={onSendRfq}
+            rfqContacts={rfqContacts}
           />
         )}
 
@@ -793,6 +884,7 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
   if (poGroups.length > 0) {
     return (
       <div className="space-y-4">
+        {rfqPanel}
         {poGroups.map((group, gIdx) => {
           const groupVendor = vendors.find(v =>
             (v.kyc_basic_info_sno ?? v.vendor_sno) === group.vendorSno
@@ -873,6 +965,22 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
               className="pl-8 h-8 text-sm"
             />
           </div>
+          {onSendRfq && (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
+              <p className="text-xs text-muted-foreground">
+                <b className="text-foreground">Request quotation:</b> tick one or more suppliers - each is e-mailed to log in to the supplier portal and give a quotation.
+                Or use <b className="text-foreground">Quote</b> to enter a quotation yourself.
+              </p>
+              <Button
+                size="sm"
+                className="h-8 gap-1 text-xs"
+                disabled={rfqSelection.selected.size === 0}
+                onClick={() => onSendRfq(vendors.filter(v => rfqSelection.selected.has(vendorSnoOf(v))))}
+              >
+                <Send size={13} /> Request quotation{rfqSelection.selected.size ? ` (${rfqSelection.selected.size})` : ''}
+              </Button>
+            </div>
+          )}
           {loadingVendors ? (
             <div className="flex items-center gap-2 text-muted-foreground/70 py-4 justify-center">
               <Loader2 size={16} className="animate-spin" /><span className="text-sm">Loading vendors...</span>
@@ -884,20 +992,42 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/40">
+                    {onSendRfq && (
+                      <TableHead className="w-8">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all listed suppliers"
+                          checked={filteredVendors.slice(0, 20).length > 0 && filteredVendors.slice(0, 20).every(v => rfqSelection.selected.has(vendorSnoOf(v)))}
+                          onChange={e => rfqSelection.setAll(filteredVendors.slice(0, 20).map(vendorSnoOf), e.target.checked)}
+                        />
+                      </TableHead>
+                    )}
                     {viewVendorFields.map((f: any) => (
                       <TableHead key={f.field} className="text-xs">{f.label}</TableHead>
                     ))}
+                    {onSendRfq && <TableHead className="text-xs">Portal</TableHead>}
                     <TableHead className="text-xs w-24">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredVendors.slice(0, 20).map(v => (
                     <TableRow key={v.kyc_basic_info_sno ?? v.vendor_sno} className="hover:bg-muted/40">
+                      {onSendRfq && (
+                        <TableCell>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${v.company_name ?? v.vendor_name}`}
+                            checked={rfqSelection.selected.has(vendorSnoOf(v))}
+                            onChange={() => rfqSelection.toggle(vendorSnoOf(v))}
+                          />
+                        </TableCell>
+                      )}
                       {viewVendorFields.map((f: any) => (
                         <TableCell key={f.field} className={`text-${f.field === 'company_name' ? 'sm font-medium' : 'xs text-muted-foreground'}`}>
                           {getVendorFieldValue(v, f.field)}
                         </TableCell>
                       ))}
+                      {onSendRfq && <TableCell className="text-xs"><PortalCell contact={rfqContacts?.[vendorSnoOf(v)]} /></TableCell>}
                       <TableCell>
                         {onOpenQuotation && (
                           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onOpenQuotation(v)}>
@@ -913,6 +1043,8 @@ const QuotationsTab: React.FC<QuotationsTabProps> = ({
           )}
         </CardContent>
       </Card>
+
+      {rfqPanel}
 
       <Card>
         <CardHeader className="pb-3">

@@ -38,6 +38,7 @@ import { useNavigate } from "react-router-dom";
 import { useAppState } from "@/globalState/hooks/useAppState";
 import NotificationBell from "@/components/NotificationBell";
 import ThemeSettings from "@/components/ThemeSettings";
+import BrandLogo from "@/components/BrandLogo";
 import type { UserInfo, ProfileField } from "./Header.types";
 import axios from "axios";
 
@@ -120,14 +121,14 @@ const Header: React.FC = () => {
   return (
     <>
       {/* Primary-color accent line at top */}
-      <div className="h-0.5 w-full bg-gradient-to-r from-primary/40 via-primary to-primary/40" />
+      <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-primary to-transparent" />
 
       <header
-        className={`sticky top-0 z-40 border-b bg-background/80 backdrop-blur-xl transition-all ${
+        className={`sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-2xl transition-all ${
           isFullscreen ? "shadow-lg" : "shadow-sm"
         }`}
       >
-        <div className="flex items-center justify-between gap-2 px-4 py-2 lg:px-6">
+        <div className="flex min-h-14 items-center justify-between gap-2 px-2.5 py-2 sm:px-4 lg:px-6">
 
           {/* ── Left ─────────────────────────────────────────────────── */}
           <div className="flex min-w-0 items-center gap-3">
@@ -145,19 +146,19 @@ const Header: React.FC = () => {
 
             {/* Brand mark (desktop) */}
             <div className="hidden items-center gap-2 lg:flex">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary shadow-sm">
-                <span className="text-[10px] font-black text-primary-foreground">NT</span>
-              </div>
-              <span className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+              {/* <div className="flex h-8 w-8 items-center justify-center">
+                <BrandLogo compact className="h-7" priority />
+              </div> */}
+              {/* <span className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
                 Non-Trade
-              </span>
+              </span> */}
             </div>
 
-            <div className="hidden h-5 w-px bg-border lg:block" />
+            {/* <div className="hidden h-5 w-px bg-border lg:block" /> */}
 
             {/* Page title */}
             <div className="flex min-w-0 items-center gap-2">
-              <div className="hidden h-1.5 w-1.5 shrink-0 rounded-full bg-primary lg:block" />
+              {/* <div className="hidden h-1.5 w-1.5 shrink-0 rounded-full bg-primary lg:block" /> */}
               <span className="truncate text-sm font-semibold tracking-wide text-primary">
                 {(headerComponentRender as string)?.toUpperCase?.() || "DASHBOARD"}
               </span>
@@ -198,7 +199,7 @@ const Header: React.FC = () => {
             {/* Profile dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-9 gap-2 px-2 rounded-xl hover:bg-primary/10">
+              <Button variant="ghost" className="h-10 gap-2 rounded-xl border border-transparent px-1.5 hover:border-primary/10 hover:bg-primary/10 sm:px-2">
                   <div className="relative">
                     <Avatar className="h-7 w-7 ring-2 ring-primary/30">
                       <AvatarFallback className="bg-primary text-xs font-bold text-primary-foreground">

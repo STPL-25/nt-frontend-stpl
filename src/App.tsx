@@ -6,6 +6,7 @@ import { useAppState } from "./globalState/hooks/useAppState";
 import { useEffect } from "react";
 import Signup from "./ApplicationPages/SignupPage";
 import SupplierKycPage from "./ApplicationPages/SupplierKycPage";
+import KycResubmitPage from "./ApplicationPages/KycResubmitPage";
 import SupplierPortal from "./Application/SupplierPortal/SupplierPortal";
 import StoreInchargeApprovalPage from "./Application/Store/StoreInchargeApprovalPage";
 import { useInactivityLogout } from "./hooks/useInactivityLogout";
@@ -114,6 +115,8 @@ const router = createBrowserRouter([
   { path: "/signup", element: <Signup /> },
    { path: "/Supplier", element: <SupplierPortal /> },
   { path: "/supplier_onboarding", element: <SupplierKycPage /> },
+  // A supplier whose KYC was rejected corrects it here, through the private link we e-mail (token after the #, no login).
+  { path: "/kyc_resubmit", element: <KycResubmitPage /> },
   //  { path: "/store-incharge-approval", element: <StoreInchargeApprovalPage /> },
 ]);
 

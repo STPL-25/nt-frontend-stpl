@@ -29,6 +29,7 @@ import {
 } from './paymentApprovalModel';
 import { msmeNote, rupees } from './paymentRunModel';
 import { leftLine, parseAmount, reduceProblem } from './partPaymentModel';
+import { enteredLine } from './tdsRateModel';
 
 const SCREEN = 'PaymentApprovalScreen';
 
@@ -370,7 +371,12 @@ const PaymentApprovalPage: React.FC = () => {
                         </td>
                         <td className="px-3 py-2 text-xs tabular-nums">
                           {f.tds_section
-                            ? <>{f.tds_section} @ {Number(f.tds_rate_pct ?? 0)}%<span className="block font-semibold text-red-600 dark:text-red-400">- {rupees(f.tds_this_payment)}</span><span className="block text-muted-foreground">on {rupees(f.tds_base)}</span></>
+                            ? <>{f.tds_section} @ {Number(f.tds_rate_pct ?? 0)}%<span className="block font-semibold text-red-600 dark:text-red-400">- {rupees(f.tds_this_payment)}</span><span className="block text-muted-foreground">on {rupees(f.tds_base)}</span>
+                              {(f.tds_rate_entered_by || (f.tds_section_rate_pct != null && Number(f.tds_section_rate_pct) !== Number(f.tds_rate_pct))) && (
+                                <span className="block text-muted-foreground" title="The rate was typed on the Payment screen instead of using the section's own rate">
+                                  Rate typed{f.tds_section_rate_pct != null ? ` (section ${Number(f.tds_section_rate_pct)}%)` : ''} · entered by {enteredLine(f.tds_rate_entered_by, f.tds_rate_entered_at)}
+                                </span>
+                              )}</>
                             : <span className="text-muted-foreground">No TDS</span>}
                         </td>
                         <td className="px-3 py-2 text-xs">

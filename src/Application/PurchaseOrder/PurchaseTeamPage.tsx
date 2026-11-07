@@ -20,6 +20,9 @@ import {
   purchaseTeamGetPOConfirmation,
   purchaseTeamSaveSplitGroup,
   purchaseTeamGetSplitGroups,
+  purchaseTeamCreateRfq,
+  purchaseTeamGetRfqs,
+  purchaseTeamGetRfqSupplierContacts,
 } from '@/Services/Api';
 import { useAppState } from '@/globalState/hooks/useAppState';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
@@ -36,6 +39,7 @@ import usePost from '@/hooks/usePostHook';
 import type {
   PRRecord, PRItem, Vendor, Quotation, QuotationItem,
   QuotationFormState, POFormState, POGroup, POConfirmationData, POConfirmItem,
+  Rfq, RfqSupplier, RfqSupplierContact, RfqEmailResult,
 } from './PurchaseTeam/types';
 import {
   normalisePRRows, extractQuotationItems, getPRDisplayNo, warrantyAmcIssue,
@@ -49,6 +53,23 @@ import SpecialAgreementPanel from './PurchaseTeam/SpecialAgreementPanel';
 import QuotationDialog from './PurchaseTeam/QuotationDialog';
 import CompareDialog from './PurchaseTeam/CompareDialog';
 import CreatePODialog from './PurchaseTeam/CreatePODialog';
+import RfqSendDialog, { type RfqSendBody } from './PurchaseTeam/RfqSendDialog';
+import RfqPanel from './PurchaseTeam/RfqPanel';
+import RfqResponseDialog from './PurchaseTeam/RfqResponseDialog';
+
+// A confirmed PO-confirmation line as an (unpriced) quotation / RFQ line.
+const confirmItemToQuotationItem = (it: POConfirmItem): QuotationItem => ({
+  pr_item_sno: it.pr_item_sno,
+  prod_sno: it.prod_sno,
+  prod_name: it.prod_name,
+  specification: it.specification,
+  pr_no: it.pr_no,
+  qty: it.qty,
+  unit: it.unit,
+  unit_name: it.unit_name,
+  unit_price: 0, discount_pct: 0, tax_pct: 0,
+  total_amount: 0, delivery_days: 0, remarks: '',
+});
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -103,6 +124,12 @@ const PurchaseTeamPage: React.FC = () => {
   // Set while the quotation dialog is editing a saved (still pending) quotation.
   const [editingQuotation, setEditingQuotation] = useState<Quotation | null>(null);
 
+  // Request For Quotation (RFQ): suppliers ticked in the list -> send dialog; status panel; response review dialog
+  const [rfqRefreshKey, setRfqRefreshKey] = useState(0);
+  const [rfqDialog, setRfqDialog] = useState<{ vendors: Vendor[]; items: QuotationItem[]; splitGroup?: number } | null>(null);
+  const [rfqResponseTarget, setRfqResponseTarget] = useState<{ rfq: Rfq; supplier: RfqSupplier } | null>(null);
+  const [rfqs, setRfqs] = useState<Rfq[]>([]);
+
   // Compare dialog
   const [showCompareDialog, setShowCompareDialog] = useState(false);
 
@@ -136,6 +163,13 @@ const PurchaseTeamPage: React.FC = () => {
     : null;
   const { data: poConfirmRaw } = useFetch(poConfirmUrl);
 
+  // RFQs of the selected PR (the PR number is the one the RFQ was saved with) + who can log in to the supplier portal
+  const rfqsUrl = selectedPR?.pr_basic_sno
+    ? purchaseTeamGetRfqs(selectedPR.pr_basic_sno, btoa(getPRDisplayNo(selectedPR)))
+    : null;
+  const { data: rfqsRaw, loading: loadingRfqs } = useFetch(rfqsUrl, '', null, rfqRefreshKey);
+  const { data: rfqContactsRaw } = useFetch(purchaseTeamGetRfqSupplierContacts, '', null, vendorRefreshKey);
+
   // ── Post hooks ────────────────────────────────────────────────────────────
 
   const { loading: savingConfirm } = usePost();
@@ -143,8 +177,30 @@ const PurchaseTeamPage: React.FC = () => {
   const { postData: postQuotation } = usePost();
   const { postData: postSelectQuotation } = usePost();
   const { postData: postCreatePO } = usePost();
+  const { postData: postCreateRfq } = usePost();
 
   // ── Derived data ───────────────────────────────────────────────────────────
+
+  // The list is kept in state (not read straight off the fetch) so a background refresh - useFetch blanks its data while
+  // reloading - does not flash the panel empty. A different PR clears it.
+  useEffect(() => { setRfqs([]); }, [selectedPR?.pr_basic_sno, selectedPR?.pr_no]);
+  useEffect(() => {
+    if (!rfqsRaw) return;
+    const rows: Rfq[] = (rfqsRaw as any)?.decrypted?.data ?? (rfqsRaw as any)?.data ?? [];
+    setRfqs(Array.isArray(rows) ? rows : []);
+  }, [rfqsRaw]);
+
+  const rfqContacts = useMemo<Record<number, RfqSupplierContact>>(() => {
+    const rows: RfqSupplierContact[] = (rfqContactsRaw as any)?.decrypted?.data ?? (rfqContactsRaw as any)?.data ?? [];
+    return Object.fromEntries((Array.isArray(rows) ? rows : []).map(r => [r.vendor_sno, r]));
+  }, [rfqContactsRaw]);
+
+  // A supplier may answer while this tab is in the background: refresh the RFQ list when the buyer comes back to it.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') setRfqRefreshKey(k => k + 1); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   // PR list is held in state (not a plain useMemo) so the real-time
   // `pt:split:updated` socket event can replace it live with the fresh
@@ -221,6 +277,8 @@ const PurchaseTeamPage: React.FC = () => {
         is_msme: row.is_msme ?? null,
         msme_type: row.msme_type ?? null,
         is_intrastate: row.is_intrastate ?? null,
+        rfq_sno: row.rfq_sno ?? null,
+        rfq_response_sno: row.rfq_response_sno ?? null,
       } as Quotation;
     });
   }, [quotationsRaw]);
@@ -391,6 +449,56 @@ const PurchaseTeamPage: React.FC = () => {
     setQuotationSplitGroup(q.split_group);
     setQuotationItems(q.items);
     setShowQuotationDialog(true);
+  };
+
+  // ── Request For Quotation ─────────────────────────────────────────────────
+
+  // The lines the suppliers are asked to price: the whole confirmed PO, or one split group of it (same rule as "Quote").
+  const rfqItemsFor = (splitGroup?: number): QuotationItem[] => {
+    if (!selectedPR) return [];
+    if (confirmedData?.items?.length) {
+      if (splitGroup === undefined) return confirmedData.items.map(confirmItemToQuotationItem);
+      const groupItems = splitGroup === 0
+        ? confirmedData.items.filter(it => !it.split_group)
+        : confirmedData.items.filter(it => it.split_group === splitGroup);
+      return groupItems.map(confirmItemToQuotationItem);
+    }
+    return extractQuotationItems(selectedPR);
+  };
+
+  const handleOpenRfq = (picked: Vendor[], splitGroup?: number) => {
+    if (!selectedPR) { toast.error('Select a PR first'); return; }
+    if (picked.length === 0) { toast.error('Tick at least one supplier'); return; }
+    const items = rfqItemsFor(splitGroup);
+    if (items.length === 0) { toast.error('There are no items to request a quotation for'); return; }
+    setRfqDialog({ vendors: picked, items, splitGroup });
+  };
+
+  const handleSendRfq = async (body: RfqSendBody): Promise<{ rfq_no: string; emails: RfqEmailResult[] }> => {
+    if (!selectedPR?.pr_basic_sno) throw new Error('Select a PR first');
+    const res: any = await postCreateRfq(purchaseTeamCreateRfq, {
+      pr_basic_sno: selectedPR.pr_basic_sno,
+      pr_no: getPRDisplayNo(selectedPR),
+      ...(rfqDialog?.splitGroup !== undefined && { split_group: rfqDialog.splitGroup }),
+      com_sno: confirmedData?.billing_com_sno ?? selectedPR.com_sno,
+      div_sno: confirmedData?.billing_div_sno ?? selectedPR.div_sno,
+      brn_sno: confirmedData?.billing_brn_sno ?? selectedPR.brn_sno,
+      dept_sno: confirmedData?.billing_dept_sno ?? selectedPR.dept_sno,
+      response_due_date: body.response_due_date,
+      notes: body.notes,
+      vendor_snos: body.vendor_snos,
+      items: body.items.map(i => ({
+        pr_item_sno: i.pr_item_sno, prod_sno: i.prod_sno, specification: i.specification, qty: i.qty, unit: i.unit,
+      })),
+    }, { withCredentials: true });
+    const data = res?.decrypted?.data ?? res?.data;
+    setRfqRefreshKey(k => k + 1);
+    return { rfq_no: data?.rfq_no, emails: data?.emails ?? [] };
+  };
+
+  const handleRfqTaken = () => {
+    setQuotationsRefreshKey(k => k + 1);
+    setRfqRefreshKey(k => k + 1);
   };
 
   const handleSubmitQuotation = async (form: QuotationFormState, items: QuotationItem[], file: File | null) => {
@@ -756,6 +864,17 @@ const PurchaseTeamPage: React.FC = () => {
                     poGroups={poGroups}
                     confirmedSplitGroups={confirmedSplitGroups}
                     mainPOItems={(confirmedData?.items ?? []).filter(i => !i.split_group)}
+                    onSendRfq={canCreate("PurchaseTeamPage") ? handleOpenRfq : undefined}
+                    rfqContacts={rfqContacts}
+                    rfqPanel={(rfqs.length > 0 || loadingRfqs || canCreate("PurchaseTeamPage")) ? (
+                      <RfqPanel
+                        rfqs={rfqs}
+                        loading={loadingRfqs}
+                        onRefresh={() => setRfqRefreshKey(k => k + 1)}
+                        canAct={canCreate("PurchaseTeamPage") || canEdit("PurchaseTeamPage")}
+                        onViewResponses={(rfq, supplier) => setRfqResponseTarget({ rfq, supplier })}
+                      />
+                    ) : undefined}
                   />
                 </>
               )}
@@ -774,6 +893,26 @@ const PurchaseTeamPage: React.FC = () => {
         editing={editingQuotation}
         comSno={confirmedData?.billing_com_sno ?? selectedPR?.com_sno}
         onSubmit={handleSubmitQuotation}
+      />
+
+      <RfqSendDialog
+        open={!!rfqDialog}
+        onOpenChange={(o) => { if (!o) setRfqDialog(null); }}
+        prLabel={selectedPR ? getPRDisplayNo(selectedPR) : ''}
+        groupLabel={rfqDialog?.splitGroup === undefined ? undefined : rfqDialog.splitGroup === 0 ? 'Main PO' : `Group ${rfqDialog.splitGroup}`}
+        vendors={rfqDialog?.vendors ?? []}
+        contacts={rfqContacts}
+        items={rfqDialog?.items ?? []}
+        onSend={handleSendRfq}
+      />
+
+      <RfqResponseDialog
+        open={!!rfqResponseTarget}
+        onOpenChange={(o) => { if (!o) setRfqResponseTarget(null); }}
+        rfq={rfqResponseTarget?.rfq ?? null}
+        supplier={rfqResponseTarget?.supplier ?? null}
+        canTake={canCreate("PurchaseTeamPage")}
+        onTaken={handleRfqTaken}
       />
 
       <CompareDialog

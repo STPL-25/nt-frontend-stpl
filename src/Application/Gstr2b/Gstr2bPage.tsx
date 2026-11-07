@@ -14,8 +14,8 @@ import {
 import { FormSection, PageHeader } from '@/CustomComponent/PageComponents';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
 import { usePermissions } from '@/globalState/hooks/usePermissions';
-import { useAppSelector } from '@/globalState/hooks/useAppState';
-import { selectCompanyHierarchy, type HierarchyResponse } from '@/globalState/features/hierarchyCompanyDetailsSlice';
+import { useAppDispatch, useAppSelector } from '@/globalState/hooks/useAppState';
+import { fetchHierarchy, selectCompanyHierarchy, type HierarchyResponse } from '@/globalState/features/hierarchyCompanyDetailsSlice';
 import { getErrorMessage } from '@/lib/errors';
 import {
   gstr2bUpload, gstr2bUploads, gstr2bUploadDetail, gstr2bCandidates, gstr2bConfirm, gstr2bEdit, gstr2bSkip, gstr2bMissing, gstr2bHoldOverride,
@@ -33,16 +33,27 @@ const thisPeriod = () => {
 
 type Tab = 'Matched' | 'Mismatch' | 'Unmatched' | 'Added' | 'Info' | 'Missing';
 
+// the server only returns uploads / invoices of companies this login has access to (sql/90)
+const fetchUploads = (com: string) => axios.get(gstr2bUploads(Number(com))).then(r => (r.data?.data ?? []) as Gstr2bSummary[]);
+const fetchMissing = (com: string) => axios.get(gstr2bMissing(Number(com))).then(r => (r.data?.data ?? []) as MissingIn2B[]);
+const fetchRows = (id: number) => axios.get(gstr2bUploadDetail(id)).then(r => (r.data?.data?.rows ?? []) as Gstr2bRow[]);
+
 const TAB_LABEL: Record<Tab, string> = {
   Matched: 'Matched', Mismatch: 'Mismatch', Unmatched: 'Not in books', Added: 'Added', Info: 'Notes', Missing: 'Missing in 2B',
 };
 
-/** Accounts: upload GSTR-2B, review matches, add invoices missing from the books, release payment holds. */
+/**
+ * Accounts: upload GSTR-2B, review matches, add invoices missing from the books, release payment holds.
+ * Nothing is shown until a company is picked, and a 2B file's rows only after one of that company's files is picked.
+ */
 const Gstr2bPage: React.FC = () => {
   const { canCreate, canEdit } = usePermissions();
+  const dispatch = useAppDispatch();
+  // the login's own companies (hierarchy-scoped on the server)
   const companies = ((useAppSelector(selectCompanyHierarchy) as HierarchyResponse | null)?.companies ?? []);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [comSno, setComSno] = useState('');
   const [uploads, setUploads] = useState<Gstr2bSummary[]>([]);
   const [uploadId, setUploadId] = useState<number | null>(null);
   const [rows, setRows] = useState<Gstr2bRow[]>([]);
@@ -51,7 +62,6 @@ const Gstr2bPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const [period, setPeriod] = useState(thisPeriod());
-  const [comSno, setComSno] = useState('');
   const [uploading, setUploading] = useState(false);
 
   const [pick, setPick] = useState<Gstr2bRow | null>(null);
@@ -65,37 +75,52 @@ const Gstr2bPage: React.FC = () => {
   const [holdFor, setHoldFor] = useState<MissingIn2B | null>(null);
   const [holdReason, setHoldReason] = useState('');
 
-  const loadUploads = useCallback(async (selectLatest = false) => {
-    const res = await axios.get(gstr2bUploads);
-    const list: Gstr2bSummary[] = res.data?.data ?? [];
-    setUploads(list);
-    if (selectLatest || (uploadId == null && list.length)) setUploadId(list[0]?.upload_sno ?? null);
+  useEffect(() => { dispatch(fetchHierarchy()); }, [dispatch]);
+
+  // company picked: list its files and its invoices missing in 2B; no file is opened until the user picks one
+  useEffect(() => {
+    setUploadId(null);
+    setUploads([]);
+    setMissing([]);
+    if (!comSno) return;
+    let stale = false;
+    setLoading(true);
+    Promise.all([fetchUploads(comSno), fetchMissing(comSno)])
+      .then(([u, m]) => { if (!stale) { setUploads(u); setMissing(m); } })
+      .catch(err => { if (!stale) toast.error(getErrorMessage(err, 'Failed to load GSTR-2B data')); })
+      .finally(() => { if (!stale) setLoading(false); });
+    return () => { stale = true; };
+  }, [comSno]);
+
+  // file picked: load its rows
+  useEffect(() => {
+    setRows([]);
+    if (uploadId == null) return;
+    let stale = false;
+    fetchRows(uploadId)
+      .then(r => { if (!stale) setRows(r); })
+      .catch(err => { if (!stale) toast.error(getErrorMessage(err, 'Failed to load the GSTR-2B rows')); });
+    return () => { stale = true; };
   }, [uploadId]);
 
-  const loadRows = useCallback(async (id: number | null) => {
-    if (id == null) { setRows([]); return; }
-    const res = await axios.get(gstr2bUploadDetail(id));
-    setRows(res.data?.data?.rows ?? []);
-  }, []);
-
-  const loadMissing = useCallback(async () => {
-    const res = await axios.get(gstr2bMissing);
-    setMissing(res.data?.data ?? []);
-  }, []);
-
   const refresh = useCallback(async () => {
+    if (!comSno) return;
     setLoading(true);
     try {
-      await Promise.all([loadUploads(), loadRows(uploadId), loadMissing()]);
+      const [u, m, r] = await Promise.all([
+        fetchUploads(comSno), fetchMissing(comSno), uploadId != null ? fetchRows(uploadId) : Promise.resolve([] as Gstr2bRow[]),
+      ]);
+      setUploads(u);
+      setMissing(m);
+      setRows(r);
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to load GSTR-2B data'));
     } finally {
       setLoading(false);
     }
-  }, [loadUploads, loadRows, loadMissing, uploadId]);
+  }, [comSno, uploadId]);
 
-  useEffect(() => { refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [uploadId]);
-
+  const company = companies.find(c => String(c.com_sno) === comSno) ?? null;
   const current = uploads.find(u => u.upload_sno === uploadId) ?? null;
   const byStatus = useMemo(() => {
     const g = (s: string) => rows.filter(r => r.match_status === s);
@@ -103,17 +128,21 @@ const Gstr2bPage: React.FC = () => {
   }, [rows]);
 
   const upload = async (file: File) => {
+    if (!comSno) { toast.error('Select the company first'); return; }
     if (!/^(0[1-9]|1[0-2])\d{4}$/.test(period)) { toast.error('Return period must be MMYYYY, e.g. 102026'); return; }
     setUploading(true);
     try {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('return_period', period);
-      if (comSno) fd.append('com_sno', comSno);
+      fd.append('com_sno', comSno);
       const res = await axios.post(gstr2bUpload, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       const s: Gstr2bSummary = res.data?.data?.summary;
       toast.success(`Loaded ${s.row_count} rows: ${s.matched} matched, ${s.mismatch} mismatch, ${s.unmatched} not in books`);
-      await loadUploads(true);
+      const [u, m] = await Promise.all([fetchUploads(comSno), fetchMissing(comSno)]);
+      setUploads(u);
+      setMissing(m);
+      setUploadId(s.upload_sno); // the file just uploaded is opened
       if (s.unmatched > 0) setTab('Unmatched');
     } catch (err) {
       toast.error(getErrorMessage(err, 'Upload failed'));
@@ -173,7 +202,7 @@ const Gstr2bPage: React.FC = () => {
       const status = res.data?.data?.match_status;
       toast.success(`${form.invoice_no} saved — now ${status === 'Unmatched' ? 'not in books' : String(status).toLowerCase()}`);
       setEditRow(null);
-      await Promise.all([loadUploads(), loadRows(uploadId)]);
+      await refresh();
       if (status) setTab(status as Tab);
     } catch (err) {
       toast.error(getErrorMessage(err, 'Could not save the 2B row'));
@@ -199,7 +228,7 @@ const Gstr2bPage: React.FC = () => {
       toast.success(override === 'Y' ? `${inv.invoice_no}: payment hold released` : `${inv.invoice_no}: hold restored`);
       setHoldFor(null);
       setHoldReason('');
-      await loadMissing();
+      setMissing(await fetchMissing(comSno));
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to update the hold'));
     } finally {
@@ -219,7 +248,8 @@ const Gstr2bPage: React.FC = () => {
     </div>
   );
 
-  const invoiceTable = (list: Gstr2bRow[], actions: boolean) => list.length === 0 ? empty('Nothing here') : (
+  const invoiceTable = (list: Gstr2bRow[], actions: boolean) => uploadId == null ? empty('Select a GSTR-2B file above to see its rows.')
+    : list.length === 0 ? empty('Nothing here') : (
     <div className="border rounded-xl overflow-x-auto">
       <Table>
         <TableHeader>
@@ -285,133 +315,146 @@ const Gstr2bPage: React.FC = () => {
         <Button
           variant="outline" size="sm"
           className="border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
-          onClick={refresh} disabled={loading}
+          onClick={refresh} disabled={loading || !comSno}
         >
           <RefreshCw size={15} className={loading ? 'mr-1 animate-spin' : 'mr-1'} /> Refresh
         </Button>
       </PageHeader>
 
       <div className="container mx-auto py-6 px-4 space-y-6">
-        {canCreate(SCREEN) && (
-          <Card className="shadow-md">
-            <CardContent className="pt-6 space-y-4">
+        <Card className="shadow-md">
+          <CardContent className="pt-6 space-y-6">
+            <FormSection icon={FileSpreadsheet} title="Company and GSTR-2B file">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
+                <div className="flex flex-col">
+                  <CustomInputField
+                    field="com_sno" label="Company" require type="select"
+                    options={companies.map(c => ({ label: c.com_name, value: String(c.com_sno) }))}
+                    value={comSno} onChange={(v) => setComSno(String(v))} className="h-10"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <CustomInputField
+                    field="upload" label="GSTR-2B file" require type="select" disabled={!comSno || uploads.length === 0}
+                    options={uploads.map(u => ({ label: `${periodLabel(u.return_period)} · ${u.file_name ?? 'file'} · ${u.row_count} rows`, value: String(u.upload_sno) }))}
+                    value={uploadId != null ? String(uploadId) : ''} onChange={(v) => setUploadId(Number(v))} className="h-10"
+                  />
+                </div>
+              </div>
+              <p className="pt-1 text-xs text-muted-foreground">
+                {!comSno ? 'Select a company to see its uploaded GSTR-2B files.'
+                  : loading && uploads.length === 0 ? 'Loading files…'
+                  : uploads.length === 0 ? `No GSTR-2B uploaded for ${company?.com_name ?? 'this company'} yet.`
+                  : current
+                    ? `Period ${periodLabel(current.return_period)} · uploaded by ${current.uploaded_by ?? '—'} · ${current.matched} matched · ${current.mismatch} mismatch · ${current.unmatched} not in books`
+                    : 'Select a GSTR-2B file to see its details.'}
+              </p>
+            </FormSection>
+
+            {canCreate(SCREEN) && (
               <FormSection icon={Upload} title="Upload GSTR-2B">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-5">
-                  <div className="flex flex-col">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                  <div className="flex flex-col sm:w-64">
                     <CustomInputField
                       field="return_period" label="Return period (MMYYYY)" require type="text"
                       value={period} onChange={(v) => setPeriod(String(v).replace(/\D/g, '').slice(0, 6))} className="h-10"
                     />
                   </div>
-                  {companies.length > 0 && (
-                    <div className="flex flex-col">
-                      <CustomInputField
-                        field="com_sno" label="Company" type="select"
-                        options={companies.map(c => ({ label: c.com_name, value: String(c.com_sno) }))}
-                        value={comSno} onChange={(v) => setComSno(String(v))} className="h-10"
-                      />
-                    </div>
-                  )}
-                  {uploads.length > 0 && (
-                    <div className="flex flex-col">
-                      <CustomInputField
-                        field="upload" label="Showing upload" type="select"
-                        options={uploads.map(u => ({ label: `${periodLabel(u.return_period)} · ${u.file_name ?? 'file'} · ${u.row_count} rows`, value: String(u.upload_sno) }))}
-                        value={uploadId != null ? String(uploadId) : ''} onChange={(v) => setUploadId(Number(v))} className="h-10"
-                      />
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center justify-between pt-1">
-                  <p className="text-xs text-muted-foreground">
-                    {current
-                      ? `Period ${periodLabel(current.return_period)} · uploaded by ${current.uploaded_by ?? '—'} · ${current.matched} matched · ${current.mismatch} mismatch · ${current.unmatched} not in books`
-                      : 'Download the GSTR-2B Excel from the GST portal and upload it here.'}
-                  </p>
                   <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); }} />
-                  <Button type="button" disabled={uploading} onClick={() => fileRef.current?.click()} className="h-9">
+                  <Button type="button" disabled={uploading || !comSno} onClick={() => fileRef.current?.click()} className="h-10">
                     {uploading ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
                     {uploading ? 'Uploading…' : 'Upload GSTR-2B (.xlsx)'}
                   </Button>
                 </div>
+                <p className="pt-1 text-xs text-muted-foreground">
+                  {company
+                    ? `The file is saved under ${company.com_name}. Download that company's GSTR-2B Excel from the GST portal and upload it here.`
+                    : 'Select the company first. The file is saved under that company and only its users can see it.'}
+                </p>
               </FormSection>
+            )}
+          </CardContent>
+        </Card>
+
+        {!comSno ? (
+          <Card className="shadow-md">
+            <CardContent className="pt-6">{empty('Select a company and a GSTR-2B file to see the details.')}</CardContent>
+          </Card>
+        ) : (
+          <Card className="shadow-md">
+            <CardContent className="pt-6">
+              <Tabs value={tab} onValueChange={v => setTab(v as Tab)}>
+                <TabsList className="mb-3 flex h-auto flex-wrap justify-start">
+                  {(Object.keys(TAB_LABEL) as Tab[]).map(t => (
+                    <TabsTrigger key={t} value={t}>
+                      {TAB_LABEL[t]}
+                      <Badge variant={(t === 'Unmatched' || t === 'Mismatch') && counts[t] ? 'destructive' : 'secondary'} className="ml-2 text-xs">{counts[t]}</Badge>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+
+                <TabsContent value="Matched">{invoiceTable(byStatus.Matched, false)}</TabsContent>
+                <TabsContent value="Mismatch" className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Same invoice number as in your books, but the amounts differ. Correct the invoice, or dismiss once resolved.</p>
+                  {invoiceTable(byStatus.Mismatch, true)}
+                </TabsContent>
+                <TabsContent value="Unmatched" className="space-y-2">
+                  <p className="text-xs text-muted-foreground">In the supplier's 2B but not in your books. Find the supplier to add the invoice, or skip it.</p>
+                  {invoiceTable(byStatus.Unmatched, true)}
+                </TabsContent>
+                <TabsContent value="Added">{invoiceTable(byStatus.Added, false)}</TabsContent>
+                <TabsContent value="Info" className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Supplier credit / debit notes from 2B. Listed for reference — not matched to your notes yet.</p>
+                  {invoiceTable(byStatus.Info, false)}
+                </TabsContent>
+
+                <TabsContent value="Missing" className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    {company?.com_name ?? 'This company'}'s invoices from GST-registered suppliers that are not in a GSTR-2B yet. They cannot be paid until they appear — or until you release the hold.
+                  </p>
+                  {missing.length === 0 ? empty('No invoices waiting for 2B') : (
+                    <div className="border rounded-xl overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50 hover:bg-muted/50">
+                            <TableHead className="text-xs">Supplier</TableHead>
+                            <TableHead className="text-xs">GSTIN</TableHead>
+                            <TableHead className="text-xs">Supplier invoice</TableHead>
+                            <TableHead className="text-xs">Date</TableHead>
+                            <TableHead className="text-xs text-right">Amount</TableHead>
+                            <TableHead className="text-xs">Payment</TableHead>
+                            <TableHead className="w-36" />
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {missing.map(m => (
+                            <TableRow key={m.invoice_sno}>
+                              <TableCell className="text-xs">{m.vendor_name ?? '—'}</TableCell>
+                              <TableCell className="text-xs font-mono">{m.gst_no}</TableCell>
+                              <TableCell className="text-xs">{m.vendor_invoice_no ?? '—'}</TableCell>
+                              <TableCell className="text-xs">{m.invoice_date ?? '—'}</TableCell>
+                              <TableCell className="text-xs text-right">₹{money(m.invoice_amount)}</TableCell>
+                              <TableCell>
+                                {m.payment_hold_override === 'Y'
+                                  ? <Badge className="bg-green-100 text-green-800 text-[10px]">Hold released</Badge>
+                                  : <Badge variant="destructive" className="text-[10px]">On hold</Badge>}
+                              </TableCell>
+                              <TableCell className="text-right whitespace-nowrap">
+                                {canEdit(SCREEN) && (m.payment_hold_override === 'Y'
+                                  ? <Button size="sm" variant="ghost" className="h-7 text-xs" disabled={working} onClick={() => saveOverride(m, 'N')}>Restore hold</Button>
+                                  : <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setHoldFor(m); setHoldReason(''); }}>Release hold</Button>)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         )}
-
-        <Card className="shadow-md">
-          <CardContent className="pt-6">
-            <Tabs value={tab} onValueChange={v => setTab(v as Tab)}>
-              <TabsList className="mb-3 flex h-auto flex-wrap justify-start">
-                {(Object.keys(TAB_LABEL) as Tab[]).map(t => (
-                  <TabsTrigger key={t} value={t}>
-                    {TAB_LABEL[t]}
-                    <Badge variant={(t === 'Unmatched' || t === 'Mismatch') && counts[t] ? 'destructive' : 'secondary'} className="ml-2 text-xs">{counts[t]}</Badge>
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-
-              <TabsContent value="Matched">{invoiceTable(byStatus.Matched, false)}</TabsContent>
-              <TabsContent value="Mismatch" className="space-y-2">
-                <p className="text-xs text-muted-foreground">Same invoice number as in your books, but the amounts differ. Correct the invoice, or dismiss once resolved.</p>
-                {invoiceTable(byStatus.Mismatch, true)}
-              </TabsContent>
-              <TabsContent value="Unmatched" className="space-y-2">
-                <p className="text-xs text-muted-foreground">In the supplier's 2B but not in your books. Find the supplier to add the invoice, or skip it.</p>
-                {invoiceTable(byStatus.Unmatched, true)}
-              </TabsContent>
-              <TabsContent value="Added">{invoiceTable(byStatus.Added, false)}</TabsContent>
-              <TabsContent value="Info" className="space-y-2">
-                <p className="text-xs text-muted-foreground">Supplier credit / debit notes from 2B. Listed for reference — not matched to your notes yet.</p>
-                {invoiceTable(byStatus.Info, false)}
-              </TabsContent>
-
-              <TabsContent value="Missing" className="space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  Your invoices from GST-registered suppliers that are not in a GSTR-2B yet. They cannot be paid until they appear — or until you release the hold.
-                </p>
-                {missing.length === 0 ? empty('No invoices waiting for 2B') : (
-                  <div className="border rounded-xl overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/50 hover:bg-muted/50">
-                          <TableHead className="text-xs">Supplier</TableHead>
-                          <TableHead className="text-xs">GSTIN</TableHead>
-                          <TableHead className="text-xs">Supplier invoice</TableHead>
-                          <TableHead className="text-xs">Date</TableHead>
-                          <TableHead className="text-xs text-right">Amount</TableHead>
-                          <TableHead className="text-xs">Payment</TableHead>
-                          <TableHead className="w-36" />
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {missing.map(m => (
-                          <TableRow key={m.invoice_sno}>
-                            <TableCell className="text-xs">{m.vendor_name ?? '—'}</TableCell>
-                            <TableCell className="text-xs font-mono">{m.gst_no}</TableCell>
-                            <TableCell className="text-xs">{m.vendor_invoice_no ?? '—'}</TableCell>
-                            <TableCell className="text-xs">{m.invoice_date ?? '—'}</TableCell>
-                            <TableCell className="text-xs text-right">₹{money(m.invoice_amount)}</TableCell>
-                            <TableCell>
-                              {m.payment_hold_override === 'Y'
-                                ? <Badge className="bg-green-100 text-green-800 text-[10px]">Hold released</Badge>
-                                : <Badge variant="destructive" className="text-[10px]">On hold</Badge>}
-                            </TableCell>
-                            <TableCell className="text-right whitespace-nowrap">
-                              {canEdit(SCREEN) && (m.payment_hold_override === 'Y'
-                                ? <Button size="sm" variant="ghost" className="h-7 text-xs" disabled={working} onClick={() => saveOverride(m, 'N')}>Restore hold</Button>
-                                : <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setHoldFor(m); setHoldReason(''); }}>Release hold</Button>)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
       </div>
 
       {/* supplier candidates */}

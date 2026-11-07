@@ -105,11 +105,75 @@ export function statusMeta(map: Record<string, StatusMeta>, key: unknown): Statu
 
 // ─── Agreement types ───────────────────────────────────────────────────────
 
+/** The agreements that raise a PO each cycle (Service PO / Service GRN work with these only). */
 export type AgreementType = 'FIXED_RECURRING' | 'VARIABLE_RECURRING';
+/**
+ * Everything the Service Agreement screen can make: the two PO kinds plus Statutory (backend sql/157) - a government /
+ * utility due (PF, ESI, professional tax, property tax, electricity ...) that, once approved, is paid on Statutory
+ * Payments instead of through a PO.
+ */
+export type ServiceAgreementKind = AgreementType | 'STATUTORY';
 
-export const AGREEMENT_TYPE_LABEL: Record<AgreementType, string> = {
+export const AGREEMENT_TYPE_LABEL: Record<ServiceAgreementKind, string> = {
   FIXED_RECURRING: 'Fixed',
   VARIABLE_RECURRING: 'Unfixed',
+  STATUTORY: 'Statutory',
+};
+
+export const isStatutoryAgreement = (type?: string | null) => type === 'STATUTORY';
+
+/** The Statutory Payments block of a Statutory agreement (sql/157), as the list / approval rows carry it. */
+export interface StatutoryDueInfo {
+  kind: 'OTHER' | 'GST';
+  amount_type: 'FIXED' | 'UNFIXED';
+  payee_sno?: number | null;
+  payee_name?: string | null;
+  payee_online?: 'Y' | 'N' | null;
+  reference_no?: string | null;
+  /** due dates still waiting for their amount on Statutory Payments (grn sql/96) */
+  waiting_count?: number | null;
+  last_due_date?: string | null;
+}
+
+export const STATUTORY_TAB_LABEL: Record<StatutoryDueInfo['kind'], string> = { OTHER: 'Others', GST: 'GST' };
+export const STATUTORY_AMOUNT_LABEL: Record<StatutoryDueInfo['amount_type'], string> = { FIXED: 'Fixed amount', UNFIXED: 'Unfixed amount' };
+
+/** "Others tab · Unfixed amount · pay to EPFO" - one line for lists. */
+export const statutoryDueSummary = (d?: Partial<StatutoryDueInfo> | null): string => {
+  if (!d?.kind) return '';
+  const tab = STATUTORY_TAB_LABEL[d.kind as StatutoryDueInfo['kind']] ?? d.kind;
+  const amount = d.amount_type ? STATUTORY_AMOUNT_LABEL[d.amount_type as StatutoryDueInfo['amount_type']] ?? d.amount_type : '';
+  return [`${tab} tab`, amount, `pay to ${d.payee_name || `the default ${tab} payee`}`].filter(Boolean).join(' · ');
+};
+
+/** What the Statutory agreement form holds for its Statutory Payments block (strings, as form fields are). */
+export interface StatutoryDueForm {
+  kind: StatutoryDueInfo['kind'];
+  amount_type: StatutoryDueInfo['amount_type'];
+  payee_sno: string;
+  reference_no: string;
+}
+
+export const emptyStatutoryDue = (): StatutoryDueForm => ({ kind: 'OTHER', amount_type: 'UNFIXED', payee_sno: '', reference_no: '' });
+
+export const statutoryDueFromRow = (d?: Partial<StatutoryDueInfo> | null): StatutoryDueForm => ({
+  kind: d?.kind === 'GST' ? 'GST' : 'OTHER',
+  amount_type: d?.amount_type === 'FIXED' ? 'FIXED' : 'UNFIXED',
+  payee_sno: d?.payee_sno != null ? String(d.payee_sno) : '',
+  reference_no: d?.reference_no ?? '',
+});
+
+/** The body sql/157 expects: { kind, amount_type, payee_sno | null, reference_no | null }. */
+export const statutoryDuePayload = (f: StatutoryDueForm) => ({
+  kind: f.kind, amount_type: f.amount_type, payee_sno: f.payee_sno ? Number(f.payee_sno) : null, reference_no: f.reference_no.trim() || null,
+});
+
+/** Why the Statutory Payments block cannot be submitted yet, or ''. */
+export const statutoryDueProblem = (d?: { kind?: string; amount_type?: string; reference_no?: string } | null): string => {
+  if (!d || !['OTHER', 'GST'].includes(String(d.kind))) return 'Choose where it is paid on Statutory Payments: Others or GST';
+  if (!['FIXED', 'UNFIXED'].includes(String(d.amount_type))) return 'Choose Fixed or Unfixed amount';
+  if ((d.reference_no ?? '').trim().length > 40) return 'The reference number can be at most 40 characters';
+  return '';
 };
 
 /** Unfixed agreements have their amount entered per cycle in Service PO. */
@@ -222,6 +286,8 @@ export interface AgreementTerms {
   terms_conditions?: string | null;
   ceiling_amount?: number | null;
   suppliers?: SupplierShare[] | null;
+  /** Statutory agreements only (sql/157) */
+  statutory_due?: Partial<StatutoryDueInfo> | null;
 }
 
 /** A list/approval row (flat columns + `vendors`) in the same shape a version snapshot uses. */
@@ -232,6 +298,7 @@ export function termsFromRow(row: any): AgreementTerms {
     period_start_date: row.period_start_date, period_end_date: row.period_end_date,
     agreement_doc_url: row.agreement_doc_url, remarks: row.remarks, terms_conditions: row.terms_conditions,
     ceiling_amount: row.ceiling_amount, suppliers: row.vendors ?? [],
+    statutory_due: row.statutory_due ?? null,
   };
 }
 
@@ -270,6 +337,17 @@ export function diffTerms(prev: AgreementTerms | null | undefined, cur: Agreemen
   prevMap.forEach((s, k) => {
     if (!curMap.has(k)) out.push({ label: s.vendor_name ?? `Supplier ${k}`, from: money(s.share_amount), to: 'Removed' });
   });
+
+  // Statutory agreements: where on Statutory Payments, fixed or not, who is paid
+  if (prev.statutory_due || cur.statutory_due) {
+    const p = prev.statutory_due ?? {}, c = cur.statutory_due ?? {};
+    const tab = (v: unknown) => (v ? `${STATUTORY_TAB_LABEL[v as StatutoryDueInfo['kind']] ?? v} tab` : '—');
+    const amt = (v: unknown) => (v ? STATUTORY_AMOUNT_LABEL[v as StatutoryDueInfo['amount_type']] ?? String(v) : '—');
+    cmp('Paid on Statutory Payments', p.kind, c.kind, tab);
+    cmp('Amount', p.amount_type, c.amount_type, amt);
+    if (String(p.payee_sno ?? '') !== String(c.payee_sno ?? '')) out.push({ label: 'Pay to', from: p.payee_name || 'Default payee', to: c.payee_name || 'Default payee' });
+    cmp('Reference no.', p.reference_no, c.reference_no, plain);
+  }
 
   if ((prev.terms_conditions ?? '') !== (cur.terms_conditions ?? '')) out.push({ label: 'Terms & conditions', note: 'Wording updated' });
   if ((prev.remarks ?? '') !== (cur.remarks ?? '')) out.push({ label: 'Remarks', note: 'Updated' });

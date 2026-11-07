@@ -24,13 +24,24 @@ import {
   ArrowUp,
   ArrowDown,
   Save,
+  Check,
   CheckCircle,
   ChevronDown,
   ChevronUp,
+  ChevronsUpDown,
   Layers,
   RotateCcw,
   Loader2,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { useApprovalFlowHierarchy, CascadeOption } from "@/FieldDatas/ApprovalWorkFlow";
 import { toast } from "sonner";
 import usePost from "@/hooks/usePostHook";
@@ -63,6 +74,8 @@ import {
 import {
   buildWorkflowLabels,
   buildWorkflowOptionParts,
+  departmentsHeldBy,
+  departmentsOfferedForWorkflow,
   planTypeRowSync,
   serializeStages,
   validateStageRouting,
@@ -149,6 +162,105 @@ const YN_OPTIONS = [
   { label: "Yes", value: "Y" },
   { label: "No", value: "N" },
 ];
+
+type WorkflowPickerOption = {
+  label: string;
+  sublabel?: string;
+  value: string;
+};
+
+/** A roomy, searchable picker for workflow names that also carry a scope line. */
+function WorkflowPicker({
+  options,
+  value,
+  onChange,
+  loading,
+}: {
+  options: WorkflowPickerOption[];
+  value: string;
+  onChange: (value: string) => void;
+  loading: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === String(value));
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-label="Select workflow"
+          aria-expanded={open}
+          disabled={loading}
+          className="h-auto min-h-14 w-full justify-start gap-3 rounded-lg bg-background px-3 py-2.5 text-left font-normal shadow-sm hover:bg-muted/50"
+        >
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            {loading ? <Loader2 className="size-4 animate-spin" /> : <Layers className="size-4" />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className={selected ? "block truncate text-sm font-medium text-foreground" : "block text-sm text-muted-foreground"}>
+              {loading ? "Loading workflows…" : selected?.label ?? "Choose a workflow"}
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+              {selected?.sublabel ?? (loading ? "Please wait" : "Search by type, division, or branch")}
+            </span>
+          </span>
+          <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        className="w-[var(--radix-popover-trigger-width)] overflow-hidden rounded-lg p-0 shadow-lg"
+      >
+        <Command>
+          <CommandInput placeholder="Search workflows…" />
+          <CommandList className="max-h-[22rem] p-1.5">
+            <CommandEmpty>No matching workflow found.</CommandEmpty>
+            <CommandGroup className="p-0">
+              {options.map((option) => {
+                const isSelected = option.value === String(value);
+                return (
+                  <CommandItem
+                    key={option.value}
+                    value={`${option.label} ${option.sublabel ?? ""} ${option.value}`}
+                    onSelect={() => {
+                      onChange(option.value);
+                      setOpen(false);
+                    }}
+                    className="mb-1 min-h-14 items-start gap-3 rounded-md px-3 py-2.5 last:mb-0"
+                  >
+                    <span
+                      className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md ${
+                        isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      <Layers className="size-3.5" />
+                    </span>
+                    <span className="min-w-0 flex-1 text-left">
+                      <span className="block text-sm font-medium leading-5 text-foreground">
+                        {option.label}
+                      </span>
+                      {option.sublabel && (
+                        <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">
+                          {option.sublabel}
+                        </span>
+                      )}
+                    </span>
+                    <Check className={`mt-1 size-4 shrink-0 text-primary ${isSelected ? "opacity-100" : "opacity-0"}`} />
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 const JSON_RESULT_KEY = "JSON_F52E2B61-18A1-11d1-B105-00805F49916B";
 
@@ -247,6 +359,12 @@ const WorkflowTypeCard: React.FC<{
   employeeOptions: { label: string; value: string }[];
   allDepartments: CascadeOption[];
   /**
+   * Departments already held by ANOTHER workflow of this entity type (dept_sno → that workflow's
+   * label). The Department picker leaves them out — a department has one workflow per entity type —
+   * unless this type already has them selected.
+   */
+  claimedDepts: ReadonlyMap<string, string>;
+  /**
    * What a stage condition can test for this kind of workflow, from the field registry.
    * null = not known yet (loading / failed) · [] = this kind of workflow has no conditions.
    */
@@ -271,6 +389,7 @@ const WorkflowTypeCard: React.FC<{
     typeIndex,
     employeeOptions,
     allDepartments,
+    claimedDepts,
     conditionFields,
     entityType,
     lookups,
@@ -294,13 +413,32 @@ const WorkflowTypeCard: React.FC<{
     // options carry raw numeric ids, and the multi-select matches with ===. Without
     // this, a saved department shows no chip or tick, and clicking it adds a second
     // copy instead of deselecting it — so departments couldn't be removed on edit.
+    // The Department picker offers a department that has no workflow yet for this entity type (e.g. one
+    // just added) or is already in this workflow; ones another workflow of the type holds are left out.
+    // Branch access needs no extra check here: the branch options come from the user's own hierarchy and
+    // the department list is scoped to it by the backend.
     const workflowTypeFields = useMemo(
       () =>
-        rawTypeFields.map((f) =>
-          f.options ? { ...f, options: f.options.map((o) => ({ ...o, value: String(o.value) })) } : f
-        ),
-      [rawTypeFields]
+        rawTypeFields.map((f) => {
+          if (!f.options) return f;
+          const options = f.options.map((o) => ({ ...o, value: String(o.value) }));
+          return {
+            ...f,
+            options: f.field === "dept_snos" ? departmentsOfferedForWorkflow(options, claimedDepts, type.dept_snos) : options,
+          };
+        }),
+      [rawTypeFields, claimedDepts, type.dept_snos]
     );
+    // Departments of the chosen branches that are not offered, and which workflow holds them.
+    const hiddenDepts = useMemo(() => {
+      if (claimedDepts.size === 0) return [];
+      const offered = new Set(
+        (workflowTypeFields.find((f) => f.field === "dept_snos")?.options ?? []).map((o) => String(o.value))
+      );
+      return (rawTypeFields.find((f) => f.field === "dept_snos")?.options ?? [])
+        .filter((o) => claimedDepts.has(String(o.value)) && !offered.has(String(o.value)))
+        .map((o) => ({ name: o.label, workflow: claimedDepts.get(String(o.value)) ?? "another workflow" }));
+    }, [claimedDepts, rawTypeFields, workflowTypeFields]);
 
     const handleTypeField = useCallback(
       (field: string, v: any) => {
@@ -394,6 +532,14 @@ const WorkflowTypeCard: React.FC<{
               />
             ))}
           </div>
+          {hiddenDepts.length > 0 && (
+            <p className="text-[11px] text-muted-foreground" data-testid="hidden-departments">
+              {hiddenDepts.length} department{hiddenDepts.length > 1 ? "s" : ""} not listed — already in another
+              workflow of this entity type:{" "}
+              {hiddenDepts.slice(0, 3).map((d) => `${d.name} (${d.workflow})`).join(", ")}
+              {hiddenDepts.length > 3 ? ` +${hiddenDepts.length - 3} more` : ""}.
+            </p>
+          )}
           <CustomInputField
             {...workflowTypeFields[6]}
             value={type.is_active}
@@ -646,6 +792,51 @@ export default function ApprovalFlowDynamic() {
     }),
     [workflows, workflowLabels, workflowOptionParts]
   );
+
+  // ── Departments already held by another workflow of this entity type ──────
+  // A department has one workflow per entity type, so each type's Department picker leaves out the
+  // ones the OTHER workflows of this entity type hold, and offers the rest: departments with no
+  // workflow yet (e.g. newly added) plus the ones already in the workflow being edited.
+  const editingWorkflowId = mode === "create" ? undefined : selectedRow?.workflow_id;
+  const siblingWorkflowIds = useMemo(
+    () =>
+      activeEntityType
+        ? workflows
+            .filter((w) => w.entity_type === activeEntityType && w.workflow_id !== editingWorkflowId)
+            .map((w) => w.workflow_id)
+        : [],
+    [workflows, activeEntityType, editingWorkflowId]
+  );
+  const [claimedByWorkflow, setClaimedByWorkflow] = useState<Map<string, number>>(() => new Map());
+  useEffect(() => {
+    if (siblingWorkflowIds.length === 0) {
+      setClaimedByWorkflow(new Map());
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      siblingWorkflowIds.map(async (id) => {
+        try {
+          const res = await axios.get(apiGetWorkflowTypes(id));
+          const { workflowTypes } = extractWorkflowPayload(res.data, id);
+          return departmentsHeldBy(workflowTypes).map((dept) => [dept, id] as [string, number]);
+        } catch {
+          // If one workflow can't be read, don't hide anything on its account.
+          return [] as [string, number][];
+        }
+      })
+    ).then((held) => {
+      if (!cancelled) setClaimedByWorkflow(new Map(held.flat()));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [siblingWorkflowIds]);
+  const claimedDepts = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const [dept, id] of claimedByWorkflow) out.set(dept, workflowLabels.get(id) ?? `Workflow #${id}`);
+    return out;
+  }, [claimedByWorkflow, workflowLabels]);
 
   // ── Branch parent lookup ──────────────────────────────────────────────────
   const buildBranchParent = useCallback((): Record<string, { div_sno: string; com_sno: string }> => {
@@ -1121,18 +1312,18 @@ export default function ApprovalFlowDynamic() {
           <div className="p-5 space-y-5">
 
             {/* Select Workflow */}
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                Select Workflow
-              </p>
-              <CustomInputField
-                field="workflow"
-                label="Workflow"
-                type="select"
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Workflow</p>
+                <p className="mt-1 text-xs leading-4 text-muted-foreground">
+                  Choose an approval flow to view or configure.
+                </p>
+              </div>
+              <WorkflowPicker
                 options={workflowOptions}
                 value={selectedId}
                 onChange={handleSelectById}
-                placeholder={listLoading ? "Loading workflows…" : "Choose a workflow…"}
+                loading={listLoading}
               />
             </div>
 
@@ -1400,6 +1591,7 @@ export default function ApprovalFlowDynamic() {
                     typeIndex={index}
                     employeeOptions={approverOptions}
                     allDepartments={allDepartments}
+                    claimedDepts={claimedDepts}
                     conditionFields={conditionFields}
                     entityType={activeEntityType}
                     lookups={conditionLookups}

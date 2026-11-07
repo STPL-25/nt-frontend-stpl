@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import ThemeSettings from '@/components/ThemeSettings';
 import type { SupplierProfile } from '@/Services/SupplierService';
+import SupplierNotificationBell from './SupplierNotificationBell';
+import type { SupplierNotificationTarget } from './supplierNotificationModel';
 
 interface Props {
   supplier: SupplierProfile;
@@ -19,9 +21,11 @@ interface Props {
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
   onLogout: () => void;
+  /** Take the supplier to the screen a notification is about. */
+  onOpenNotification: (target: SupplierNotificationTarget) => void;
 }
 
-const SupplierHeader: React.FC<Props> = ({ supplier, title, sidebarOpen, setSidebarOpen, onLogout }) => {
+const SupplierHeader: React.FC<Props> = ({ supplier, title, sidebarOpen, setSidebarOpen, onLogout, onOpenNotification }) => {
   const [themeSettingsOpen, setThemeSettingsOpen] = useState(false);
 
   const displayName = supplier.company_name ?? supplier.email;
@@ -29,10 +33,10 @@ const SupplierHeader: React.FC<Props> = ({ supplier, title, sidebarOpen, setSide
 
   return (
     <>
-      <div className="h-0.5 w-full bg-gradient-to-r from-primary/40 via-primary to-primary/40 print:hidden" />
+      <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-primary to-transparent print:hidden" />
 
-      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-xl shadow-sm print:hidden">
-        <div className="flex items-center justify-between gap-2 px-4 py-2 lg:px-6">
+      <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 shadow-sm backdrop-blur-2xl print:hidden">
+        <div className="flex min-h-14 items-center justify-between gap-2 px-2.5 py-2 sm:px-4 lg:px-6">
           {/* Left */}
           <div className="flex min-w-0 items-center gap-3">
             <div className="lg:hidden">
@@ -41,16 +45,15 @@ const SupplierHeader: React.FC<Props> = ({ supplier, title, sidebarOpen, setSide
               </Button>
             </div>
 
-            <div className="hidden h-5 w-px bg-border lg:block" />
-
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="hidden h-1.5 w-1.5 shrink-0 rounded-full bg-primary lg:block" />
+            <div className="flex min-w-0 items-center">
               <span className="truncate text-sm font-semibold tracking-wide text-primary">{title.toUpperCase()}</span>
             </div>
           </div>
 
           {/* Right */}
           <div className="flex shrink-0 items-center gap-1">
+            <SupplierNotificationBell onOpen={onOpenNotification} />
+
             <Button
               variant="ghost"
               size="icon"
@@ -65,7 +68,7 @@ const SupplierHeader: React.FC<Props> = ({ supplier, title, sidebarOpen, setSide
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-9 gap-2 px-2 rounded-xl hover:bg-primary/10">
+                <Button variant="ghost" className="h-10 gap-2 rounded-xl border border-transparent px-1.5 hover:border-primary/10 hover:bg-primary/10 sm:px-2">
                   <div className="relative">
                     <Avatar className="h-7 w-7 ring-2 ring-primary/30">
                       <AvatarFallback className="bg-primary text-xs font-bold text-primary-foreground">

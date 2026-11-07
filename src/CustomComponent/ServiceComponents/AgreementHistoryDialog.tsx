@@ -12,7 +12,7 @@ import {
 } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import {
   AGREEMENT_STATUS, CYCLE_STATUS, HISTORY_EVENT, VERSION_ACTION, VERSION_OUTCOME,
-  diffTerms, formatDate, formatINR, statusMeta,
+  diffTerms, formatDate, formatINR, statusMeta, statutoryDueSummary,
   type AgreementTerms,
 } from '@/CustomComponent/ServiceComponents/serviceUtils';
 
@@ -67,6 +67,8 @@ const VersionCard: React.FC<{
   const t = useMemo<AgreementTerms>(() => version.terms ?? {}, [version.terms]);
   const changes = useMemo(() => diffTerms(previous?.terms, t), [previous, t]);
   const suppliers = t.suppliers ?? [];
+  // a Statutory agreement (sql/157) keeps its Statutory Payments block in every version
+  const statutory = !!t.statutory_due;
 
   return (
     <li className="relative pl-8">
@@ -137,12 +139,16 @@ const VersionCard: React.FC<{
             )}
 
             <FactGrid>
-              <Fact label="Service">{t.service_name ?? '—'}</Fact>
-              <Fact label="Quantity">{t.qty ?? '—'}</Fact>
-              <Fact label="Rate">{t.rate_amount != null ? `${formatINR(t.rate_amount)}${t.rate_uom_name ? ` / ${t.rate_uom_name}` : ''}` : '—'}</Fact>
-              <Fact label="Recurrence">{t.cadence_name ?? '—'}</Fact>
-              <Fact label="PO generation day">{t.po_generation_day ?? '—'}</Fact>
-              <Fact label="Notify before">{t.notify_days_before != null ? `${t.notify_days_before} day${Number(t.notify_days_before) === 1 ? '' : 's'}` : '—'}</Fact>
+              <Fact label={statutory ? 'Due for' : 'Service'}>{t.service_name ?? '—'}</Fact>
+              {!statutory && <Fact label="Quantity">{t.qty ?? '—'}</Fact>}
+              <Fact label={statutory ? 'Amount per due' : 'Rate'}>{t.rate_amount != null ? `${formatINR(t.rate_amount)}${t.rate_uom_name ? ` / ${t.rate_uom_name}` : ''}` : '—'}</Fact>
+              <Fact label={statutory ? 'How often' : 'Recurrence'}>{t.cadence_name ?? '—'}</Fact>
+              <Fact label={statutory ? 'Due day' : 'PO generation day'}>{t.po_generation_day ?? '—'}</Fact>
+              <Fact label={statutory ? 'Shows on Statutory Payments' : 'Notify before'}>
+                {t.notify_days_before != null ? `${t.notify_days_before} day${Number(t.notify_days_before) === 1 ? '' : 's'}${statutory ? ' before due' : ''}` : '—'}
+              </Fact>
+              {statutory && <Fact label="Paid">{statutoryDueSummary(t.statutory_due) || '—'}</Fact>}
+              {statutory && t.statutory_due?.reference_no && <Fact label="Reference no.">{t.statutory_due.reference_no}</Fact>}
               {t.ceiling_amount != null && <Fact label="Ceiling per cycle">{formatINR(t.ceiling_amount)}</Fact>}
               {version.decided_at && <Fact label="Decided">{dateTime(version.decided_at)}</Fact>}
             </FactGrid>

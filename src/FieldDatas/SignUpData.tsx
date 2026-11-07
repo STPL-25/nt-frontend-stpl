@@ -27,7 +27,7 @@ const useSignUpFields = (): FieldType[] => {
 
   return useMemo<FieldType[]>(
     () => [
-      { field: "ecno", label: "Ecno", type: "text", placeholder: "Enter ECNO", require: true },
+      { field: "ecno", label: "Login ID", type: "text", placeholder: "Enter Login ID", require: true },
       // {
       //   field: "com_sno",
       //   label: "Company",
@@ -82,7 +82,7 @@ const useSignUpFields = (): FieldType[] => {
  */
 const useLoginFields = (): FieldType[] => {
   return [
-    { field: "ecno", label: "ECNO / Login ID", type: "text", placeholder: "Enter ECNO or Login ID", require: true },
+    { field: "ecno", label: "Login ID", type: "text", placeholder: "Enter Login ID", require: true },
     { field: "sign_up_pass", label: "Password", type: "password", placeholder: "Enter Password (or temporary password)", require: true, showToggle: true },
   ];
 };

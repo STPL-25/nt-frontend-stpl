@@ -207,7 +207,7 @@ const POPage: React.FC = () => {
           Create PO
         </button>
       </PageHeader>
-      <div className="max-w-7xl mx-auto w-full p-4 sm:p-6">
+      <div className="w-full px-2 pb-6 pt-1 sm:px-3 lg:px-5">
         {/* Filters and Search */}
         <div className="bg-card rounded-lg shadow-sm p-4 sm:p-6 mb-6">
           <div className="flex flex-col sm:flex-row gap-4">

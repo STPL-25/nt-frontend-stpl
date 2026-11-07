@@ -1,4 +1,5 @@
 import { formatDate } from "@/lib/formatDate";
+import { authorizationFiles, changeStatus, stageText, type KycModification } from "./kycModifications";
 
 // Shape of GET /api/kyc/supplier_details/:source/:id — see backend-stpl/sql/108_supplier_full_details.sql.
 export interface SupplierFullDetails {
@@ -36,6 +37,8 @@ export interface SupplierFullDetails {
   contacts: Record<string, any>[];
   documents: Record<string, any>[];
   verifications: Record<string, any>[];
+  /** Changes the supplier made to its own KYC on the portal, newest first (grn sql/92). Absent from an older API. */
+  modifications?: KycModification[];
 }
 
 /** A block of the export: label/value facts, or a table with one row per entry. */
@@ -143,6 +146,20 @@ export function buildSections(d: SupplierFullDetails): DetailSection[] {
         v.is_valid === true || v.is_valid === 1 ? "Yes" : v.is_valid === false || v.is_valid === 0 ? "No" : "—",
         dash(v.pan_status ?? v.gst_status), dash(v.gst_taxpayer_type),
         dash(v.nature_of_business_activities ?? v.major_activity), dash(v.msme_type), dash(formatDate(v.created_at)),
+      ]),
+    });
+  }
+
+  const changes = d.modifications ?? [];
+  if (changes.length > 0) {
+    sections.push({
+      kind: "table",
+      title: `Changes made by the supplier (${changes.length})`,
+      columns: ["#", "Date", "By", "Changed", "Reason", "Status", "Authorization letter"],
+      rows: changes.map((m) => [
+        String(m.version_no), dash(formatDate(m.modified_date)), dash(m.modified_by), dash(m.changed_sections.split(",").join(", ")), dash(m.reason),
+        [changeStatus(m.status).label, m.status === "P" ? stageText(m) : "", m.status === "R" ? m.decision_note ?? "" : ""].filter(Boolean).join(" · "),
+        dash(authorizationFiles(m).map((f) => f.file_name).join(", ")),
       ]),
     });
   }

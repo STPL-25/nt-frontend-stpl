@@ -120,20 +120,6 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
     };
   }, [userData]);
 
-  const rawBasicInfoFields = usePRBasicInfoFields({
-    hierarchyData,
-    selectedCompany,
-    selectedDivision,
-    selectedBranch,
-  });
-  const basicInfoFields = useMemo(
-    () => homeOrg
-      ? rawBasicInfoFields.map((f) =>
-          ['com_sno', 'div_sno', 'brn_sno', 'dept_sno'].includes(f.field) ? { ...f, disabled: true } : f
-        )
-      : rawBasicInfoFields,
-    [rawBasicInfoFields, homeOrg]
-  );
   const itemDetailsFields = usePRItemDetailsFields({
     itemType: currentItemType,
     allowedItemTypes: normalizedAllowedItemTypes,
@@ -144,6 +130,26 @@ const PurchaseRequisitionPage: React.FC<PRPageProps> = ({
 
   // Draft state
   const [basicFormData, setBasicFormData] = useState<Record<string, any>>({});
+
+  // The Department dropdown lists only departments that have a PR approval workflow; the department already on
+  // the form (the locked home department, or a loaded draft's) stays listed so the field never goes blank.
+  const rawBasicInfoFields = usePRBasicInfoFields({
+    hierarchyData,
+    selectedCompany,
+    selectedDivision,
+    selectedBranch,
+    // `||`, not `??`: an untouched form holds '' for Department, which must fall through to the home department
+    // so the list does not change shape the moment the home org is filled in.
+    keepDeptSno: basicFormData.dept_sno || homeOrg?.dept_sno,
+  });
+  const basicInfoFields = useMemo(
+    () => homeOrg
+      ? rawBasicInfoFields.map((f) =>
+          ['com_sno', 'div_sno', 'brn_sno', 'dept_sno'].includes(f.field) ? { ...f, disabled: true } : f
+        )
+      : rawBasicInfoFields,
+    [rawBasicInfoFields, homeOrg]
+  );
   const [savedItems, setSavedItems] = useState<Record<string, any>[]>([]);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});

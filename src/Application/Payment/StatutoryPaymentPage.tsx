@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Building2, CheckCircle2, Download, ExternalLink, Globe, History, Info, Landmark, Loader2, Pencil, Plus, RefreshCw, Users, Wallet, XCircle,
+  AlertTriangle, Building2, CalendarClock, CheckCircle2, Download, ExternalLink, Globe, History, Info, Landmark, Loader2, Pencil, PenLine, Plus, RefreshCw, SkipForward, Users, Wallet, XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -22,12 +22,12 @@ import { getErrorMessage } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 import { downloadTextFile } from '@/utils/downloadTextFile';
 import {
-  STATUTORY_ONLINE_MODES, payNetRunSenders, payNetStatutoryOnlinePay, payNetStatutoryPayables, payNetStatutoryPayablesCancel, payNetStatutoryPayees, payNetStatutoryRun,
+  STATUTORY_ONLINE_MODES, payNetRunSenders, payNetStatutoryDueAmount, payNetStatutoryDueSkip, payNetStatutoryOnlinePay, payNetStatutoryPayables, payNetStatutoryPayablesCancel, payNetStatutoryPayees, payNetStatutoryRun,
   payNetStatutoryRunFile, payNetStatutoryRuns,
-  type GstHeldRow, type PaymentFile, type PaymentSender, type StatutoryBatch, type StatutoryKind, type StatutoryOnlineResult, type StatutoryPayable,
+  type GstHeldRow, type PaymentFile, type PaymentSender, type StatutoryAgreementDue, type StatutoryBatch, type StatutoryKind, type StatutoryOnlineResult, type StatutoryPayable,
   type StatutoryPayableInput, type StatutoryPayee, type StatutoryPayeeInput, type StatutoryRunResult,
 } from '@/Services/GrnService/paymentNetApi';
-import { KINDS, amountProblem, channelOf, dueState, onlineProblem, payeeLabel, payeeProblem, portalUrl, runProblem, scopeLabel, totalOf } from './statutoryModel';
+import { KINDS, amountProblem, cancelOutcome, channelOf, dueAmountProblem, dueState, onlineProblem, payeeLabel, payeeProblem, portalUrl, runProblem, scopeLabel, totalOf } from './statutoryModel';
 import { pickSender, rupees, senderLabel, senderProblem } from './paymentRunModel';
 
 const SCREEN = 'StatutoryPaymentPage';
@@ -49,6 +49,7 @@ const EMPTY_PAYEE: StatutoryPayeeInput = {
 };
 const EMPTY_AMOUNT = { head_name: '', ref_no: '', period_label: '', amount: '', due_date: '', narration: '', payee_sno: '', scope: '' };
 const EMPTY_ONLINE = { mode: '', txnId: '', txnDate: '', remarks: '' };
+const EMPTY_DUE = { amount: '', ref_no: '', narration: '' };
 
 /** A portal address as a link that opens in a new tab. */
 const PortalLink: React.FC<{ url: string | null | undefined; name?: string | null; className?: string }> = ({ url, name, className }) => (url ? (
@@ -93,6 +94,8 @@ const StatutoryPaymentPage: React.FC = () => {
   const [kind, setKind] = useState<StatutoryKind>('TDS');
   const [all, setAll] = useState<StatutoryPayable[]>([]);
   const [gstHeld, setGstHeld] = useState<GstHeldRow[]>([]);
+  // due dates of approved Unfixed Statutory agreements that wait for their amount (grn sql/96)
+  const [waiting, setWaiting] = useState<StatutoryAgreementDue[]>([]);
   const [runs, setRuns] = useState<StatutoryBatch[]>([]);
   const [payees, setPayees] = useState<StatutoryPayee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,6 +109,7 @@ const StatutoryPaymentPage: React.FC = () => {
         axios.get(payNetStatutoryPayables), axios.get(payNetStatutoryRuns), axios.get(payNetStatutoryPayees),
       ]);
       setAll(p.data?.data?.payables ?? []);
+      setWaiting(p.data?.data?.waiting ?? []);
       setPayees(y.data?.data ?? []);
       setRuns(r.data?.data ?? []);
     } catch (err) {
@@ -133,7 +137,11 @@ const StatutoryPaymentPage: React.FC = () => {
   const shownPaid = paid.filter(matches);
   const kindRuns = runs.filter((r) => r.kind === kind);
 
-  const counts = useMemo(() => Object.fromEntries(KINDS.map((k) => [k.value, all.filter((p) => p.kind === k.value && p.status === 'Open').length])) as Record<StatutoryKind, number>, [all]);
+  const waitingOfKind = useMemo(() => waiting.filter((w) => w.kind === kind), [waiting, kind]);
+  const counts = useMemo(
+    () => Object.fromEntries(KINDS.map((k) => [k.value, all.filter((p) => p.kind === k.value && p.status === 'Open').length + waiting.filter((w) => w.kind === k.value).length])) as Record<StatutoryKind, number>,
+    [all, waiting],
+  );
   const openTotal = open.reduce((s, p) => s + Number(p.amount), 0);
   const overdue = open.filter((p) => (p.days_overdue ?? 0) > 0);
   const pickedList = open.filter((p) => picked.has(p.stat_sno));
@@ -294,13 +302,55 @@ const StatutoryPaymentPage: React.FC = () => {
     setCancelling(true);
     try {
       await axios.post(payNetStatutoryPayablesCancel, { stat_sno: cancelFor.stat_sno, reason: cancelReason.trim() });
-      toast.success(`${cancelFor.head_name} cancelled`);
+      toast.success(cancelFor.source_type === 'AGREEMENT' && cancelFor.agreement_amount_type === 'UNFIXED' ? `${cancelFor.head_name} is waiting for its amount again` : `${cancelFor.head_name} cancelled`);
       setCancelFor(null); setCancelReason('');
       await load();
     } catch (err) {
       toast.error(getErrorMessage(err, 'Could not cancel the amount'));
     } finally {
       setCancelling(false);
+    }
+  };
+
+  // ── agreement dues: enter the amount (Unfixed) / skip a due ───────────────
+  const [dueFor, setDueFor] = useState<StatutoryAgreementDue | null>(null);
+  const [dueForm, setDueForm] = useState(EMPTY_DUE);
+  const [enteringDue, setEnteringDue] = useState(false);
+  const dueFormProblem = dueFor ? dueAmountProblem(dueForm) : null;
+  const openDue = (w: StatutoryAgreementDue) => { setDueFor(w); setDueForm({ ...EMPTY_DUE, ref_no: w.ref_no ?? '' }); };
+  const enterDue = async () => {
+    if (!dueFor) return;
+    setEnteringDue(true);
+    try {
+      await axios.post(payNetStatutoryDueAmount, {
+        cycle_sno: dueFor.cycle_sno, amount: Number(dueForm.amount), ref_no: dueForm.ref_no.trim() || undefined, narration: dueForm.narration.trim() || undefined,
+      });
+      toast.success(`${dueFor.head_name} ${dueFor.period_label ?? ''} - ${rupees(Number(dueForm.amount))} is ready to pay`);
+      setDueFor(null);
+      await load();
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not save the amount'));
+      await load();
+    } finally {
+      setEnteringDue(false);
+    }
+  };
+  const [skipFor, setSkipFor] = useState<StatutoryAgreementDue | null>(null);
+  const [skipReason, setSkipReason] = useState('');
+  const [skipping, setSkipping] = useState(false);
+  const skipDue = async () => {
+    if (!skipFor) return;
+    setSkipping(true);
+    try {
+      await axios.post(payNetStatutoryDueSkip, { cycle_sno: skipFor.cycle_sno, reason: skipReason.trim() });
+      toast.success(`${skipFor.head_name} ${skipFor.period_label ?? ''} skipped`);
+      setSkipFor(null); setSkipReason('');
+      await load();
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not skip this due'));
+      await load();
+    } finally {
+      setSkipping(false);
     }
   };
 
@@ -428,6 +478,11 @@ const StatutoryPaymentPage: React.FC = () => {
                         <TableCell className="min-w-40 text-xs">
                           <span className="block font-semibold">{p.head_name}</span>
                           <span className="block text-muted-foreground">{[p.ref_no, p.narration].filter(Boolean).join(' · ') || '—'}</span>
+                          {p.source_type === 'AGREEMENT' && p.agreement_no && (
+                            <span className="mt-0.5 inline-flex items-center gap-1 rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300">
+                              <CalendarClock className="h-3 w-3" />Agreement {p.agreement_no}
+                            </span>
+                          )}
                         </TableCell>
                         {isTds && <TableCell className="text-xs">{p.party_name ?? '—'}<span className="block text-muted-foreground">{p.payment_no ?? ''}</span></TableCell>}
                         <TableCell className="whitespace-nowrap text-xs">{p.period_label ?? '—'}</TableCell>
@@ -444,7 +499,7 @@ const StatutoryPaymentPage: React.FC = () => {
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-right text-xs font-semibold tabular-nums">{rupees(p.amount)}</TableCell>
                         <TableCell>
-                          {canManage && p.source_type === 'MANUAL' && (
+                          {canManage && (p.source_type === 'MANUAL' || p.source_type === 'AGREEMENT') && (
                             <button type="button" onClick={() => { setCancelFor(p); setCancelReason(''); }} aria-label={`Cancel ${p.head_name}`} title="Cancel this amount" className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-700">
                               <XCircle className="h-4 w-4" />
                             </button>
@@ -478,6 +533,58 @@ const StatutoryPaymentPage: React.FC = () => {
             </div>
           )}
         </Panel>
+
+        {waitingOfKind.length > 0 && (
+          <Panel
+            icon={CalendarClock}
+            title={`Waiting for the amount (${waitingOfKind.length})`}
+            description="Dues of approved Statutory agreements whose amount changes each time - enter the amount from the challan or bill, then it can be paid above"
+            bodyClassName="p-0"
+          >
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className={th}>For</TableHead><TableHead className={th}>Period</TableHead><TableHead className={th}>Company</TableHead>
+                    <TableHead className={th}>Pay to</TableHead><TableHead className={th}>Due</TableHead><TableHead className={cn(th, 'text-right')}>Expected</TableHead><TableHead className="w-44" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {waitingOfKind.map((w) => {
+                    const due = dueState({ due_date: w.due_date, days_overdue: w.days_overdue });
+                    return (
+                      <TableRow key={w.cycle_sno}>
+                        <TableCell className="min-w-40 text-xs">
+                          <span className="block font-semibold">{w.head_name}</span>
+                          <span className="block text-muted-foreground">{[w.agreement_no, w.ref_no].filter(Boolean).join(' · ')}</span>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-xs">{w.period_label ?? '—'}</TableCell>
+                        <TableCell className="text-xs">{scopeLabel(w)}</TableCell>
+                        <TableCell className="min-w-32 text-xs">
+                          {w.pay_to_name ?? <span className="text-muted-foreground">Default {kindInfo.short} payee</span>}
+                          {w.pay_to_online === 'Y' && <span className="mt-0.5 flex items-center gap-1 text-[11px] text-sky-700 dark:text-sky-300"><Globe className="h-3 w-3" />Online</span>}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-xs">
+                          {showDate(w.due_date)}
+                          <span className={cn('mt-0.5 block text-[11px] font-medium', due.tone === 'danger' && 'text-red-600 dark:text-red-400', due.tone === 'warning' && 'text-amber-700 dark:text-amber-300', due.tone === 'neutral' && 'text-muted-foreground')}>{due.text}</span>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground">{w.expected_amount != null ? `≈ ${rupees(w.expected_amount)}` : '—'}</TableCell>
+                        <TableCell className="text-right">
+                          {canManage && (
+                            <div className="flex justify-end gap-1.5">
+                              <Button type="button" size="sm" className="h-8 text-xs" onClick={() => openDue(w)}><PenLine className="mr-1.5 h-3.5 w-3.5" />Enter amount</Button>
+                              <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" aria-label={`Skip ${w.head_name} ${w.period_label ?? ''}`} title="Nothing to pay this time" onClick={() => { setSkipFor(w); setSkipReason(''); }}><SkipForward className="h-3.5 w-3.5" /></Button>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </Panel>
+        )}
 
         {kind === 'GST' && gstHeld.length > 0 && (
           <Panel icon={Info} title={`GST held on supplier bills (${gstHeld.length})`} description="Kept back until GSTR-2B shows the invoice - it is paid with the bill on the Payment screen, not here" bodyClassName="p-0">
@@ -774,12 +881,65 @@ const StatutoryPaymentPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
+      {/* enter an agreement due's amount */}
+      <Dialog open={dueFor != null} onOpenChange={(o) => { if (!o && !enteringDue) setDueFor(null); }}>
+        <DialogContent className="max-h-[92vh] w-[calc(100%-1rem)] gap-4 overflow-y-auto sm:w-full sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enter the amount</DialogTitle>
+            <DialogDescription>
+              {dueFor?.head_name}{dueFor?.period_label ? ` · ${dueFor.period_label}` : ''} · due {showDate(dueFor?.due_date)} · agreement {dueFor?.agreement_no}. It is ready to pay as soon as you save it - the agreement's approval covers it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="due-amt" className="text-xs">Amount (₹) <span className="text-destructive">*</span></Label>
+              <Input id="due-amt" inputMode="decimal" autoFocus value={dueForm.amount} onChange={(ev) => setDueForm((f) => ({ ...f, amount: ev.target.value }))} className="h-10 tabular-nums" placeholder={dueFor?.expected_amount != null ? `About ${rupees(dueFor.expected_amount)}` : undefined} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="due-ref" className="text-xs">Reference / challan no.</Label>
+              <Input id="due-ref" value={dueForm.ref_no} maxLength={40} onChange={(ev) => setDueForm((f) => ({ ...f, ref_no: ev.target.value }))} className="h-10" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="due-note" className="text-xs">Note</Label>
+              <Textarea id="due-note" rows={2} maxLength={200} value={dueForm.narration} onChange={(ev) => setDueForm((f) => ({ ...f, narration: ev.target.value }))} className="resize-none text-sm" />
+            </div>
+          </div>
+          {dueFormProblem && dueForm.amount && <p className="text-xs text-amber-700 dark:text-amber-300">{dueFormProblem}</p>}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" disabled={enteringDue} onClick={() => setDueFor(null)}>Cancel</Button>
+            <Button type="button" disabled={enteringDue || !!dueFormProblem} onClick={enterDue}>
+              {enteringDue ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Save amount
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* skip an agreement due */}
+      <Dialog open={skipFor != null} onOpenChange={(o) => { if (!o && !skipping) setSkipFor(null); }}>
+        <DialogContent className="w-[calc(100%-1rem)] gap-4 sm:w-full sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Skip {skipFor?.head_name}{skipFor?.period_label ? ` · ${skipFor.period_label}` : ''}?</DialogTitle>
+            <DialogDescription>Nothing is paid for this due date. The agreement carries on and the next due date shows when it is in view.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="due-skip" className="text-xs">Reason <span className="text-destructive">*</span></Label>
+            <Textarea id="due-skip" rows={3} maxLength={200} value={skipReason} onChange={(ev) => setSkipReason(ev.target.value)} placeholder="Why is there nothing to pay this time?" className="resize-none text-sm" />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" disabled={skipping} onClick={() => setSkipFor(null)}>Keep</Button>
+            <Button type="button" variant="destructive" disabled={skipping || !skipReason.trim()} onClick={skipDue}>
+              {skipping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SkipForward className="mr-2 h-4 w-4" />}Skip this due
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* cancel */}
       <Dialog open={cancelFor != null} onOpenChange={(o) => { if (!o && !cancelling) setCancelFor(null); }}>
         <DialogContent className="w-[calc(100%-1rem)] gap-4 sm:w-full sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Cancel {cancelFor?.head_name}?</DialogTitle>
-            <DialogDescription>{rupees(cancelFor?.amount)}. It is removed from the list and will not be paid.</DialogDescription>
+            <DialogDescription>{rupees(cancelFor?.amount)}. {cancelFor ? cancelOutcome(cancelFor) : ''}</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
             <Label htmlFor="st-cancel" className="text-xs">Reason <span className="text-destructive">*</span></Label>

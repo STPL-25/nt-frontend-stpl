@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
 import type { SupplierPODetail, SupplierPOItem } from '@/Services/SupplierService';
 import { formatDate } from './helpers';
+import { hasAnyDiscount, percentLabel, poTotals } from './supplierPOModel';
 
 /** The saved address may be plain text or a JSON object from the address master (add_door_no, add_street, …). */
 export function addressToLines(raw: string | null | undefined): string[] {
@@ -68,26 +69,47 @@ export function buildSupplierPOPdf(po: SupplierPODetail, items: SupplierPOItem[]
   fact('Required By', formatDate(po.required_date), 110, 42);
   fact('Purpose', po.purpose ?? '-', 14, 56);
 
+  const showDiscount = hasAnyDiscount(items);
+  const head = ['#', 'Item', 'Qty', 'Unit', 'Rate', ...(showDiscount ? ['Disc.'] : []), 'GST', 'Amount (incl. GST)'];
+  // Right-align every numeric column, wherever the optional Disc. column lands.
+  const rightCols = [2, 4, ...(showDiscount ? [5, 6, 7] : [5, 6])];
   autoTable(doc, {
     startY: 70,
-    head: [['#', 'Item', 'Qty', 'Unit', 'Rate', 'Amount']],
+    head: [head],
     body: items.map((it, i) => [
       String(i + 1),
       it.specification ? `${it.prod_name}\n${it.specification}` : it.prod_name,
       String(it.ordered_qty),
       it.unit_name || '-',
       inr(it.unit_price),
+      ...(showDiscount ? [percentLabel(it.discount_pct ?? 0)] : []),
+      percentLabel(it.tax_pct),
       inr(it.total_amount),
     ]),
     theme: 'grid',
     styles: { font: 'helvetica', fontSize: 9, cellPadding: 2 },
     headStyles: { fillColor: [79, 70, 229], textColor: 255 },
-    columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 2: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
+    columnStyles: {
+      0: { cellWidth: 8, halign: 'center' },
+      ...Object.fromEntries(rightCols.map((c) => [c, { halign: 'right' as const }])),
+    },
   });
   const tdoc = doc as jsPDF & { lastAutoTable?: { finalY: number } };
   let y = (tdoc.lastAutoTable?.finalY ?? 80) + 8;
 
-  const total = items.reduce((s, it) => s + Number(it.total_amount ?? 0), 0);
+  const totals = poTotals(items);
+  const total = totals.grand;
+  if (totals.hasBreakdown) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(30, 30, 30);
+    doc.text('Taxable value', pageW - 80, y);
+    doc.text(`Rs. ${inr(totals.taxable)}`, pageW - 16, y, { align: 'right' });
+    y += 6;
+    doc.text('GST', pageW - 80, y);
+    doc.text(`Rs. ${inr(totals.gst)}`, pageW - 16, y, { align: 'right' });
+    y += 8;
+  }
   doc.setFillColor(79, 70, 229);
   doc.rect(pageW - 82, y - 5, 68, 8, 'F');
   doc.setTextColor(255, 255, 255);

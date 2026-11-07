@@ -364,6 +364,18 @@ const PaymentRunPage: React.FC = () => {
     { key: 'history', label: 'Payment history', short: 'History', icon: History, count: batches.length + portalPaid.length },
   ];
 
+  // Gate entry / GRN of a waiting payment: the date with the number(s) under it. An advance is paid on the PO before the goods
+  // come in, so until its PO has a gate entry / GRN it says so instead of a bare dash.
+  const receiptCell = (e: PaymentEntry, nos: string | null | undefined, date: string | null | undefined) => (
+    <TableCell className="whitespace-nowrap text-xs" title={nos ?? ''}>
+      {!nos && !date && e.payment_type === 'ADVANCE' ? (
+        <span className="text-muted-foreground" title="Advance on the PO - paid before the goods are received">Not received yet</span>
+      ) : (
+        <>{showDate(date)}<span className="block max-w-32 truncate text-muted-foreground">{nos ?? ''}</span></>
+      )}
+    </TableCell>
+  );
+
   const fundPill = (e: PaymentEntry) => {
     if (picked.has(e.payment_sno)) return <StatusPill tone="success">Paying today</StatusPill>;
     if (blockReason(e)) return <StatusPill tone="danger">Bank details missing</StatusPill>;
@@ -661,8 +673,8 @@ const PaymentRunPage: React.FC = () => {
                               <span title={msme.hint} className={cn('inline-flex items-center whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-medium', TONE.violet)}>{msme.label}</span>
                             ) : <span className="text-muted-foreground">—</span>}
                           </TableCell>
-                          <TableCell className="whitespace-nowrap text-xs" title={e.gate_entry_nos ?? ''}>{showDate(e.first_gate_entry_date)}<span className="block max-w-32 truncate text-muted-foreground">{e.gate_entry_nos ?? ''}</span></TableCell>
-                          <TableCell className="whitespace-nowrap text-xs" title={e.grn_nos ?? ''}>{showDate(e.first_grn_date)}<span className="block max-w-32 truncate text-muted-foreground">{e.grn_nos ?? ''}</span></TableCell>
+                          {receiptCell(e, e.gate_entry_nos, e.first_gate_entry_date)}
+                          {receiptCell(e, e.grn_nos, e.first_grn_date)}
                           <TableCell className="whitespace-nowrap text-xs">
                             {showDate(e.due_date)}
                             <span className={cn('mt-0.5 block text-[11px] font-medium', due.tone === 'danger' && 'text-red-600 dark:text-red-400', due.tone === 'warning' && 'text-amber-700 dark:text-amber-300', due.tone === 'neutral' && 'text-muted-foreground')}>{due.text}</span>

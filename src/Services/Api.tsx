@@ -15,6 +15,11 @@ export const apiFetchSidebarData = baseUrl + "/api/user_approval/get_user_screen
 export const apiFetchSidebarDataByEcno = (ecno: string) =>
   `${baseUrl}/api/user_approval/get_user_screens_and_permisssions_json/${ecno}`;
 
+// Dashboard (first sidebar item): organisation + who has access to it. One call, six result sets.
+export const apiOrgDashboard = baseUrl + "/api/org_dashboard/overview";
+// Dashboard "Business overview" tab: stock, assets, PR/PO, gate entries, GRN, payments, budget, expenses - scoped to the caller's own org access.
+export const apiBusinessDashboard = baseUrl + "/api/org_dashboard/business";
+
 // Hierarchy
 export const apiGetHierarchyDetails = baseUrl + "/api/user_approval/get_hierachy_com_details";
 
@@ -50,11 +55,21 @@ export const apiGetSupplierStatusTimeline = (source: string, id: number | string
 export const apiGetSupplierFullDetails = (source: string, id: number | string) =>
   `${baseUrl}/api/kyc/supplier_details/${source}/${id}`;
 
+// KYC Change Approvals: a supplier's change to its own KYC (made on the /Supplier portal) waiting for the approval stages.
+export const apiGetKycChangeRequests = baseUrl + "/api/kyc/change_requests";
+export const apiActKycChangeRequest = baseUrl + "/api/kyc/change_requests/act";
+
 // Public Supplier KYC — anonymous self-service submission at /supplier_kyc,
 // no staff session required (see backend-stpl/src/Kyc/routes/PublicKyc.routes.js)
 export const apiPublicKycMasterOptions = baseUrl + "/api/public_kyc/master_options";
 export const apiPublicKycCreate        = baseUrl + "/api/public_kyc/create_kyc_records";
 export const apiPublicKycGetGSTNDetails = baseUrl + "/api/public_kyc/Get_GSTN_Details";
+// A rejected supplier KYC is corrected through a private e-mailed link (backend sql/155) - the token travels in the body, never in the URL.
+export const apiPublicKycResubmitOpen = baseUrl + "/api/public_kyc/resubmit/open";
+export const apiPublicKycResubmitSave = baseUrl + "/api/public_kyc/resubmit/save";
+// Staff: send the supplier a new correction link / see the state of the last one.
+export const apiKycResubmitSend = baseUrl + "/api/kyc/resubmit/send";
+export const apiKycResubmitStatus = (kycId: number | string) => baseUrl + `/api/kyc/resubmit/status/${kycId}`;
 
 // Common Masters
 export const apiFetchCommonMaster = baseUrl + "/api/common_master/";
@@ -150,6 +165,8 @@ export const apiDeleteProductStockLevel  = baseUrl + "/api/product_stock_level/d
 // Purchase Requisition — DB
 export const createPrRecord = baseUrl + "/api/pr/createPrRecords";
 export const getPrRecords = baseUrl + "/api/pr/getPrRecords";
+// Org scopes (com/div/brn/dept) a requisition can be raised for — they have an approval workflow. ?variant=NORMAL|VENDOR_DRIVEN
+export const apiGetPrWorkflowDepartments = baseUrl + "/api/pr/getWorkflowDepartments";
 export const prApproveAction = baseUrl + "/api/pr/approvePr";
 // Conditional approval (sql/99): path, what the caller may do, forward / send-back targets, action log
 export const getPrApprovalContext = baseUrl + "/api/pr/getApprovalContext";
@@ -234,6 +251,18 @@ export const purchaseTeamUpdateSplitGroupOrg = baseUrl + "/api/purchase_team/upd
 export const purchaseTeamSavePOConfirmation = baseUrl + "/api/purchase_team/savePOConfirmation";
 export const purchaseTeamGetPOConfirmation = (prBasicSno: number) =>
   `${baseUrl}/api/purchase_team/getPOConfirmation/${prBasicSno}`;
+
+// Request For Quotation: pick suppliers -> they are mailed -> they quote in the supplier portal -> buyer takes the final version
+export const purchaseTeamCreateRfq = baseUrl + "/api/purchase_team/createRfq";
+export const purchaseTeamGetRfqs = (prBasicSno: number, prNoB64: string) =>
+  `${baseUrl}/api/purchase_team/getRfqs/${prBasicSno}/${prNoB64}`;
+export const purchaseTeamGetRfqResponses = (rfqSupplierSno: number) =>
+  `${baseUrl}/api/purchase_team/getRfqResponses/${rfqSupplierSno}`;
+export const purchaseTeamGetRfqSupplierContacts = baseUrl + "/api/purchase_team/getRfqSupplierContacts";
+export const purchaseTeamRequestRfqRevision = baseUrl + "/api/purchase_team/requestRfqRevision";
+export const purchaseTeamResendRfqEmail = baseUrl + "/api/purchase_team/resendRfqEmail";
+export const purchaseTeamCloseRfq = baseUrl + "/api/purchase_team/closeRfq";
+export const purchaseTeamTakeRfqResponse = baseUrl + "/api/purchase_team/takeRfqResponse";
 
 // GRN — Goods Receipt Note
 export const grnGetPendingPOs = baseUrl + "/api/grn/getPendingPOs";

@@ -143,6 +143,150 @@ export interface Quotation {
   buyback_value?: number;
   supplier_advance?: string | SupplierAdvance[];
   pr_no?: string;
+  /** Set when the supplier gave this quotation in the portal against an RFQ (the taken version). */
+  rfq_sno?: number | null;
+  rfq_response_sno?: number | null;
+}
+
+// ── Request For Quotation (RFQ) ──────────────────────────────────────────────
+
+/** Where a supplier stands on one RFQ. */
+export type RfqSupplierStatus =
+  | 'PENDING'             // sent, supplier has not opened it
+  | 'VIEWED'              // opened, nothing submitted
+  | 'SUBMITTED'           // quotation given (latest version in current_version)
+  | 'REVISION_REQUESTED'  // buyer asked for changes, waiting for the next version
+  | 'DECLINED'            // supplier will not quote
+  | 'TAKEN'               // a version was taken as the final supplier quotation
+  | 'CLOSED';             // RFQ cancelled
+
+export interface RfqItem {
+  rfq_item_sno: number;
+  pr_item_sno?: number | null;
+  prod_sno?: number | null;
+  prod_name: string;
+  specification?: string | null;
+  qty: number;
+  unit?: number | null;
+  unit_name?: string | null;
+}
+
+export interface RfqSupplier {
+  rfq_supplier_sno: number;
+  vendor_sno: number;
+  company_name: string;
+  supp_code?: string | null;
+  status: RfqSupplierStatus;
+  has_login: boolean;
+  email_to?: string | null;
+  email_sent: 'Y' | 'N';
+  email_sent_at?: string | null;
+  email_error?: string | null;
+  email_count: number;
+  first_viewed_at?: string | null;
+  response_count: number;
+  current_response_sno?: number | null;
+  current_version?: number | null;
+  last_submitted_at?: string | null;
+  grand_total?: number | null;
+  quotation_ref_no?: string | null;
+  valid_upto?: string | null;
+  delivery_days?: number | null;
+  payment_terms?: string | null;
+  due_date?: string | null;
+  revision_note?: string | null;
+  revision_requested_at?: string | null;
+  decline_reason?: string | null;
+  taken_response_sno?: number | null;
+  taken_sq_basic_sno?: number | null;
+  taken_at?: string | null;
+}
+
+export interface Rfq {
+  rfq_sno: number;
+  rfq_no: string;
+  pr_basic_sno: number;
+  pr_no?: string | null;
+  split_group?: number | null;
+  response_due_date: string;
+  notes?: string | null;
+  status: 'O' | 'X';          // open / cancelled
+  close_reason?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  com_name?: string | null;
+  items: RfqItem[];
+  suppliers: RfqSupplier[];
+}
+
+export interface RfqResponseItem {
+  rfq_item_sno: number;
+  prod_sno?: number | null;
+  prod_name: string;
+  specification?: string | null;
+  qty: number;
+  unit_name?: string | null;
+  is_quoted: boolean;
+  unit_price: number;
+  discount_pct: number;
+  tax_pct: number;
+  total_amount: number;
+  delivery_days?: number | null;
+  remarks?: string | null;
+  additional?: AdditionalCover[] | null;
+}
+
+/** One submitted version of a supplier's quotation. */
+export interface RfqResponseVersion {
+  rfq_response_sno: number;
+  version_no: number;
+  is_current: 'Y' | 'N';
+  is_taken: boolean;
+  quotation_ref_no?: string | null;
+  quotation_date?: string | null;
+  valid_upto?: string | null;
+  currency_code: string;
+  payment_terms?: string | null;
+  delivery_days?: number | null;
+  remarks?: string | null;
+  change_note?: string | null;
+  freight_charges: number;
+  freight_gst_pct: number;
+  other_charges: number;
+  other_charges_gst_pct: number;
+  items_total: number;
+  grand_total: number;
+  quotation_file?: string | null;
+  submitted_by?: string | null;
+  submitted_at: string;
+  items: RfqResponseItem[];
+}
+
+export interface RfqLogEntry {
+  log_sno: number;
+  event_type: string;
+  event_by?: string | null;
+  event_note?: string | null;
+  event_at: string;
+}
+
+/** Per-supplier portal-login status (so the buyer is warned before mailing someone who cannot log in). */
+export interface RfqSupplierContact {
+  vendor_sno: number;
+  supp_code?: string | null;
+  kyc_email?: string | null;
+  login_email?: string | null;
+  has_login: boolean;
+}
+
+export interface RfqEmailResult {
+  rfq_supplier_sno: number;
+  vendor_sno: number;
+  company_name: string;
+  has_login: boolean;
+  email_to: string | null;
+  sent: boolean;
+  error?: string;
 }
 
 export interface AdvancePaymentStage {

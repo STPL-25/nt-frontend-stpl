@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useMasterOptions } from "../hooks/ReUsableHook/useMasterOptions";
+import { departmentsWithWorkflow, usePrWorkflowScopes } from "../hooks/ReUsableHook/usePrWorkflowScopes";
 import { FieldType } from "./fieldType/fieldType";
 
 interface CascadeOption {
@@ -72,12 +73,28 @@ const PAYMENT_CYCLE_OPTIONS = [
 /** Header fields for a Vendor-Driven Purchase Requisition — supplier and
  * payment cadence are picked up front, unlike a Regular PR where the
  * vendor is only resolved later at the PO/quotation stage. */
-export const useVendorDrivenPRHeaderFields = (params: OrgCascadeParams | undefined): FieldType[] => {
+export const useVendorDrivenPRHeaderFields = (
+  params: (OrgCascadeParams & { keepDeptSno?: string | number | null }) | undefined
+): FieldType[] => {
   const { options } = useMasterOptions([
     "CompanyMaster", "DivisionMaster", "BranchMaster", "DeptMaster",
     "PriorityMaster", "VendorMaster",
   ]);
-  const { CompanyMaster, divisionOptions, branchOptions, deptOptions } = useOrgCascadeOptions(params, options);
+  const { CompanyMaster, divisionOptions, branchOptions, deptOptions: cascadeDeptOptions } = useOrgCascadeOptions(params, options);
+
+  // Only departments with a Vendor-Driven PR approval workflow can raise one; the department already chosen on
+  // the form stays listed. Not filtered until the lookup has loaded (or if it fails).
+  const workflowScopes = usePrWorkflowScopes("VENDOR_DRIVEN");
+  const deptOptions = useMemo(
+    () =>
+      departmentsWithWorkflow(
+        cascadeDeptOptions as CascadeOption[],
+        workflowScopes,
+        { company: params?.selectedCompany, division: params?.selectedDivision, branch: params?.selectedBranch },
+        params?.keepDeptSno
+      ),
+    [cascadeDeptOptions, workflowScopes, params?.selectedCompany, params?.selectedDivision, params?.selectedBranch, params?.keepDeptSno]
+  );
 
   return useMemo<FieldType[]>(
     () => [

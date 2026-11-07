@@ -1,9 +1,8 @@
 import React from "react";
-import stplimage from "@/assets/stpllogo.png";
+import BrandLogo from "@/components/BrandLogo";
 import {
   BarChart3,
   Check,
-  LockKeyhole,
   Palette,
   ShieldCheck,
   Sparkles,
@@ -41,7 +40,7 @@ interface AuthLayoutProps {
 const DEFAULT_BRAND = {
   eyebrow: "ERP Console",
   heading: <>Non-Trade<br />Procurement</>,
-  copy: "Streamline your procurement workflow with real-time tracking, approvals, and budget control.",
+  copy: undefined as string | undefined,
   features: FEATURES,
 };
 
@@ -154,35 +153,21 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle, bran
           }}
         />
 
-        <div className="relative z-10 flex items-center gap-3 px-10 pt-8 xl:px-14 xl:pt-10">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-lg shadow-slate-900/10 ring-1 ring-slate-200">
-            <img src={stplimage} alt="Space Textiles" className="h-9 w-auto object-contain" />
-          </div>
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-primary">
-              {b.eyebrow}
-            </p>
-            <h2 className="mt-0.5 text-base font-semibold leading-tight text-foreground">
-              Space Textiles Pvt Ltd
-            </h2>
+        <div className="relative z-10 flex flex-col items-center px-10 pt-8 xl:px-14 xl:pt-10">
+          <div className="w-full max-w-[520px] drop-shadow-sm">
+            <BrandLogo className="h-auto w-full max-w-[520px]" priority />
           </div>
         </div>
 
         <div className="relative z-10 flex flex-1 flex-col justify-center px-10 py-12 xl:px-14 2xl:px-20">
-          <div className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-primary/15 bg-card/75 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur-xl">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-            </span>
-            Unified procurement workspace
-          </div>
-
           <h1 className="max-w-xl text-4xl font-semibold leading-[1.08] tracking-[-0.035em] text-foreground xl:text-5xl 2xl:text-6xl">
             {b.heading}
           </h1>
-          <p className="mt-5 max-w-lg text-sm leading-6 text-muted-foreground xl:text-base xl:leading-7">
-            {b.copy}
-          </p>
+          {b.copy && (
+            <p className="mt-5 max-w-lg text-sm leading-6 text-muted-foreground xl:text-base xl:leading-7">
+              {b.copy}
+            </p>
+          )}
 
           <div className="mt-9 grid max-w-xl grid-cols-2 gap-3">
             {b.features.map((feature, index) => {
@@ -206,10 +191,6 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle, bran
 
         <div className="relative z-10 flex items-center justify-between gap-6 border-t border-primary/10 px-10 py-6 text-[11px] text-muted-foreground xl:px-14">
           <p>© {new Date().getFullYear()} Space Textiles Pvt Ltd</p>
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-            Secure enterprise access
-          </div>
         </div>
       </section>
 
@@ -227,15 +208,9 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle, bran
         </div>
 
         <header className="relative z-20 flex items-center justify-between border-b border-primary/10 bg-white/70 px-5 py-4 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/70 lg:hidden">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-slate-200 dark:ring-white/10">
-              <img src={stplimage} alt="Space Textiles" className="h-8 w-auto object-contain" />
-            </div>
-            <div>
-              <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-primary">
-                Non-Trade ERP
-              </p>
-              <p className="text-sm font-semibold leading-tight">Space Textiles</p>
+          <div className="min-w-0 text-center">
+            <div className="w-[220px] max-w-[calc(100vw-100px)] drop-shadow-sm sm:w-[300px]">
+              <BrandLogo className="h-auto w-full" priority />
             </div>
           </div>
           <ThemeColorPicker compact />
@@ -247,13 +222,6 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle, bran
 
         <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-8 sm:px-8 sm:py-12 xl:px-16">
           <div className={cn("w-full", wide ? "max-w-[560px]" : "max-w-[480px]")}>
-            <div className="mb-5 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-                <LockKeyhole className="h-3.5 w-3.5" />
-              </span>
-              Secure workspace
-            </div>
-
             <div className="relative overflow-hidden rounded-[28px] border border-white/80 bg-white/90 p-5 shadow-[0_28px_80px_-34px_rgba(15,23,42,0.35)] ring-1 ring-primary/10 backdrop-blur-2xl sm:p-8 dark:border-white/10 dark:bg-slate-900/85">
               <div className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-primary/70 to-transparent" />
               <div className="mb-7">
@@ -267,11 +235,6 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle, bran
                 )}
               </div>
               {children}
-            </div>
-
-            <div className="mt-5 flex items-center justify-center gap-2 text-center text-[11px] leading-5 text-slate-400 dark:text-slate-500">
-              <Check className="h-3.5 w-3.5 text-emerald-500" />
-              Protected with secure, encrypted authentication
             </div>
           </div>
         </div>

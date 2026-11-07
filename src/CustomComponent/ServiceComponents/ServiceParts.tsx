@@ -14,7 +14,7 @@ import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   AGREEMENT_TYPE_LABEL, TONE, computeAmount, formatDate, formatINR,
-  type AgreementType, type ApprovalAction, type ApprovalRoute, type SupplierShare, type Tone,
+  type ApprovalAction, type ApprovalRoute, type ServiceAgreementKind, type SupplierShare, type Tone,
 } from '@/CustomComponent/ServiceComponents/serviceUtils';
 
 // Shared presentational pieces for the Service Agreement / Service PO screens
@@ -37,13 +37,14 @@ export function StatusPill({ tone = 'neutral', children, className }: {
   );
 }
 
-const TYPE_BADGE: Record<AgreementType, { Icon: LucideIcon; tone: Tone }> = {
+const TYPE_BADGE: Record<ServiceAgreementKind, { Icon: LucideIcon; tone: Tone }> = {
   FIXED_RECURRING: { Icon: Repeat, tone: 'primary' },
   VARIABLE_RECURRING: { Icon: Wallet, tone: 'violet' },
+  STATUTORY: { Icon: Landmark, tone: 'info' },
 };
 
 export function TypeBadge({ type, className }: { type?: string; className?: string }) {
-  const known = type && type in TYPE_BADGE ? (type as AgreementType) : 'VARIABLE_RECURRING';
+  const known = type && type in TYPE_BADGE ? (type as ServiceAgreementKind) : 'VARIABLE_RECURRING';
   const { Icon, tone } = TYPE_BADGE[known];
   return (
     <span className={cn(
@@ -237,7 +238,7 @@ export function Callout({ tone = 'primary', icon: Icon, children, className }: {
   return (
     <div className={cn('flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-xs leading-relaxed', TONE[tone], className)}>
       {Icon && <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0 [overflow-wrap:anywhere]">{children}</div>
     </div>
   );
 }

@@ -17,6 +17,9 @@ import {
   type SupplierCreditNoteListItem,
 } from '@/Services/SupplierService';
 import { formatDate, formatINR } from './helpers';
+import { InvoiceLedgerPanel, LedgerFileList, LedgerUploadButton } from './SupplierNoteLedgerParts';
+import { useNoteLedgers, type NoteLedgers } from './useNoteLedgers';
+import { groupNotesByInvoice, ledgersForNote, targetKey } from './supplierNoteLedgerModel';
 
 type Kind = 'DEBIT' | 'CREDIT';
 type Filter = 'ALL' | Kind;
@@ -70,7 +73,34 @@ const loadItems = async (note: Note): Promise<NoteItem[]> => {
   return list.map((i: NoteItem & { credit_note_item_sno?: number }) => ({ ...i, key: i.credit_note_item_sno ?? i.key }));
 };
 
-const NoteRow: React.FC<{ note: Note }> = ({ note }) => {
+/** Ledger of one note: the files uploaded for it, those of its invoice that cover it, and the upload button. */
+const NoteLedgerStrip: React.FC<{ note: Note; ledgers: NoteLedgers }> = ({ note, ledgers }) => {
+  const { own, viaInvoice } = ledgersForNote(ledgers.ledgers, note);
+  const target = { scope: 'NOTE', note_kind: note.kind, note_sno: note.sno } as const;
+  return (
+    <div className="space-y-2 rounded-lg border border-dashed bg-muted/20 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold">Ledger</p>
+          <p className="text-xs text-muted-foreground">
+            {note.invoice ? `Upload one for this note, or one for invoice ${note.invoice} above to cover all its notes.` : 'Upload your ledger for this note.'}
+          </p>
+        </div>
+        <LedgerUploadButton
+          label="Upload ledger for this note"
+          busy={ledgers.busyKey === targetKey(target)}
+          disabled={ledgers.busyKey != null}
+          onPick={(file) => ledgers.upload(target, file)}
+        />
+      </div>
+      {own.length > 0 && <LedgerFileList files={own} onRemove={ledgers.remove} busyKey={ledgers.busyKey} />}
+      {viaInvoice.length > 0 && <LedgerFileList files={viaInvoice} tag={() => `Invoice ${note.invoice}`} />}
+      {own.length === 0 && viaInvoice.length === 0 && <p className="text-xs text-muted-foreground">No ledger uploaded yet.</p>}
+    </div>
+  );
+};
+
+const NoteRow: React.FC<{ note: Note; ledgers: NoteLedgers }> = ({ note, ledgers }) => {
   const [expanded, setExpanded] = useState(false);
   const [loadingItems, setLoadingItems] = useState(false);
   const [items, setItems] = useState<NoteItem[] | null>(null);
@@ -113,6 +143,7 @@ const NoteRow: React.FC<{ note: Note }> = ({ note }) => {
             </Fact>
           </FactGrid>
           {note.remarks && <p className="text-xs text-muted-foreground">Note: {note.remarks}</p>}
+          <NoteLedgerStrip note={note} ledgers={ledgers} />
         </div>
         <Button variant="outline" size="sm" className="h-8 shrink-0 text-xs" onClick={toggle}>
           {expanded ? <><ChevronUp size={13} className="mr-1" /> Hide</> : <><ChevronDown size={13} className="mr-1" /> Items</>}
@@ -173,9 +204,12 @@ const SupplierDebitNotesList: React.FC = () => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('ALL');
+  const ledgers = useNoteLedgers();
+  const { load: loadLedgers } = ledgers;
 
   const fetchNotes = useCallback(async () => {
     setLoading(true);
+    loadLedgers();   // the uploaded ledgers load beside the notes; a failure there must not hide the notes
     try {
       // each list loads on its own: one failing must not hide the other
       const [debits, credits] = await Promise.allSettled([supplierAxios.get(supplierGetDebitNotes), supplierAxios.get(supplierGetCreditNotes)]);
@@ -189,12 +223,16 @@ const SupplierDebitNotesList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadLedgers]);
 
   useEffect(() => { fetchNotes(); }, [fetchNotes]);
 
   const debits = notes.filter((n) => n.kind === 'DEBIT');
   const credits = notes.filter((n) => n.kind === 'CREDIT');
+  const invoiceGroups = useMemo(
+    () => groupNotesByInvoice(notes.map((n) => ({ kind: n.kind, sno: n.sno, invoice: n.invoice, date: n.date, total_amount: n.total_amount }))),
+    [notes],
+  );
   const sum = (list: Note[]) => list.reduce((s, n) => s + n.total_amount, 0);
   const net = sum(credits) - sum(debits);
   const shown = useMemo(() => notes.filter((n) => filter === 'ALL' || n.kind === filter), [notes, filter]);
@@ -216,6 +254,8 @@ const SupplierDebitNotesList: React.FC = () => {
             },
           ]}
         />
+
+        <InvoiceLedgerPanel groups={invoiceGroups} ledgers={ledgers} />
 
         <Panel icon={ReceiptText} title={`Notes (${shown.length})`} bodyClassName="p-0 sm:p-0">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2.5 sm:px-5">
@@ -242,7 +282,7 @@ const SupplierDebitNotesList: React.FC = () => {
             </p>
           ) : (
             <div className="divide-y">
-              {shown.map((note) => <NoteRow key={`${note.kind}-${note.sno}`} note={note} />)}
+              {shown.map((note) => <NoteRow key={`${note.kind}-${note.sno}`} note={note} ledgers={ledgers} />)}
             </div>
           )}
         </Panel>

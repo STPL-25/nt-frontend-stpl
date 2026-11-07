@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   buildWorkflowLabels,
   buildWorkflowOptionParts,
+  departmentsHeldBy,
+  departmentsOfferedForWorkflow,
   planTypeRowSync,
   workflowShortLabel,
   serializeStages,
@@ -236,5 +238,60 @@ describe("buildWorkflowOptionParts", () => {
     ]);
     expect(parts.get(5)!.title).toBe("PR #5");
     expect(parts.get(7)!.title).toBe("PR");
+  });
+});
+
+describe("departmentsHeldBy", () => {
+  it("lists each department of the active rows once, as strings", () => {
+    expect(
+      departmentsHeldBy([
+        { dept_sno: 4, is_active: "Y" },
+        { dept_sno: "4", is_active: "Y" },
+        { dept_sno: 16, is_active: "Y" },
+      ]).sort()
+    ).toEqual(["16", "4"]);
+  });
+
+  it("ignores inactive rows and legacy branch-only rows (no department)", () => {
+    expect(
+      departmentsHeldBy([
+        { dept_sno: 5, is_active: "N" },
+        { dept_sno: null, is_active: "Y" },
+        { dept_sno: "", is_active: "Y" },
+        { is_active: "Y" },
+        { dept_sno: 7 },
+      ])
+    ).toEqual(["7"]);
+  });
+});
+
+describe("departmentsOfferedForWorkflow", () => {
+  const options = [
+    { value: "1", label: "Stores" },
+    { value: "2", label: "Canteen" },
+    { value: "4", label: "Packing" }, // newly added, no workflow yet
+  ];
+
+  it("offers a department with no workflow yet and hides one another workflow holds", () => {
+    const claimed = new Map([["2", "PR · TCS · TCS-Coimbatore"]]);
+    expect(departmentsOfferedForWorkflow(options, claimed, []).map((o) => o.label)).toEqual(["Stores", "Packing"]);
+  });
+
+  it("keeps a department the card already has selected, even if it is in the claimed set", () => {
+    const claimed = new Set(["2"]);
+    expect(departmentsOfferedForWorkflow(options, claimed, ["2"]).map((o) => o.label)).toEqual([
+      "Stores",
+      "Canteen",
+      "Packing",
+    ]);
+  });
+
+  it("matches numeric option values against string ids", () => {
+    const numeric = [{ value: 2, label: "Canteen" }, { value: 4, label: "Packing" }];
+    expect(departmentsOfferedForWorkflow(numeric, new Set(["2"]), []).map((o) => o.label)).toEqual(["Packing"]);
+  });
+
+  it("returns the options untouched when nothing is claimed", () => {
+    expect(departmentsOfferedForWorkflow(options, new Map(), [])).toBe(options);
   });
 });

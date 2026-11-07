@@ -2,11 +2,12 @@ import { useMemo } from "react";
 import { useMasterOptions } from "../hooks/ReUsableHook/useMasterOptions";
 import { FieldType } from "./fieldType/fieldType";
 
-import type { AgreementType } from "@/CustomComponent/ServiceComponents/serviceUtils";
+import type { AgreementType, ServiceAgreementKind } from "@/CustomComponent/ServiceComponents/serviceUtils";
 
-// Fixed, Unfixed and Statutory (loan / repo / cash credit). Lives in serviceUtils so the
-// shared badges and helpers can use it too; re-exported for the existing importers.
-export type { AgreementType };
+// Fixed and Unfixed (raise a PO each cycle) and Statutory (a government / utility due paid on
+// Statutory Payments, backend sql/157). Live in serviceUtils so the shared badges and helpers
+// can use them too; re-exported for the existing importers.
+export type { AgreementType, ServiceAgreementKind };
 
 interface CascadeOption {
   value: string | number;
@@ -76,16 +77,19 @@ function orgCascadeFields(CompanyMaster: any, divisionOptions: any, branchOption
 }
 
 interface ServiceAgreementFieldsParams extends OrgCascadeParams {
-  agreementType: AgreementType;
+  agreementType: ServiceAgreementKind;
 }
 
 /**
  * Fields for the Service Agreement create/edit form — Fixed, Unfixed and
  * Statutory. rate_amount/qty are entered here once and never re-entered at
- * approval time (see sql/86) — for Unfixed and Statutory, the actual
- * per-cycle amount is instead entered separately in the Service PO screen
- * when each cycle comes due. Suppliers and the Statutory facility block are
- * not plain fields; the page renders dedicated editors for them.
+ * approval time (see sql/86) — for Unfixed the actual per-cycle amount is
+ * entered separately in the Service PO screen when each cycle comes due.
+ * A Statutory agreement (sql/157) has no supplier, quantity or UOM: one amount
+ * per due date (fixed, or an estimate when the actual is entered on Statutory
+ * Payments), a due day, and how many days ahead the due shows there; its
+ * document is optional. Suppliers and the Statutory Payments block are not
+ * plain fields; the page renders dedicated editors for them.
  */
 export const useServiceAgreementFields = (params: ServiceAgreementFieldsParams): FieldType[] => {
   const { agreementType, ...cascadeParams } = params;
@@ -111,46 +115,49 @@ export const useServiceAgreementFields = (params: ServiceAgreementFieldsParams):
   // Only month-based cadences need a PO generation day — a day-based cadence
   // (e.g. every 15 days) counts from the agreement's own start date instead.
   const cadenceOptions = options?.RecurrenceCadenceMaster ?? [];
+  const statutory = agreementType === "STATUTORY";
 
   return useMemo<FieldType[]>(
     () => [
       ...orgCascadeFields(CompanyMaster, divisionOptions, branchOptions, deptOptions),
-      { field: "service_sno", label: "Service", require: true, view: false, type: "search-select", options: serviceOptions, input: true },
+      {
+        field: "service_sno", label: statutory ? "Due for" : "Service", require: true, view: false, type: "search-select", options: serviceOptions, input: true,
+        ...(statutory ? { placeholder: "PF, ESI, property tax…" } : {}),
+      },
       { field: "service_name", label: "Service", require: false, view: true, type: "text", input: false },
       // Suppliers are captured by the supplier-split editor (one or more suppliers, each with an
       // amount), not a single select — so this is display-only; the form posts `vendors[]`.
       { field: "vendor_sno", label: "Supplier", require: false, view: false, type: "search-select", options: options?.VendorMaster, input: false },
       { field: "vendor_name", label: "Supplier", require: false, view: true, type: "text", input: false },
 
-      { field: "qty", label: "Quantity", require: true, view: true, type: "number", input: true, defaultValue: 1 },
+      // a statutory due is one amount per due date: no quantity or unit
+      { field: "qty", label: "Quantity", require: !statutory, view: true, type: "number", input: !statutory, defaultValue: 1 },
       {
-        field: "rate_amount", label: "Rate Amount", require: true, view: true,
-        type: "number", input: true,
+        field: "rate_amount", label: statutory ? "Amount per due (₹)" : "Rate Amount", require: true, view: true,
+        type: "number", input: true, ...(statutory ? { placeholder: "Fixed: the amount · Unfixed: an estimate" } : {}),
       },
-      { field: "rate_uom_sno", label: "Rate UOM (per)", require: false, view: false, type: "search-select", options: options?.UomMaster, input: true },
+      { field: "rate_uom_sno", label: "Rate UOM (per)", require: false, view: false, type: "search-select", options: options?.UomMaster, input: !statutory },
       { field: "rate_uom_name", label: "Rate UOM", require: false, view: true, type: "text", input: false },
 
-      { field: "recurrence_cadence_sno", label: "Recurrence Cadence", require: true, view: true, type: "select", options: cadenceOptions, input: true },
+      { field: "recurrence_cadence_sno", label: statutory ? "How often" : "Recurrence Cadence", require: true, view: true, type: "select", options: cadenceOptions, input: true },
       { field: "cadence_name", label: "Cadence", require: false, view: false, type: "text", input: false },
 
-      {
-        field: "po_generation_day", label: "PO Generation Day (1-31)", require: false, view: true, type: "number",
-        input: true, placeholder: "e.g. 5 for the 5th",
-      },
-      {
-        field: "notify_days_before", label: "Notify Before (days)", require: false, view: true, type: "number",
-        input: true, defaultValue: 0, placeholder: "e.g. 2",
-      },
+      statutory
+        ? { field: "po_generation_day", label: "Due day of the month (1-31)", require: false, view: true, type: "number", input: true, placeholder: "e.g. 15 for PF / ESI" }
+        : { field: "po_generation_day", label: "PO Generation Day (1-31)", require: false, view: true, type: "number", input: true, placeholder: "e.g. 5 for the 5th" },
+      statutory
+        ? { field: "notify_days_before", label: "Show on Statutory Payments (days before due)", require: false, view: true, type: "number", input: true, defaultValue: 10, placeholder: "e.g. 10" }
+        : { field: "notify_days_before", label: "Notify Before (days)", require: false, view: true, type: "number", input: true, defaultValue: 0, placeholder: "e.g. 2" },
 
       { field: "period_start_date", label: "Duration From", require: true, view: true, type: "date", input: true },
       { field: "period_end_date", label: "Duration To", require: true, view: true, type: "date", input: true },
-      { field: "agreement_document", label: "Agreement Document", require: true, view: false, type: "file", input: true },
+      { field: "agreement_document", label: statutory ? "Document (optional)" : "Agreement Document", require: !statutory, view: false, type: "file", input: true },
       { field: "remarks", label: "Remarks", require: false, view: true, type: "textarea", input: true },
       {
         field: "terms_conditions", label: "Terms & Conditions", require: false, view: true, type: "textarea",
         input: true, placeholder: "Optional — any terms specific to this agreement",
       },
     ],
-    [CompanyMaster, divisionOptions, branchOptions, deptOptions, serviceOptions, cadenceOptions, options]
+    [CompanyMaster, divisionOptions, branchOptions, deptOptions, serviceOptions, cadenceOptions, options, statutory]
   );
 };

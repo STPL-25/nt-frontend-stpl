@@ -284,6 +284,7 @@
 
 import { useMemo } from "react";
 import { useMasterOptions } from "../hooks/ReUsableHook/useMasterOptions";
+import { departmentsWithWorkflow, usePrWorkflowScopes } from "../hooks/ReUsableHook/usePrWorkflowScopes";
 import { FieldType } from "./fieldType/fieldType";
 import type { HierarchyResponse } from "@/globalState/features/hierarchyCompanyDetailsSlice";
 
@@ -300,6 +301,8 @@ interface PRBasicInfoFieldsParams {
   selectedCompany?: string;
   selectedDivision?: string;
   selectedBranch?: string;
+  /** Department already chosen on the form (home org / loaded draft) — stays listed even without a workflow. */
+  keepDeptSno?: string | number | null;
 }
 
 export const usePRBasicInfoFields = (params?: PRBasicInfoFieldsParams): FieldType[] => {
@@ -307,7 +310,12 @@ export const usePRBasicInfoFields = (params?: PRBasicInfoFieldsParams): FieldTyp
     selectedCompany,
     selectedDivision,
     selectedBranch,
+    keepDeptSno,
   } = params || {};
+
+  // A requisition can only be raised for a department that has a PR approval workflow, so the Department
+  // dropdown offers only those (null until loaded / if the lookup fails: not filtered then).
+  const workflowScopes = usePrWorkflowScopes("NORMAL");
 
   const { options } = useMasterOptions([
     "CompanyMaster",
@@ -341,13 +349,19 @@ export const usePRBasicInfoFields = (params?: PRBasicInfoFieldsParams): FieldTyp
   // Department: filter by selected Company + Division + Branch
   const deptOptions = useMemo(() => {
     if (!DeptMaster) return [];
-    return DeptMaster.filter((d: CascadeOption) => {
+    const inCascade = DeptMaster.filter((d: CascadeOption) => {
       const matchCompany  = !selectedCompany  || String(d.com_sno) === String(selectedCompany);
       const matchDivision = !selectedDivision || String(d.div_sno) === String(selectedDivision);
       const matchBranch   = !selectedBranch   || String(d.brn_sno) === String(selectedBranch);
       return matchCompany && matchDivision && matchBranch;
     });
-  }, [DeptMaster, selectedCompany, selectedDivision, selectedBranch]);
+    return departmentsWithWorkflow(
+      inCascade,
+      workflowScopes,
+      { company: selectedCompany, division: selectedDivision, branch: selectedBranch },
+      keepDeptSno
+    );
+  }, [DeptMaster, selectedCompany, selectedDivision, selectedBranch, workflowScopes, keepDeptSno]);
 
   return useMemo<FieldType[]>(
     () => [
@@ -459,20 +473,6 @@ export const usePRBasicInfoFields = (params?: PRBasicInfoFieldsParams): FieldTyp
         view: true,
         type: "textarea",
         input: true,
-      },
-      {
-        field: "source_invoice_sno",
-        label: "Source Invoice No. (vendor-bill-driven only)",
-        require: false,
-        view: true,
-        type: "number",
-        input: true,
-        // Must default to null, not 0 (the generic number-field default) —
-        // usp_InsertPurchaseRequest v4 casts this straight to
-        // pr_basic_info.source_invoice_sno, which FK-references
-        // invoice_info(invoice_sno); a stray 0 would fail that FK on every
-        // normal PR that doesn't set this field.
-        defaultValue: null,
       },
       {
         field: "pr_basic_sno",

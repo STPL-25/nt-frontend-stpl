@@ -13,6 +13,7 @@ import {
 } from '@/Services/SupplierService';
 import { formatDate } from './helpers';
 import { addressToLines, buildSupplierPOPdf } from './supplierPOPdf';
+import { hasAnyDiscount, percentLabel, poTotals } from './supplierPOModel';
 
 interface Props {
   po_basic_sno: number;
@@ -87,7 +88,9 @@ const SupplierPODetail: React.FC<Props> = ({ po_basic_sno, onBack, onDispatch, o
 
   const items = parseSupplierPOItems(po.items);
   const isAccepted = po.supplier_ack_status === 'Accepted';
-  const grandTotal = items.reduce((sum, it) => sum + Number(it.total_amount ?? 0), 0);
+  const totals = poTotals(items);
+  const grandTotal = totals.grand;
+  const showDiscount = hasAnyDiscount(items);
   // One term per line; strip any leading "1." / "2)" / "-" so the list numbering isn't doubled.
   const termLines = (po.terms_conditions ?? '')
     .split(/\r?\n/)
@@ -177,8 +180,9 @@ const SupplierPODetail: React.FC<Props> = ({ po_basic_sno, onBack, onDispatch, o
         </div>
 
         <Panel icon={ListChecks} title={`Item details (${items.length})`} description="What was ordered, at what rate" bodyClassName="p-0 sm:p-0">
-          {/* Narrow pane: cards */}
-          <div className="flex flex-col divide-y @xl:hidden">
+          {/* Narrow pane: cards. With a Discount column the table needs more room, so cards stay until the pane is wider.
+              (Full class names written out so Tailwind sees them.) */}
+          <div className={showDiscount ? 'flex flex-col divide-y @3xl:hidden' : 'flex flex-col divide-y @xl:hidden'}>
             {items.map((item, idx) => (
               <div key={item.po_item_sno} className="p-3">
                 <p className="text-sm font-semibold">{idx + 1}. {item.prod_name}</p>
@@ -188,12 +192,18 @@ const SupplierPODetail: React.FC<Props> = ({ po_basic_sno, onBack, onDispatch, o
                   <div><p className="text-muted-foreground">Rate</p><p className="font-medium">₹{fmt(item.unit_price)}</p></div>
                   <div className="text-right"><p className="text-muted-foreground">Amount</p><p className="font-semibold">₹{fmt(item.total_amount)}</p></div>
                 </div>
+                {(item.tax_pct != null || Number(item.discount_pct ?? 0) > 0) && (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {item.tax_pct != null && <>GST {percentLabel(item.tax_pct)} (included in the amount)</>}
+                    {Number(item.discount_pct ?? 0) > 0 && <>{item.tax_pct != null ? ' · ' : ''}Discount {percentLabel(item.discount_pct)}</>}
+                  </p>
+                )}
               </div>
             ))}
           </div>
 
           {/* Wider pane: table */}
-          <div className="hidden overflow-x-auto @xl:block">
+          <div className={showDiscount ? 'hidden overflow-x-auto @3xl:block' : 'hidden overflow-x-auto @xl:block'}>
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -202,7 +212,9 @@ const SupplierPODetail: React.FC<Props> = ({ po_basic_sno, onBack, onDispatch, o
                   <TableHead className={`text-right ${th}`}>Qty</TableHead>
                   <TableHead className={th}>Unit</TableHead>
                   <TableHead className={`text-right ${th}`}>Unit price</TableHead>
-                  <TableHead className={`text-right ${th}`}>Amount</TableHead>
+                  {showDiscount && <TableHead className={`text-right ${th}`}>Discount</TableHead>}
+                  <TableHead className={`text-right ${th}`}>GST</TableHead>
+                  <TableHead className={`text-right ${th}`}>{totals.hasBreakdown ? 'Amount (incl. GST)' : 'Amount'}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -216,6 +228,8 @@ const SupplierPODetail: React.FC<Props> = ({ po_basic_sno, onBack, onDispatch, o
                     <TableCell className="text-right tabular-nums">{item.ordered_qty}</TableCell>
                     <TableCell>{item.unit_name || '—'}</TableCell>
                     <TableCell className="text-right tabular-nums">₹{fmt(item.unit_price)}</TableCell>
+                    {showDiscount && <TableCell className="text-right tabular-nums">{percentLabel(item.discount_pct ?? 0)}</TableCell>}
+                    <TableCell className="text-right tabular-nums">{percentLabel(item.tax_pct)}</TableCell>
                     <TableCell className="text-right font-medium tabular-nums">₹{fmt(item.total_amount)}</TableCell>
                   </TableRow>
                 ))}
@@ -223,9 +237,23 @@ const SupplierPODetail: React.FC<Props> = ({ po_basic_sno, onBack, onDispatch, o
             </Table>
           </div>
 
-          <div className="flex items-center justify-between border-t bg-muted/30 px-4 py-3 sm:px-5">
-            <span className="text-sm font-medium text-muted-foreground">Grand total</span>
-            <span className="text-base font-bold tabular-nums">₹{fmt(grandTotal)}</span>
+          <div className="space-y-1.5 border-t bg-muted/30 px-4 py-3 sm:px-5">
+            {totals.hasBreakdown && (
+              <>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Taxable value</span>
+                  <span className="tabular-nums" data-testid="po-taxable">₹{fmt(totals.taxable)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>GST</span>
+                  <span className="tabular-nums" data-testid="po-gst">₹{fmt(totals.gst)}</span>
+                </div>
+              </>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-muted-foreground">Grand total</span>
+              <span className="text-base font-bold tabular-nums" data-testid="po-grand-total">₹{fmt(grandTotal)}</span>
+            </div>
           </div>
         </Panel>
       </div>

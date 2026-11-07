@@ -31,6 +31,8 @@ export interface PayableBillNet {
   tds_section_code: string | null; itc_status: string | null; payment_hold_override: 'Y' | 'N' | null;
   /** (sql/75) TDS rate % typed on an earlier payment of this invoice; null = the section's own rate */
   tds_rate_override?: number | null;
+  /** (sql/84) the login that typed that rate, and when */
+  tds_rate_entered_by?: string | null; tds_rate_entered_at?: string | null;
   gst_supplier: boolean; gst_booked: boolean; grn_state: 'Done' | 'Pending approval' | 'No GRN' | 'NA'; on_hold_2b: boolean;
   /** (sql/70) the GST share of this bill; the part of it kept back until the invoice shows in GSTR-2B; what can be paid today
    *  (below `outstanding` while that GST is held). taxable_known = the invoice carries a taxable value, so it can be split. */
@@ -103,6 +105,8 @@ export interface NetSummary {
 export interface NetInvoiceLine {
   invoice_sno: number; invoice_no: string; gross: number; taxable_base: number; tds_section: string | null;
   tds_rate_pct: number | null; tds_taxable: number | null; tds_amount: number;
+  /** (sql/84) the section's own rate; whether the rate used was typed; and the login that typed it (the caller, for a rate typed just now) */
+  tds_section_rate_pct?: number | null; tds_rate_entered?: boolean; tds_rate_entered_by?: string | null; tds_rate_entered_at?: string | null;
   /** (sql/70) what the invoice may be paid in all, what was paid / held before this payment, what is left after it; is_part = more is still to pay or was paid before */
   payable_total?: number; paid_before?: number; balance_after?: number; is_part?: boolean; supplier_invoice_no?: string | null;
 }
@@ -132,9 +136,20 @@ export const payNetRunBatchFile = (batch_sno: number) => `${base}/run/batches/${
 export const payNetRunBatchVerification = (batch_sno: number) => `${base}/run/batches/${batch_sno}/verification`;
 /** A supplier paid on their portal: no run, no file - record the transaction once it is paid there (sql/69). */
 export const payNetPortalPay = `${base}/run/portal-payment`;
+/** POST { payment_sno, payment_portal_name, payment_portal_url, payment_instructions } - add / fix a portal supplier's portal details (sql/91) */
+export const payNetPortalDetails = `${base}/run/portal-details`;
 export const payNetPortalPayments = `${base}/run/portal-payments`;
 /** TDS taken on each invoice (deductee, deductor, section, rate, amount) */
 export const payNetTdsRecords = `${base}/tds-records`;
+/** Who (which login) typed which TDS rate on which invoice (sql/84): ?invoice_sno= for one invoice */
+export const payNetTdsRateLog = `${base}/tds-rate-log`;
+export interface TdsRateLogEntry {
+  log_sno: number; invoice_sno: number; invoice_no: string | null; supplier_invoice_no: string | null;
+  payment_sno: number | null; payment_no: string | null; payment_status: string | null;
+  vendor_sno: number; vendor_name: string | null; section_code: string | null; section_rate_pct: number | null;
+  previous_rate_pct: number | null; entered_rate_pct: number | null; action_type: 'ENTERED' | 'CHANGED' | 'CLEARED';
+  tds_taxable: number | null; tds_amount: number | null; entered_by: string; entered_at: string;
+}
 
 export type PortalMode = 'UPI' | 'Credit Card' | 'Debit Card' | 'Net Banking' | 'Wallet' | 'Other';
 export interface PortalPayment {
@@ -148,6 +163,8 @@ export interface TdsRecord {
   vendor_sno: number; vendor_name: string | null; supp_code: string | null; vendor_pan: string | null;
   deductor_name: string | null; deductor_tan: string | null; deductor_pan: string | null;
   section_code: string; section_description: string | null; fin_year: string | null; base_amount: number; base_deducted: number; rate_pct: number; tds_amount: number;
+  /** (sql/84) the section's own rate, and the login that typed the rate used (null = the section's own rate was used) */
+  section_rate_pct?: number | null; rate_entered_by?: string | null; rate_entered_at?: string | null;
 }
 
 /** The company's bank accounts a run can be paid from (Payment Bank master): ?com_sno= */
@@ -177,6 +194,10 @@ export interface PaymentEntry {
   /** Micro / Small (or MSME with no type): the statutory payment limit applies */
   is_statutory: boolean;
   pay_via_portal: boolean; payment_portal_name: string | null; payment_portal_url: string | null;
+  /** portal suppliers only (Payment Run list): the payment instructions the supplier gave in KYC, null when none */
+  payment_instructions?: string | null;
+  /** (sql/91) who last changed this supplier's portal details on Payment Run, and when - absent when never changed there */
+  portal_edited_by?: string | null; portal_edited_at?: string | null;
   ac_holder_name: string | null; ac_number: string | null; ifsc: string | null; bank_name: string | null; bank_branch_name: string | null;
   channel: PayChannel; bank_ready: boolean;
   invoice_count: number; invoice_nos: string | null; supplier_invoice_nos: string | null; po_nos: string | null; gate_entry_nos: string | null; grn_nos: string | null;
@@ -256,6 +277,8 @@ export interface PaymentInvoiceFigures {
   invoice_file_url?: string | null; supplier_gstin?: string | null;
   gstr2b_status?: 'No GST' | 'In GSTR-2B' | 'Hold released by Accounts' | 'Not in GSTR-2B'; gstr2b_period?: string | null;
   tds_section?: string | null; tds_rate_pct?: number | null; tds_base?: number | null; tds_this_payment?: number | null;
+  /** (sql/84) the section's own rate, and who typed the rate when it was not the section's */
+  tds_section_rate_pct?: number | null; tds_rate_entered_by?: string | null; tds_rate_entered_at?: string | null;
   grn_label?: string | null; grn_invoice_no?: string | null; grn_invoice_date?: string | null; grn_invoice_amount?: number | null;
   grn_invoice_doc_url?: string | null; grn_taxable_value?: number | null;
 }
@@ -376,6 +399,9 @@ export const payNetStatutoryRuns = `${base}/statutory/runs`;
 export const payNetStatutoryRunFile = (batch_sno: number) => `${base}/statutory/runs/${batch_sno}/file`;
 /** sql/82: the ticked amounts of one online payee were paid on its portal - record it (no bank file) */
 export const payNetStatutoryOnlinePay = `${base}/statutory/online-payment`;
+/** sql/96: a due date of an approved Statutory agreement (Service Agreement screen) - enter its amount, or skip it */
+export const payNetStatutoryDueAmount = `${base}/statutory/dues/amount`;
+export const payNetStatutoryDueSkip = `${base}/statutory/dues/skip`;
 
 /** How a statutory payment was made on a portal (grn-service sql/82 accepts exactly these). */
 export const STATUTORY_ONLINE_MODES = ['Net Banking', 'UPI', 'Debit Card', 'Credit Card', 'NEFT/RTGS', 'Other'] as const;
@@ -383,7 +409,9 @@ export const STATUTORY_ONLINE_MODES = ['Net Banking', 'UPI', 'Debit Card', 'Cred
 export type StatutoryPayChannel = 'BANK_FILE' | 'ONLINE';
 
 export interface StatutoryPayable {
-  stat_sno: number; kind: StatutoryKind; source_type: 'TDS' | 'MANUAL';
+  /** AGREEMENT (sql/96): a due of an approved Statutory agreement - Fixed ones are posted by themselves, Unfixed once the amount is entered */
+  stat_sno: number; kind: StatutoryKind; source_type: 'TDS' | 'MANUAL' | 'AGREEMENT';
+  cycle_sno?: number | null; agreement_sno?: number | null; agreement_no?: string | null; agreement_amount_type?: 'FIXED' | 'UNFIXED' | null;
   com_sno: number | null; com_name: string | null; div_sno: number | null; brn_sno: number | null;
   head_name: string; ref_no: string | null; period_label: string | null; party_name: string | null;
   payment_sno: number | null; payment_no: string | null; payee_sno: number | null; payee_name: string | null; payee_ref: string | null;
@@ -397,7 +425,16 @@ export interface StatutoryPayable {
 }
 /** GST on supplier bills kept back until GSTR-2B shows the invoice: shown, not paid here - it is paid with the bill on the Payment screen. */
 export interface GstHeldRow { invoice_sno: number; invoice_no: string | null; supplier_invoice_no: string | null; vendor_name: string | null; gst_amount: number }
-export interface StatutoryPayableList { payables: StatutoryPayable[]; gstHeld: GstHeldRow[] }
+/** sql/96: a due date of an approved Unfixed Statutory agreement that has come into view and waits for its amount. */
+export interface StatutoryAgreementDue {
+  cycle_sno: number; agreement_sno: number; agreement_no: string; kind: Exclude<StatutoryKind, 'TDS'>;
+  head_name: string; ref_no: string | null; period_label: string | null; due_date: string; days_overdue: number | null;
+  /** the amount on the agreement - only an estimate for an Unfixed one */
+  expected_amount: number | null;
+  com_sno: number | null; com_name: string | null; div_sno: number | null; brn_sno: number | null; dept_sno: number | null;
+  pay_to_sno: number | null; pay_to_name: string | null; pay_to_online: 'Y' | 'N' | null;
+}
+export interface StatutoryPayableList { payables: StatutoryPayable[]; gstHeld: GstHeldRow[]; waiting?: StatutoryAgreementDue[] }
 
 export interface StatutoryPayee {
   payee_sno: number; kind: StatutoryKind; payee_name: string;

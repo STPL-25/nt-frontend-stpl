@@ -23,6 +23,8 @@ import {
 import { socket, SOCKET_CONNECT, SOCKET_JOIN_PAYMENT, SOCKET_LEAVE_PAYMENT, SOCKET_PAYMENT_RELEASED } from '@/Services/Socket';
 import { invoiceSnosOf, keepOffered, noteSourceLine, stillPayable, withoutRedeemed } from './paymentNotesModel';
 import { amountOf, amountProblem, billKind, clampAdvances, heldBy2b, leftLine, payCap } from './partPaymentModel';
+import { cleanRateInput, enteredLine, rateProblem } from './tdsRateModel';
+import { TdsRateHistoryButton } from './TdsRateHistory';
 
 /** Every payment from this screen is a bank transfer; the Payment Run decides the account and writes the file. */
 const PAYMENT_MODE = 'NEFT';
@@ -53,6 +55,8 @@ const statusBadge = (st: InvoicePaymentStatus) => {
   return <Badge variant="secondary" className="text-[10px]">Unpaid</Badge>;
 };
 const dateOnly = (d: string | null | undefined) => (d ? String(d).slice(0, 10) : '—');
+/** An invoice counts as uploaded only when its file link is there. */
+const uploaded = (url: string | null | undefined) => !!url && url.trim() !== '';
 
 /** A vendor-driven consolidated bill (VBC-...): one supplier + period, several delivered POs, paid together. */
 type ConsolidatedBill = {
@@ -80,6 +84,9 @@ const PaymentPage: React.FC = () => {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [grnPending, setGrnPending] = useState<GrnPendingPayment[]>([]);
   const [ledger, setLedger] = useState<InvoiceLedger>({ invoices: [], grns: [] });
+  // true when the invoice ledger could not be loaded: which invoices have a file is then unknown, so the list is not filtered by it.
+  // (While the ledger is still loading nothing passes the filter, so entries without a file never flash up.)
+  const [ledgerFailed, setLedgerFailed] = useState(false);
   const [consolidations, setConsolidations] = useState<ConsolidatedBill[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [listSearch, setListSearch] = useState('');
@@ -109,8 +116,12 @@ const PaymentPage: React.FC = () => {
     axios.get(payNetTdsSections).then((r) => setTdsMaster(r?.data?.data ?? [])).catch(() => setTdsMaster([]));
   }, []);
   // several suppliers ticked: one preview per supplier (supplier_sno -> figures or why not) and the result of the last save
-  const [multiPrev, setMultiPrev] = useState<Record<string, { summary?: NetSummary | null; error?: string }>>({});
+  const [multiPrev, setMultiPrev] = useState<Record<string, { summary?: NetSummary | null; invoices?: NetPreview['invoices']; error?: string }>>({});
   const [multiResult, setMultiResult] = useState<{ ok: string[]; failed: string[] } | null>(null);
+  // what the last preview worked out for one invoice (its TDS at the rate in use) - from the single-supplier or the per-supplier preview
+  const previewLineOf = (invoice_sno: number) =>
+    preview?.invoices?.find((l) => l.invoice_sno === invoice_sno)
+    ?? Object.values(multiPrev).flatMap((m) => m.invoices ?? []).find((l) => l.invoice_sno === invoice_sno);
 
   // keep: the bills ticked right now. A live refresh (another user paid something) must not wipe what this user has ticked -
   // it only drops the bills that are no longer payable. Without keep the selection is cleared (Refresh, after a release).
@@ -143,8 +154,11 @@ const PaymentPage: React.FC = () => {
       try {
         const led = await axios.get(payNetInvoiceLedger, { params });
         setLedger({ invoices: led?.data?.data?.invoices ?? [], grns: led?.data?.data?.grns ?? [] });
+        setLedgerFailed(false);
       } catch {
         setLedger({ invoices: [], grns: [] });
+        setLedgerFailed(true);
+        toast.warning('Could not check which invoices are uploaded - the list may include invoices without a file. Press Refresh to retry.');
       }
       // Consolidated vendor-driven bills - they group their member invoices; a failure only means they show per PO again.
       try {
@@ -174,7 +188,15 @@ const PaymentPage: React.FC = () => {
     for (const c of consolidations) for (const m of membersOf(c)) { conOfInvoice.set(m.invoice_sno, c); if (m.po_no) conPoNos.add(m.po_no); }
     // an invoice already saved in a payment (or paid) has moved on to approval / Payment Run: it is not offered here again
     const settled = new Set(ledger.invoices.filter((i) => i.payment_status === 'In payment' || i.payment_status === 'Paid').map((i) => i.invoice_sno));
-    for (const b of bills.filter((x) => !settled.has(x.invoice_sno))) {
+    // Only entries whose supplier invoice file is uploaded are listed. Nothing is deleted: an entry without the file is just
+    // not shown here and comes back once its invoice is uploaded.
+    const fileOf = new Map(ledger.invoices.map((i) => [i.invoice_sno, uploaded(i.invoice_file_url)]));
+    const hasFile = (invoice_sno: number) => ledgerFailed || fileOf.get(invoice_sno) === true;
+    const poWithUpload = new Set<string | null>([
+      ...ledger.grns.filter((x) => uploaded(x.invoice_doc_url)).map((x) => x.po_no),
+      ...ledger.invoices.filter((i) => uploaded(i.invoice_file_url)).map((i) => i.po_no),
+    ]);
+    for (const b of bills.filter((x) => !settled.has(x.invoice_sno) && hasFile(x.invoice_sno))) {
       const con = conOfInvoice.get(b.invoice_sno);
       const key = con ? `con:${con.consolidation_sno}` : b.po_no ? `po:${b.po_no}` : `inv:${b.invoice_sno}`;
       const g = map.get(key) ?? { key, poNo: con ? con.consolidation_no : b.po_no, vendorName: b.vendor_name, vendorSno: b.vendor_sno, bills: [], info: !con && b.po_no ? infoByPo.get(b.po_no) : undefined, consolidation: con };
@@ -191,9 +213,10 @@ const PaymentPage: React.FC = () => {
     const openStatuses: InvoicePaymentStatus[] = ['Unpaid', 'Part paid', 'Not allocated'];
     return [...map.values()].filter((g) =>
       g.bills.length > 0
-      || (!g.consolidation && (!g.info?.has_invoice
+      || (!g.consolidation && (ledgerFailed || poWithUpload.has(g.poNo))   // a PO with no bill left is kept only if its GRN / invoice has an uploaded file
+      && (!g.info?.has_invoice
       || ledger.invoices.some((i) => i.po_no === g.poNo && openStatuses.includes(i.payment_status)))));
-  }, [bills, grnPending, ledger, consolidations]);
+  }, [bills, grnPending, ledger, ledgerFailed, consolidations]);
 
 
   const filteredGroups = useMemo(() => {
@@ -229,7 +252,11 @@ const PaymentPage: React.FC = () => {
   const selectedVendorSno = selectedGroupKeys.length === 1 ? (selectedBills[0]?.vendor_sno ?? null) : null;
   // what this payment pays: the whole of what can be paid on each ticked bill, unless a smaller amount was typed (part payment)
   const selectedTotal = selectedBills.reduce((sum, b) => sum + amountOf(b, payAmt), 0);
-  const amountProblems = selectedBills.map((b) => amountProblem(b, payAmt)).filter(Boolean);
+  // anything typed on a ticked bill that cannot be used (an amount, or a TDS rate outside 0-100) holds the preview and the save back
+  const amountProblems = [
+    ...selectedBills.map((b) => amountProblem(b, payAmt)),
+    ...[...new Set(selectedBills.map((b) => b.invoice_sno))].map((id) => (tdsSection[id] ? rateProblem(tdsRate[id]) : '')),
+  ].filter(Boolean);
 
   const toggleRow = (bill: PayableBillNet) => {
     if (blockReason(bill)) return;
@@ -421,11 +448,11 @@ const PaymentPage: React.FC = () => {
     if (amountProblems.length > 0) { setMultiPrev({}); return; }
     let cancelled = false;
     const t = setTimeout(async () => {
-      const out: Record<string, { summary?: NetSummary | null; error?: string }> = {};
+      const out: Record<string, { summary?: NetSummary | null; invoices?: NetPreview['invoices']; error?: string }> = {};
       for (const v of selectedGroupKeys) {
         try {
           const res = await axios.post(payNetPreview, bodyForGroup(v));
-          out[v] = { summary: res.data?.data?.summary ?? null };
+          out[v] = { summary: res.data?.data?.summary ?? null, invoices: res.data?.data?.invoices ?? [] };
         } catch (e) {
           out[v] = { error: getErrorMessage(e, 'Could not work out the amount') };
         }
@@ -526,10 +553,10 @@ const PaymentPage: React.FC = () => {
   const openInvoice = (i: { payment_status: InvoicePaymentStatus }) => i.payment_status !== 'In payment' && i.payment_status !== 'Paid';
   const poInvoices = (con
     ? ledger.invoices.filter((i) => conMembers.some((m) => m.invoice_sno === i.invoice_sno))
-    : ledger.invoices.filter((i) => activeGroup?.poNo && i.po_no === activeGroup.poNo)).filter(openInvoice);
-  const poGrns = con
+    : ledger.invoices.filter((i) => activeGroup?.poNo && i.po_no === activeGroup.poNo)).filter(openInvoice).filter((i) => uploaded(i.invoice_file_url));
+  const poGrns = (con
     ? ledger.grns.filter((g) => conPoNos.has(g.po_no))
-    : ledger.grns.filter((g) => activeGroup?.poNo && g.po_no === activeGroup.poNo);
+    : ledger.grns.filter((g) => activeGroup?.poNo && g.po_no === activeGroup.poNo)).filter((g) => uploaded(g.invoice_doc_url));
   const grnsMissingInvoice = poGrns.filter((g) => !g.has_invoice_data);
   const activePoSno = con ? null : (info?.po_basic_sno ?? poInvoices[0]?.po_basic_sno ?? poGrns[0]?.po_basic_sno ?? null);
   // a consolidated bill spans several POs: an advance paid for any of them nets off its invoices
@@ -791,7 +818,11 @@ const PaymentPage: React.FC = () => {
                           className="h-7 rounded-md border bg-background px-1 text-xs"
                           value={tdsSection[bill.invoice_sno] ?? ''}
                           disabled={!isSel}
-                          onChange={(e) => setTdsSection((p) => ({ ...p, [bill.invoice_sno]: e.target.value }))}
+                          onChange={(e) => {
+                            setTdsSection((p) => ({ ...p, [bill.invoice_sno]: e.target.value }));
+                            // a rate typed for one section must not silently carry over to another
+                            setTdsRate((p) => ({ ...p, [bill.invoice_sno]: '' }));
+                          }}
                         >
                           <option value="">No TDS</option>
                           {tdsSection[bill.invoice_sno] && !tdsOptionGroups(bill.invoice_sno).some((g) => g.items.some((t) => t.section_code === tdsSection[bill.invoice_sno])) && (
@@ -803,20 +834,40 @@ const PaymentPage: React.FC = () => {
                             </optgroup>
                           ))}
                         </select>
-                        {(tdsSection[bill.invoice_sno] ?? '') !== '' && (
-                          <div className="mt-1 flex items-center gap-1" title="Change the TDS rate for this invoice, e.g. 2 to 3. Leave blank to use the section's own rate. It is remembered for the invoice's later part payments.">
-                            <Input
-                              className="h-7 w-16 px-1.5 text-right text-xs tabular-nums"
-                              inputMode="decimal"
-                              placeholder="rate"
-                              aria-label={`TDS rate in percent for ${bill.bill_no}`}
-                              disabled={!isSel}
-                              value={tdsRate[bill.invoice_sno] ?? ''}
-                              onChange={(e) => setTdsRate((p) => ({ ...p, [bill.invoice_sno]: e.target.value.replace(/[^d.]/g, '') }))}
-                            />
-                            <span className="text-[11px] text-muted-foreground">%</span>
-                          </div>
-                        )}
+                        {(tdsSection[bill.invoice_sno] ?? '') !== '' && (() => {
+                          const id = bill.invoice_sno;
+                          const rateErr = isSel ? rateProblem(tdsRate[id]) : '';
+                          const tdsLine = isSel ? previewLineOf(id) : undefined;
+                          // who entered the rate: the saving login for a rate typed now (the preview knows), else the one stored on the invoice
+                          const enterer = tdsLine
+                            ? (tdsLine.tds_rate_entered ? enteredLine(tdsLine.tds_rate_entered_by, tdsLine.tds_rate_entered_at) : '')
+                            : (bill.tds_rate_override != null && (tdsRate[id] ?? '') !== '' ? enteredLine(bill.tds_rate_entered_by, bill.tds_rate_entered_at) : '');
+                          return (
+                            <div className="mt-1 space-y-0.5">
+                              <div className="flex items-center gap-1" title={isSel ? "Type the TDS rate for this invoice, e.g. 3 instead of 2. Leave blank to use the section's own rate. It is remembered for the invoice's later part payments, with the login that entered it." : 'Tick the invoice to change its TDS rate'}>
+                                <Input
+                                  className={`h-7 w-16 px-1.5 text-right text-xs tabular-nums ${rateErr ? 'border-red-500' : ''}`}
+                                  inputMode="decimal"
+                                  placeholder="rate"
+                                  aria-label={`TDS rate in percent for ${bill.bill_no}`}
+                                  disabled={!isSel}
+                                  value={tdsRate[id] ?? ''}
+                                  onChange={(e) => setTdsRate((p) => ({ ...p, [id]: cleanRateInput(e.target.value) }))}
+                                />
+                                <span className="text-[11px] text-muted-foreground">%</span>
+                                <TdsRateHistoryButton invoiceSno={id} billNo={bill.bill_no} />
+                              </div>
+                              {rateErr && <p className="max-w-[12rem] text-[11px] text-red-600">{rateErr}</p>}
+                              {tdsLine && !rateErr && (
+                                <p className="max-w-[12rem] text-[11px] leading-snug tabular-nums text-muted-foreground">
+                                  {tdsLine.tds_rate_entered ? `Typed ${Number(tdsLine.tds_rate_pct ?? 0)}% (section ${Number(tdsLine.tds_section_rate_pct ?? 0)}%)` : `Section rate ${Number(tdsLine.tds_rate_pct ?? 0)}%`}
+                                  {' · '}<b className="text-red-700 dark:text-red-400">TDS {money(tdsLine.tds_amount)}</b>{tdsLine.tds_taxable != null ? ` on ${money(tdsLine.tds_taxable)}` : ''}
+                                </p>
+                              )}
+                              {enterer && <p className="max-w-[12rem] text-[11px] leading-snug text-muted-foreground" title="The login that entered this rate">Rate entered by {enterer}</p>}
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs text-right tabular-nums">{money(bill.invoice_amount)}</TableCell>
                       <TableCell className="whitespace-nowrap text-xs text-right tabular-nums">
@@ -1070,6 +1121,14 @@ const PaymentPage: React.FC = () => {
                             <span className={`block text-[11px] ${l.is_part ? 'text-blue-700 dark:text-blue-400' : 'text-muted-foreground'}`}>
                               {l.is_part ? `${Number(l.balance_after) <= 0.005 ? 'Last part' : 'Part payment'} of ${money(l.gross)} - ${leftLine(Number(l.balance_after), false, 0)}` : 'Paid in full'}
                             </span>
+                          )}
+                          {l.tds_section && l.tds_rate_entered && (
+                            <span className="block text-[11px] text-muted-foreground">
+                              Rate typed (section rate {Number(l.tds_section_rate_pct ?? 0)}%) · entered by {enteredLine(l.tds_rate_entered_by, l.tds_rate_entered_at)}
+                            </span>
+                          )}
+                          {l.tds_section && l.tds_taxable != null && (
+                            <span className="block text-[11px] text-muted-foreground">TDS on {money(l.tds_taxable)} of {money(l.gross)} paid</span>
                           )}
                           {l.tds_section && (adj?.tdsSections ?? []).find((t) => t.section_code === l.tds_section)?.description && (
                             <span className="block text-[11px] text-muted-foreground">

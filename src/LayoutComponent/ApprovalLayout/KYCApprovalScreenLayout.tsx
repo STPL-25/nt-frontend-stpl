@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
-  CheckCircle2, ChevronRight, Download, ExternalLink, Eye, FileText, History, IdCard, Landmark,
-  Layers, MapPin, RefreshCw, ShieldCheck, Star, User, Users, XCircle,
+  CheckCircle2, ChevronRight, Download, ExternalLink, Eye, FileSignature, FileText, History, IdCard, Landmark,
+  Layers, MapPin, MessageSquareText, RefreshCw, ShieldAlert, ShieldCheck, Star, User, Users, XCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,13 +12,16 @@ import { usePermissions } from '@/globalState/hooks/usePermissions';
 import { getAuthFileUrl } from '@/Services/authUrl';
 import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
 import {
-  ApprovalDecisionDialog, ApprovalStepper, DecisionButtons, DetailEmptyState,
+  ApprovalDecisionDialog, ApprovalStepper, Callout, DecisionButtons, DetailEmptyState,
   DetailHero, Fact, FactGrid, Panel, SearchInput, SelectableCard, StatusPill, StickyActionBar,
 } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import {
   AGREEMENT_STATUS, TONE, formatDate, parseStages, statusMeta,
 } from '@/CustomComponent/ServiceComponents/serviceUtils';
 import type { KYCApprovalRecord } from '@/Application/Kyc-Screen/types/KYCApprovalType';
+import KycRecordCompare from '@/Application/Kyc-Screen/KycRecordCompare';
+import { recordKey } from '@/Application/Kyc-Screen/kycChangeRequestRecord';
+import { authorizationFiles, changeStatus, stageText, touchesPayment } from '@/Application/SupplierStatus/kycModifications';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -79,6 +82,35 @@ const linkClass = 'text-primary underline-offset-2 hover:underline';
 
 function KycListCard({ kyc, isSelected, onClick }: { kyc: KYCApprovalRecord; isSelected: boolean; onClick: () => void }) {
   const status = statusMeta(AGREEMENT_STATUS, kyc.status ?? 'P');
+  const change = kyc.change_request;
+  if (change) {
+    // A supplier's request to change its KYC: who, which request, where in the approval stages.
+    return (
+      <SelectableCard selected={isSelected} onClick={onClick}>
+        <span className="flex items-start justify-between gap-2">
+          <span className="block min-w-0">
+            <span className="block truncate text-sm font-semibold capitalize">{kyc.company_name}</span>
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">{kyc.supp_code ? `${kyc.supp_code} · ` : ''}Request {change.version_no}</span>
+          </span>
+          <ChevronRight className={cn('mt-0.5 h-4 w-4 shrink-0 transition-transform', isSelected ? 'translate-x-0.5 text-primary' : 'text-muted-foreground/60')} />
+        </span>
+        <span className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          <Tag tone="primary"><FileSignature className="h-2.5 w-2.5" />Change request</Tag>
+          {touchesPayment(change) && <Tag tone="warning">Payment details</Tag>}
+        </span>
+        <span className="mt-3 block space-y-1 text-xs">
+          <span className="flex justify-between gap-3">
+            <span className="shrink-0 text-muted-foreground">Stage</span>
+            <span className="truncate text-right font-medium">{stageText(change) || '—'}</span>
+          </span>
+          <span className="flex justify-between gap-3">
+            <span className="text-muted-foreground">Sent</span>
+            <span className="text-right font-medium">{formatDate(change.modified_date)}</span>
+          </span>
+        </span>
+      </SelectableCard>
+    );
+  }
   return (
     <SelectableCard selected={isSelected} onClick={onClick}>
       <span className="flex items-start justify-between gap-2">
@@ -229,10 +261,12 @@ function ContactsPanel({ contacts }: { contacts: any[] }) {
   );
 }
 
-function DocumentsPanel({ documents, onPreview }: { documents: any[]; onPreview: (d: DocPreview) => void }) {
+function DocumentsPanel({ documents, onPreview, title = 'Documents', description, emptyText = 'No documents uploaded.', icon = FileText }: {
+  documents: any[]; onPreview: (d: DocPreview) => void; title?: string; description?: string; emptyText?: string; icon?: LucideIcon;
+}) {
   return (
-    <Panel icon={FileText} title="Documents" description={`${documents.length} uploaded`}>
-      {documents.length === 0 ? <EmptyNote>No documents uploaded.</EmptyNote> : (
+    <Panel icon={icon} title={title} description={description ?? `${documents.length} uploaded`}>
+      {documents.length === 0 ? <EmptyNote>{emptyText}</EmptyNote> : (
         <ul className="space-y-2">
           {documents.map((doc, idx) => {
             const docUrl = doc.document_path || doc.url || '';
@@ -399,6 +433,18 @@ function KycDetailPanel({ kyc, handleAction }: { kyc: KYCApprovalRecord; handleA
               ]}
             />
 
+            {!!kyc.resubmit_count && (
+              <Callout tone="info" icon={ShieldAlert}>
+                <p className="font-semibold">
+                  Corrected by the supplier and sent again{kyc.resubmit_count > 1 ? ` (attempt ${kyc.resubmit_count})` : ''}
+                  {kyc.resubmitted_date ? ` on ${fmtWhen(kyc.resubmitted_date)}` : ''}
+                </p>
+                {kyc.last_reject_reason && <p className="mt-1"><span className="font-semibold">Rejected for:</span> {kyc.last_reject_reason}</p>}
+                {kyc.resubmit_note && <p className="mt-1"><span className="font-semibold">Supplier says:</span> {kyc.resubmit_note}</p>}
+                <p className="mt-1 opacity-80">Check that what was wrong has really been fixed - the earlier details are kept on the supplier's record.</p>
+              </Callout>
+            )}
+
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card px-4 py-3">
               <p className="text-sm text-muted-foreground">Download every detail entered for this supplier</p>
               <SupplierDownloadButtons source="KYC" recordId={kyc.kyc_basic_info_sno} />
@@ -457,6 +503,149 @@ function KycDetailPanel({ kyc, handleAction }: { kyc: KYCApprovalRecord; handleA
                     <div className="flex items-center justify-between gap-2">
                       <dt className="shrink-0 text-muted-foreground">Current approver</dt>
                       <dd className="truncate text-right font-semibold">{currentApprover}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            </Panel>
+          </div>
+        </div>
+      </div>
+
+      <StickyActionBar>
+        {canReview ? (
+          <DecisionButtons
+            className="@md:justify-end @md:[&>button]:min-w-44 @md:[&>button]:flex-none"
+            approveLabel="Approve"
+            rejectLabel="Reject"
+            onApprove={() => handleAction('approve')}
+            onReject={() => handleAction('reject')}
+          />
+        ) : (
+          <p className="py-1 text-center text-xs text-muted-foreground">View only — no approval permission</p>
+        )}
+      </StickyActionBar>
+
+      {docPreview && <DocPreviewDrawer doc={docPreview} onClose={() => setDocPreview(null)} />}
+    </div>
+  );
+}
+
+// ─── Detail panel: a supplier's request to change its own KYC ──────────────
+
+const fmtWhen = (v?: string | null) => {
+  if (!v) return '—';
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? v : `${formatDate(v)}, ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`;
+};
+
+/** An uploaded file of the request, in the shape DocumentsPanel lists. */
+const asDocument = (f: { file_kind: string; file_name: string; file_path: string }) => ({
+  document_path: f.file_path, document_name: f.file_name, document_type: f.file_kind === 'AUTHORIZATION' ? 'Authorization letter' : f.file_kind,
+});
+
+/**
+ * The supplier asked to change its own KYC (on the /Supplier portal). Shows why, the authorization letter and files it sent, and the
+ * KYC as it is now next to the KYC as it will be - then the same Approve / Reject as any KYC. Approving the last stage replaces the
+ * supplier's details with the current record; the previous record stays on file.
+ */
+function ChangeRequestDetailPanel({ kyc, handleAction }: { kyc: KYCApprovalRecord; handleAction: (a: string) => void }) {
+  const r = kyc.change_request!;
+  const { canEdit } = usePermissions();
+  const [docPreview, setDocPreview] = useState<DocPreview | null>(null);
+  const status = changeStatus(r.status);
+  const canReview = canEdit('KYCApprovalScreen');
+  const letters = authorizationFiles(r).map(asDocument);
+  const added = r.files.filter((f) => f.file_kind !== 'AUTHORIZATION').map(asDocument);
+  const trail = r.approvals ?? [];
+  const lastStage = !!r.stage_no && r.stage_no === r.stage_total;
+
+  return (
+    <div className="@container">
+      <div className="space-y-4 p-3 sm:space-y-5 sm:p-5 lg:p-6">
+        <div className="grid grid-cols-1 gap-4 sm:gap-5 @4xl:grid-cols-3">
+          <div className="min-w-0 space-y-4 sm:space-y-5 @4xl:col-span-2">
+            <DetailHero
+              icon={FileSignature}
+              eyebrow="Supplier KYC change request"
+              title={kyc.company_name}
+              subtitle={`Request ${r.version_no} · sent ${fmtWhen(r.modified_date)} by ${r.modified_by}`}
+              badges={
+                <>
+                  <StatusPill tone={status.tone}>{status.label}</StatusPill>
+                  {kyc.supp_code && <Tag tone="neutral"><span className="font-mono">{kyc.supp_code}</span></Tag>}
+                  {stageText(r) && <Tag tone="info">{stageText(r)}</Tag>}
+                </>
+              }
+            />
+
+            <Panel icon={MessageSquareText} title="Reason for the change">
+              <p className="whitespace-pre-wrap break-words text-sm">{r.reason}</p>
+            </Panel>
+
+            {touchesPayment(r) && (
+              <Callout tone="warning" icon={ShieldAlert}>
+                This change affects <strong>how the supplier is paid</strong> (bank account or payment method). Compare the current record with the
+                authorization letter before approving - a wrong account sends the supplier's money to someone else.
+              </Callout>
+            )}
+
+            <DocumentsPanel
+              icon={FileSignature} title="Authorization letter" documents={letters} onPreview={setDocPreview}
+              description="Sent by the supplier with the request" emptyText="No authorization letter was attached."
+            />
+            {added.length > 0 && (
+              <DocumentsPanel title="New documents sent with the request" documents={added} onPreview={setDocPreview} description={`${added.length} file${added.length !== 1 ? 's' : ''}`} />
+            )}
+
+            <KycRecordCompare previous={r.old_data} current={r.new_data} onPreview={setDocPreview} />
+
+            {trail.length > 0 && (
+              <Panel icon={History} title="Approval so far" description={`${trail.length} action${trail.length !== 1 ? 's' : ''}`}>
+                <ol className="space-y-3">
+                  {trail.map((a, i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <span className={cn('mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border', a.action === 'A' ? TONE.success : TONE.danger)}>
+                        {a.action === 'A' ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold">{a.stage_name || `Stage ${a.seq_no}`} <span className="font-normal text-muted-foreground">· {a.approver_ecno}</span></p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{a.action === 'A' ? 'Approved' : 'Rejected'} {fmtWhen(a.acted_date)}</p>
+                        {a.note && <p className="mt-1 border-l-2 border-emerald-300 pl-2 text-xs italic text-muted-foreground dark:border-emerald-700">“{a.note}”</p>}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </Panel>
+            )}
+          </div>
+
+          <div className="hidden @4xl:col-span-1 @4xl:block">
+            <Panel title="Approval actions" description="Review and take action on this change" className="@4xl:sticky @4xl:top-5">
+              <div className="space-y-4">
+                {canReview ? (
+                  <DecisionButtons
+                    className="flex-col"
+                    approveLabel="Approve change"
+                    rejectLabel="Reject change"
+                    onApprove={() => handleAction('approve')}
+                    onReject={() => handleAction('reject')}
+                  />
+                ) : (
+                  <p className="rounded-lg bg-muted/60 px-3 py-2.5 text-center text-xs text-muted-foreground">View only — no approval permission</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {lastStage ? 'This is the last stage: approving replaces the supplier’s KYC with the current record.' : 'Approving moves it to the next approval stage.'}
+                </p>
+                <dl className="space-y-2 border-t pt-4 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-muted-foreground">Status</dt>
+                    <dd><StatusPill tone={status.tone}>{status.label}</StatusPill></dd>
+                  </div>
+                  {r.current_approver_ecno && (
+                    <div className="flex items-center justify-between gap-2">
+                      <dt className="shrink-0 text-muted-foreground">Current approver</dt>
+                      <dd className="truncate text-right font-semibold">{r.current_approver_ecno}</dd>
                     </div>
                   )}
                 </dl>
@@ -545,9 +734,9 @@ export default function KYCApprovalScreenLayout({
             ) : (
               kycList.map((kyc) => (
                 <KycListCard
-                  key={kyc.kyc_basic_info_sno}
+                  key={recordKey(kyc)}
                   kyc={kyc}
-                  isSelected={selectedKyc?.kyc_basic_info_sno === kyc.kyc_basic_info_sno}
+                  isSelected={!!selectedKyc && recordKey(selectedKyc) === recordKey(kyc)}
                   onClick={() => { handleKycSelect(kyc); closeSheet(); }}
                 />
               ))
@@ -555,14 +744,19 @@ export default function KYCApprovalScreenLayout({
           </>
         )}
         hasSelection={!!selectedKyc}
-        detailContent={selectedKyc ? <KycDetailPanel kyc={selectedKyc} handleAction={handleAction} /> : null}
+        detailContent={selectedKyc
+          ? (selectedKyc.change_request
+            // key: switching between two requests must not carry the document preview / scroll state over
+            ? <ChangeRequestDetailPanel key={recordKey(selectedKyc)} kyc={selectedKyc} handleAction={handleAction} />
+            : <KycDetailPanel kyc={selectedKyc} handleAction={handleAction} />)
+          : null}
         emptyContent={
           <DetailEmptyState
             icon={Layers}
             title={totalCount === 0 ? 'Nothing waiting on you' : 'No KYC selected'}
             description={totalCount === 0
-              ? 'Supplier KYC submissions routed to you for approval will show up here.'
-              : 'Pick a submission from the list to review its details and take action.'}
+              ? 'Supplier KYC submissions and suppliers’ requests to change their KYC, routed to you for approval, will show up here.'
+              : 'Pick a submission or change request from the list to review its details and take action.'}
           />
         }
         mobileListLabel="KYC list"
@@ -577,12 +771,19 @@ export default function KYCApprovalScreenLayout({
         setComments={setComments}
         onSubmit={handleSubmit}
         loading={loading}
-        entityName="KYC"
-        approveNote="If this is the final stage, the supplier is approved and receives a supplier code and portal invite; otherwise it moves to the next approver."
-        summary={selectedKyc ? [
-          { label: 'Company', value: selectedKyc.company_name },
-          { label: 'Contact', value: selectedKyc.contact_person || '—' },
-        ] : undefined}
+        entityName={selectedKyc?.change_request ? 'KYC change' : 'KYC'}
+        approveNote={selectedKyc?.change_request
+          ? 'If this is the last stage, the supplier’s KYC is replaced with the current record (the previous record stays on file) and the supplier is told; otherwise it moves to the next approver.'
+          : 'If this is the final stage, the supplier is approved and receives a supplier code and portal invite; otherwise it moves to the next approver.'}
+        summary={selectedKyc ? (selectedKyc.change_request
+          ? [
+            { label: 'Company', value: selectedKyc.company_name },
+            { label: 'Request', value: `Change request ${selectedKyc.change_request.version_no} · ${stageText(selectedKyc.change_request) || 'In approval'}` },
+          ]
+          : [
+            { label: 'Company', value: selectedKyc.company_name },
+            { label: 'Contact', value: selectedKyc.contact_person || '—' },
+          ]) : undefined}
       />
     </>
   );

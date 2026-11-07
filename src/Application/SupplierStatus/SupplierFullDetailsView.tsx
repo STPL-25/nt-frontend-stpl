@@ -7,6 +7,10 @@ import { LoadingState, ErrorState } from "@/CustomComponent/PageComponents";
 import { getErrorMessage } from "@/lib/errors";
 import useFetch from "@/hooks/useFetchHook";
 import { apiGetSupplierFullDetails } from "@/Services/Api";
+import { getAuthFileUrl } from "@/Services/authUrl";
+import { formatDate } from "@/lib/formatDate";
+import { StatusPill } from "@/CustomComponent/ServiceComponents/ServiceParts";
+import { authorizationFiles, changeStatus, describeChange, stageText } from "./kycModifications";
 import {
   buildSections, downloadSupplierExcel, downloadSupplierPdf, type SupplierFullDetails,
 } from "./supplierFullDetails";
@@ -51,6 +55,8 @@ export function SupplierDownloadButtons({
   );
 }
 
+const CHANGES_TITLE = "Changes made by the supplier";
+
 /** Every address, bank account, contact and document entered for a supplier, with downloads. */
 export default function SupplierFullDetailsView({ source, recordId }: { source: string; recordId: number }) {
   const { data, loading, error } = useFetch<{ success: boolean; data: SupplierFullDetails }>(apiGetSupplierFullDetails(source, recordId));
@@ -67,7 +73,7 @@ export default function SupplierFullDetailsView({ source, recordId }: { source: 
         <SupplierDownloadButtons source={source} recordId={recordId} preloaded={details} />
       </div>
 
-      {buildSections(details).map((s) => (
+      {buildSections(details).filter((s) => !s.title.startsWith(CHANGES_TITLE)).map((s) => (
         <section key={s.title} className="rounded-xl border bg-card p-3 shadow-sm">
           <h4 className="mb-2 text-sm font-semibold">{s.title}</h4>
           {s.kind === "facts" ? (
@@ -100,6 +106,59 @@ export default function SupplierFullDetailsView({ source, recordId }: { source: 
           )}
         </section>
       ))}
+
+      {(details.modifications?.length ?? 0) > 0 && (
+        <section className="rounded-xl border bg-card p-3 shadow-sm" data-testid="supplier-changes">
+          <h4 className="mb-1 text-sm font-semibold">{CHANGES_TITLE} ({details.modifications!.length})</h4>
+          <p className="mb-2 text-xs text-muted-foreground">Asked for on the supplier portal with an authorization letter. A request goes live only after its last approval stage; the details as they were before are kept on record.</p>
+          <ul className="space-y-2">
+            {details.modifications!.map((m) => {
+              const lines = describeChange(m);
+              const letters = authorizationFiles(m);
+              const st = changeStatus(m.status);
+              const trail = Array.isArray(m.approvals) ? m.approvals : [];
+              return (
+                <li key={m.kyc_modified_sno} className="rounded-lg border bg-muted/20 p-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="text-sm font-semibold">Request {m.version_no}</p>
+                      <StatusPill tone={st.tone}>{st.label}</StatusPill>
+                      {m.status === "P" && <span className="text-xs text-muted-foreground">{stageText(m)}{m.current_approver_ecno ? ` · with ${m.current_approver_ecno}` : ""}</span>}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{formatDate(m.modified_date)} · {m.modified_by}</p>
+                  </div>
+                  <p className="mt-1 break-words text-sm"><span className="text-muted-foreground">Reason: </span>{m.reason}</p>
+                  {m.status === "R" && m.decision_note && <p className="mt-1 break-words text-xs text-red-700 dark:text-red-300">Rejected: {m.decision_note}</p>}
+                  {trail.length > 0 && (
+                    <ul className="mt-1.5 space-y-0.5 text-xs">
+                      {trail.map((a, i) => (
+                        <li key={i} className="break-words">
+                          <span className="font-medium">{a.stage_name || `Stage ${a.seq_no}`}</span> · {a.approver_ecno} ·{" "}
+                          <span className={a.action === "A" ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}>{a.action === "A" ? "approved" : "rejected"}</span>
+                          {" "}{formatDate(a.acted_date)}{a.note ? ` · ${a.note}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {lines.length > 0 && (
+                    <ul className="mt-2 space-y-0.5 text-xs">
+                      {lines.map((l, i) => (
+                        <li key={i} className="break-words"><span className="font-medium">{l.section}</span> · {l.text}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Authorization letter:</span>
+                    {letters.length === 0 ? <span>—</span> : letters.map((f, i) => (
+                      <a key={i} href={getAuthFileUrl(f.file_path)} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">{f.file_name}</a>
+                    ))}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

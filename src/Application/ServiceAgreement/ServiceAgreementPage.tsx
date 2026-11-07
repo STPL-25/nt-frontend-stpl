@@ -11,7 +11,7 @@ import {
 import {
   FileText, Building2, RefreshCw, Send, Repeat, Wallet, CalendarClock, Bell, ClipboardList,
   Pencil, Loader2, Briefcase, ScrollText, Check, FilePlus2, AlertCircle, SearchX, Layers,
-  History, RotateCcw, FileSignature,
+  History, RotateCcw, FileSignature, Landmark,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { EmptyState, PageHeader } from '@/CustomComponent/PageComponents';
@@ -19,16 +19,17 @@ import {
   Callout, FilterChips, Panel, SearchInput, StatusPill, SupplierSummary, TypeBadge,
 } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import {
-  AGREEMENT_STATUS, buildSupplierPayload, dateOnly, emptySupplierRow,
-  entersAmountPerCycle, formatDate, formatINR, statusMeta, suggestRenewalTerm,
-  validateSuppliers,
-  type SupplierRowValue, type SupplierShare,
+  AGREEMENT_STATUS, buildSupplierPayload, dateOnly, emptyStatutoryDue, emptySupplierRow,
+  entersAmountPerCycle, formatDate, formatINR, isStatutoryAgreement, statusMeta, statutoryDueFromRow, statutoryDuePayload,
+  statutoryDueProblem, statutoryDueSummary, suggestRenewalTerm, validateSuppliers,
+  type StatutoryDueForm, type StatutoryDueInfo, type SupplierRowValue, type SupplierShare,
 } from '@/CustomComponent/ServiceComponents/serviceUtils';
 import { SupplierSplitEditor } from '@/CustomComponent/ServiceComponents/SupplierSplitEditor';
+import { StatutoryDueEditor } from '@/CustomComponent/ServiceComponents/StatutoryDueEditor';
 import { AgreementHistoryDialog } from '@/CustomComponent/ServiceComponents/AgreementHistoryDialog';
 import { DocLink, SignedAgreementDialog } from '@/CustomComponent/ServiceComponents/ServiceUploads';
 import { CustomInputField } from '@/CustomComponent/InputComponents/CustomInputField';
-import { useServiceAgreementFields, type AgreementType } from '@/FieldDatas/ServiceAgreementData';
+import { useServiceAgreementFields, type ServiceAgreementKind as AgreementType } from '@/FieldDatas/ServiceAgreementData';
 import axios from 'axios';
 import { createServiceAgreement, updateServiceAgreement, getServiceAgreements } from '@/Services/Api';
 import { toast } from 'sonner';
@@ -63,6 +64,8 @@ interface AgreementRow {
   benchmark_name?: string; disbursed_amount?: number; disbursement_date?: string;
   interest_payment_day?: number; day_count_basis?: number;
   version_no?: number; renewal_count?: number;
+  /** Statutory agreements (sql/157): where each due is paid on Statutory Payments */
+  statutory_due?: StatutoryDueInfo;
   status: 'P' | 'A' | 'R' | 'X';
   dispatch_type?: 'S' | 'I'; incharge_ecno?: string;
   created_by?: string; created_at?: string;
@@ -86,10 +89,19 @@ function resolveNameField(fieldName: string): string {
 const AGREEMENT_TYPES: { value: AgreementType; label: string; description: string; Icon: React.ElementType }[] = [
   { value: 'FIXED_RECURRING', label: 'Fixed', description: 'Same amount every cycle, auto-generated on a schedule', Icon: Repeat },
   { value: 'VARIABLE_RECURRING', label: 'Unfixed', description: 'Amount varies by billing cycle — entered per cycle in Service PO', Icon: Wallet },
+  { value: 'STATUTORY', label: 'Statutory', description: 'PF, ESI, taxes, utility bills — after approval each due is paid on Statutory Payments', Icon: Landmark },
 ];
 
-type ListTab = 'fixed' | 'variable';
-const TAB_FOR_TYPE: Record<AgreementType, ListTab> = { FIXED_RECURRING: 'fixed', VARIABLE_RECURRING: 'variable' };
+type ListTab = 'fixed' | 'variable' | 'statutory';
+const TAB_FOR_TYPE: Record<AgreementType, ListTab> = { FIXED_RECURRING: 'fixed', VARIABLE_RECURRING: 'variable', STATUTORY: 'statutory' };
+
+// A Statutory agreement reuses the same sections under names that fit a due (no supplier, no PO).
+const STATUTORY_SECTION_TEXT: Record<string, { title?: string; description?: string }> = {
+  service: { title: 'Due' },
+  pricing: { title: 'Amount' },
+  schedule: { description: 'Term and due dates' },
+  docs: { title: 'Document & notes' },
+};
 
 // The form's fields are grouped into sections purely by field name, so a field
 // added to useServiceAgreementFields but not listed here still renders (in a
@@ -154,33 +166,45 @@ const scrollToFirstError = () => {
 function validateAgreementForm(args: {
   inputFields: FieldType[]; formData: Record<string, any>; agreementType: AgreementType; renewAfter?: string;
 }): FormErrors {
-  const { inputFields, formData, renewAfter } = args;
+  const { inputFields, formData, renewAfter, agreementType } = args;
+  const statutory = isStatutoryAgreement(agreementType);
   const errs: FormErrors = {};
   inputFields.forEach((f) => {
     if (f.require && !formData[f.field]) errs[f.field] = `${f.label} is required`;
   });
   if (formData.qty && Number(formData.qty) <= 0) errs.qty = 'Quantity must be greater than 0';
-  if (formData.rate_amount && Number(formData.rate_amount) <= 0) errs.rate_amount = 'Rate must be greater than 0';
+  if (formData.rate_amount && Number(formData.rate_amount) <= 0) errs.rate_amount = statutory ? 'Amount must be greater than 0' : 'Rate must be greater than 0';
 
   const start = formData.period_start_date, end = formData.period_end_date;
   if (start && end && end <= start) errs.period_end_date = 'Duration To must be after Duration From';
   if (renewAfter && start && start <= renewAfter) errs.period_start_date = `A renewal must start after the previous term ended (${formatDate(renewAfter)})`;
 
-  const supplierError = validateSuppliers(formData.vendors ?? [], totalPerCycle(formData));
-  if (supplierError) errs.vendors = supplierError;
+  if (statutory) {
+    // a statutory due has no supplier; it says where on Statutory Payments it is paid instead
+    const dueError = statutoryDueProblem(formData.statutory_due);
+    if (dueError) errs.statutory_due = dueError;
+  } else {
+    const supplierError = validateSuppliers(formData.vendors ?? [], totalPerCycle(formData));
+    if (supplierError) errs.vendors = supplierError;
+  }
   return errs;
 }
 
-/** Multipart body for create / edit / renew. Suppliers go as a JSON string. */
+/** Multipart body for create / edit / renew. Suppliers (or a Statutory agreement's payment block) go as a JSON string. */
 function buildAgreementFormData(formData: Record<string, any>, agreementType: AgreementType, extra?: Record<string, string>): FormData {
   const fd = new FormData();
-  const skip = new Set(['agreement_document', 'vendors', 'vendor_sno', 'vendor_name']);
+  const skip = new Set(['agreement_document', 'vendors', 'vendor_sno', 'vendor_name', 'statutory_due']);
   Object.entries(formData).forEach(([key, value]) => {
     if (skip.has(key) || value === null || value === undefined || value === '') return;
     fd.append(key, String(value));
   });
   Object.entries(extra ?? {}).forEach(([k, v]) => fd.append(k, v));
-  fd.append('vendors', JSON.stringify(buildSupplierPayload(formData.vendors ?? [], totalPerCycle(formData))));
+  if (isStatutoryAgreement(agreementType)) {
+    fd.append('agreement_type', 'STATUTORY');
+    fd.append('statutory_due', JSON.stringify(statutoryDuePayload((formData.statutory_due as StatutoryDueForm) ?? emptyStatutoryDue())));
+  } else {
+    fd.append('vendors', JSON.stringify(buildSupplierPayload(formData.vendors ?? [], totalPerCycle(formData))));
+  }
   if (formData.agreement_document instanceof File) fd.append('agreement_document', formData.agreement_document);
   return fd;
 }
@@ -225,6 +249,8 @@ const AgreementFormSections: React.FC<{
 }> = ({ fields, formData, errors, onChange, agreementType, compact }) => {
   const byName = useMemo(() => new Map(fields.map((f) => [f.field, f])), [fields]);
   const perCycleEntry = entersAmountPerCycle(agreementType);
+  const statutory = isStatutoryAgreement(agreementType);
+  const due = (formData.statutory_due as StatutoryDueForm | undefined) ?? emptyStatutoryDue();
   const sections = useMemo(() => {
     const placed = new Set(FORM_SECTIONS.flatMap((s) => s.fields));
     const leftovers = fields.filter((f) => !placed.has(f.field)).map((f) => f.field);
@@ -235,16 +261,24 @@ const AgreementFormSections: React.FC<{
     return all
       .map((s) => ({
         ...s,
+        ...(statutory ? STATUTORY_SECTION_TEXT[s.key] : {}),
         defs: s.fields
           .map((n) => byName.get(n))
           .filter((f): f is FieldType => !!f),
       }))
       .filter((s) => s.defs.length > 0);
-  }, [fields, byName]);
+  }, [fields, byName, statutory]);
 
   // Dedicated editors, each placed right after the section it belongs with.
   const slots: Record<string, React.ReactNode> = {
-    pricing: (
+    pricing: statutory ? (
+      <StatutoryDueEditor
+        value={due}
+        onChange={(next) => onChange('statutory_due', next)}
+        comSno={formData.com_sno}
+        error={errors.statutory_due}
+      />
+    ) : (
       <SupplierSplitEditor
         rows={(formData.vendors as SupplierRowValue[]) ?? [emptySupplierRow()]}
         onChange={(rows) => onChange('vendors', rows)}
@@ -265,10 +299,22 @@ const AgreementFormSections: React.FC<{
               ))}
             </div>
 
-            {s.key === 'schedule' && (
+            {s.key === 'schedule' && (statutory ? (
+              <Callout tone="primary" icon={Bell}>
+                <b>Due day</b> is the day of the month the payment is due (e.g. 15 for PF and ESI), needed for monthly, quarterly and annual dues.
+                {' '}Each due shows on <b>Statutory Payments</b> that many days before it is due, and you get an in-app reminder then. Only dues on or after the day this agreement is approved are shown.
+              </Callout>
+            ) : (
               <Callout tone="primary" icon={Bell}>
                 <b>PO Generation Day</b> is required for monthly, bi-monthly, quarterly and annual cadences (e.g. 5 = generate on the 5th of every eligible month).
                 {' '}<b>Notify Before</b> sends an in-app reminder that many days before each auto-generation.
+              </Callout>
+            ))}
+            {s.key === 'pricing' && statutory && (
+              <Callout tone="violet" icon={Landmark}>
+                {due.amount_type === 'FIXED'
+                  ? 'Fixed: this exact amount is ready to pay on Statutory Payments on every due date.'
+                  : 'Unfixed: this amount is only an estimate — the actual amount for each due is entered on Statutory Payments from the challan or bill, then paid.'}
               </Callout>
             )}
             {s.key === 'pricing' && perCycleEntry && (
@@ -329,6 +375,7 @@ const EditAgreementDialog: React.FC<{
       period_start_date: term.start, period_end_date: term.end,
       agreement_document: null, agreement_doc_url: row.agreement_doc_url,
       remarks: row.remarks ?? '', terms_conditions: row.terms_conditions ?? '',
+      statutory_due: statutoryDueFromRow(row.statutory_due),
     };
   });
 
@@ -434,6 +481,23 @@ const EditAgreementDialog: React.FC<{
   );
 };
 
+/** A Statutory agreement in the list: where its dues are paid, and how many wait for an amount on Statutory Payments. */
+const StatutoryRowNote: React.FC<{ row: AgreementRow }> = ({ row }) => {
+  const d = row.statutory_due;
+  if (!d) return <p className="text-xs text-muted-foreground">Paid on Statutory Payments</p>;
+  return (
+    <p className="text-xs text-muted-foreground">
+      <span className="block truncate" title={statutoryDueSummary(d)}>{statutoryDueSummary(d)}</span>
+      {d.reference_no && <span className="block truncate">Ref {d.reference_no}</span>}
+      {(d.waiting_count ?? 0) > 0 && (
+        <span className="mt-0.5 block font-medium text-amber-700 dark:text-amber-300">
+          {d.waiting_count} due{d.waiting_count === 1 ? '' : 's'} waiting for the amount on Statutory Payments
+        </span>
+      )}
+    </p>
+  );
+};
+
 type StatusFilter = 'ALL' | 'P' | 'A' | 'R' | 'X';
 type PageView = 'create' | 'list';
 
@@ -472,10 +536,11 @@ const ServiceAgreementPage: React.FC = () => {
       else d[field.field] = '';
     });
     d.vendors = [emptySupplierRow()];
+    d.statutory_due = emptyStatutoryDue();
     return d;
   }, []);
 
-  // Reset the form whenever the type changes — Fixed and Unfixed
+  // Reset the form whenever the type changes — Fixed, Unfixed and Statutory
   // share no required values whose meaning would still be valid across the switch.
   useEffect(() => {
     setFormData(buildInitialFormData(activeFields));
@@ -550,7 +615,8 @@ const ServiceAgreementPage: React.FC = () => {
     e.preventDefault();
     if (!validateForm()) { scrollToFirstError(); return; }
 
-    if (!(formData.agreement_document instanceof File)) {
+    // a Statutory due may have no document (sql/157)
+    if (!isStatutoryAgreement(agreementType) && !(formData.agreement_document instanceof File)) {
       setErrors((prev) => ({ ...prev, agreement_document: 'Agreement document is required' }));
       scrollToFirstError();
       return;
@@ -585,9 +651,10 @@ const ServiceAgreementPage: React.FC = () => {
   const { data: agreementsRes, loading: loadingAgreements } = useFetch<{ success: boolean; data: AgreementRow[] }>(
     getServiceAgreements, '', null, refreshKey
   );
-  // Existing Statutory (loan) agreements stay in the database but are no longer listed.
+  // The old Statutory LOAN agreements (they carry a facility type) stay in the database but are not listed;
+  // Statutory due agreements (sql/157) are.
   const agreements = useMemo(
-    () => (agreementsRes?.data ?? []).filter((a) => (a.service_type_code as string) !== 'STATUTORY'),
+    () => (agreementsRes?.data ?? []).filter((a) => !(isStatutoryAgreement(a.service_type_code) && a.facility_type)),
     [agreementsRes],
   );
 
@@ -605,12 +672,14 @@ const ServiceAgreementPage: React.FC = () => {
       if (statusFilter !== 'ALL' && a.status !== statusFilter) return false;
       if (!q) return true;
       const supplierNames = (a.vendors ?? []).map((v) => v.vendor_name);
-      return [a.agreement_no, a.service_name, a.vendor_name, ...supplierNames].some((v) => v?.toLowerCase().includes(q));
+      return [a.agreement_no, a.service_name, a.vendor_name, a.statutory_due?.payee_name, a.statutory_due?.reference_no, ...supplierNames]
+        .some((v) => v?.toLowerCase().includes(q));
     });
   }, [agreements, statusFilter, search]);
   const rowsByTab = useMemo<Record<ListTab, AgreementRow[]>>(() => ({
     fixed: filtered.filter((a) => a.service_type_code === 'FIXED_RECURRING'),
     variable: filtered.filter((a) => a.service_type_code === 'VARIABLE_RECURRING'),
+    statutory: filtered.filter((a) => isStatutoryAgreement(a.service_type_code)),
   }), [filtered]);
   const canEditAgreements = canEdit('ServiceAgreementPage');
   const isFiltering = statusFilter !== 'ALL' || search.trim() !== '';
@@ -703,12 +772,15 @@ const ServiceAgreementPage: React.FC = () => {
                     </TableCell>
                     <TableCell className="max-w-[18rem]">
                       <div className="truncate font-medium">{row.service_name}</div>
-                      <SupplierSummary suppliers={row.vendors} fallback={row.vendor_name} className="text-xs text-muted-foreground" />
+                      {isStatutoryAgreement(row.service_type_code)
+                        ? <StatutoryRowNote row={row} />
+                        : <SupplierSummary suppliers={row.vendors} fallback={row.vendor_name} className="text-xs text-muted-foreground" />}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{row.qty ?? '—'}</TableCell>
+                    <TableCell className="text-right tabular-nums">{isStatutoryAgreement(row.service_type_code) ? '—' : row.qty ?? '—'}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {row.rate_amount != null ? formatINR(row.rate_amount) : '—'}
                       {row.rate_uom_name && <span className="ml-1 text-xs text-muted-foreground">/ {row.rate_uom_name}</span>}
+                      {row.statutory_due?.amount_type === 'UNFIXED' && <span className="block text-[11px] text-muted-foreground">estimate per due</span>}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                       {formatDate(row.period_start_date)} – {formatDate(row.period_end_date)}
@@ -735,12 +807,19 @@ const ServiceAgreementPage: React.FC = () => {
                       {versionNote(row) && <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">{versionNote(row)}</span>}
                     </p>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">{row.service_name}</p>
-                    <SupplierSummary suppliers={row.vendors} fallback={row.vendor_name} className="text-xs text-muted-foreground" />
+                    {isStatutoryAgreement(row.service_type_code)
+                      ? <StatutoryRowNote row={row} />
+                      : <SupplierSummary suppliers={row.vendors} fallback={row.vendor_name} className="text-xs text-muted-foreground" />}
                   </div>
                   <StatusPill tone={status.tone}>{status.label}</StatusPill>
                 </div>
                 <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t pt-3 text-xs">
-                  {(
+                  {isStatutoryAgreement(row.service_type_code) ? (
+                    <div className="col-span-2">
+                      <dt className="text-muted-foreground">{row.statutory_due?.amount_type === 'UNFIXED' ? 'Estimate per due' : 'Amount per due'}</dt>
+                      <dd className="mt-0.5 text-sm font-semibold tabular-nums">{row.rate_amount != null ? formatINR(row.rate_amount) : '—'}</dd>
+                    </div>
+                  ) : (
                     <>
                       <div>
                         <dt className="text-muted-foreground">Rate</dt>
@@ -774,10 +853,10 @@ const ServiceAgreementPage: React.FC = () => {
       <PageHeader
         icon={FileText}
         title="Service Agreements"
-        description="Fixed and Unfixed agreements raise a PO each cycle"
+        description="Fixed and Unfixed agreements raise a PO each cycle; Statutory dues are paid on Statutory Payments"
       />
 
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-3 py-4 sm:px-6 sm:py-6">
+      <div className="w-full space-y-5 px-2 pb-6 pt-1 sm:px-3 lg:px-5">
         <Tabs value={view} onValueChange={(v) => setView(v as PageView)}>
           <TabsList className="h-10 w-full sm:w-fit">
             {canSubmit && (
@@ -794,7 +873,7 @@ const ServiceAgreementPage: React.FC = () => {
             <TabsContent value="create" className="mt-5">
               <form onSubmit={handleSubmit} noValidate className="space-y-4">
                 <Panel icon={Repeat} title="Agreement type" description="Decides how each cycle's amount is set">
-                  <div role="radiogroup" aria-label="Agreement type" className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div role="radiogroup" aria-label="Agreement type" className="grid grid-cols-1 gap-3 md:grid-cols-3">
                     {AGREEMENT_TYPES.map(({ value, label, description, Icon }) => {
                       const active = agreementType === value;
                       return (
@@ -890,9 +969,11 @@ const ServiceAgreementPage: React.FC = () => {
                 <TabsList className="w-full sm:w-fit">
                   <TabsTrigger value="fixed" className="sm:px-4"><Repeat size={14} /> Fixed ({rowsByTab.fixed.length})</TabsTrigger>
                   <TabsTrigger value="variable" className="sm:px-4"><Wallet size={14} /> Unfixed ({rowsByTab.variable.length})</TabsTrigger>
+                  <TabsTrigger value="statutory" className="sm:px-4"><Landmark size={14} /> Statutory ({rowsByTab.statutory.length})</TabsTrigger>
                 </TabsList>
                 <TabsContent value="fixed" className="mt-4">{renderRows(rowsByTab.fixed)}</TabsContent>
                 <TabsContent value="variable" className="mt-4">{renderRows(rowsByTab.variable)}</TabsContent>
+                <TabsContent value="statutory" className="mt-4">{renderRows(rowsByTab.statutory)}</TabsContent>
               </Tabs>
             </Panel>
           </TabsContent>

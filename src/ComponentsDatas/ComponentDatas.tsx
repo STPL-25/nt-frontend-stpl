@@ -1,14 +1,15 @@
 import { lazy, LazyExoticComponent, ComponentType } from "react";
 
 
+ // Dashboard - screens.comp 'OrgDashboard' (sql/152); display_order 0, so it is the first sidebar item and the landing screen.
+ export const OrgDashboard = lazy(() => import("../Application/OrgDashboard/DashboardHome"));
  export const MasterComponents = lazy(() => import(".././Application/Master-Screen/MasterPageScreen"));
 
  export const KYCEntry = lazy(() => import("../Application/Kyc-Screen/KycEntry"));
  export const SupplierKYCEntry = lazy(() => import("../Application/Kyc-Screen/SupplierKYCEntry"));
  export const RoleApproval = lazy(() => import("../Application/RoleApproval/UserRoleApprovalScreen"));
  export const KYCDataView = lazy(() => import("../Application/Kyc-Screen/KYCDataView"));
- export const KYCApprovalScreen = lazy(() => import("../Application/Kyc-Screen/KYCApprovalScreen"));
- export const PurchaseRequisitionPage = lazy(() => import("../Application/PR/PurchaseRequisitionPage"));
+ export const KYCApprovalScreen = lazy(() => import("../Application/Kyc-Screen/KYCApprovalScreen")); export const PurchaseRequisitionPage = lazy(() => import("../Application/PR/PurchaseRequisitionPage"));
  export const RoutineRequisitionPage = lazy(() => import("../Application/PR/RoutineRequisitionPage"));
  export const ApprovalWorkflowPage = lazy(() => import("../Application/RoleApproval/ApprovalWorkflowManager"));
  export const PRApprovalScreen = lazy(() => import("../Application/PR/PRApprovalScreen"));
@@ -63,6 +64,7 @@ export interface SectionComponentsMap {
 
 // Strongly typed map
 export const sectionComponents: SectionComponentsMap = {
+  OrgDashboard,
   masters: MasterComponents,
   RoleApproval: RoleApproval,
   KYCEntry,

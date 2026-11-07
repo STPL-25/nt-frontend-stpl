@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import ApprovalTrail from "@/components/ApprovalTrail";
 import SupplierFullDetailsView from "./SupplierFullDetailsView";
+import KycResubmitLinkPanel from "./KycResubmitLinkPanel";
 import { getStatusInfo } from "@/utils/statusUtils";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/formatDate";
@@ -147,6 +148,8 @@ function SupplierDetail({ row }: { row: SupplierStatusRow }) {
         </div>
       </div>
 
+      {row.status === "R" && row.source === "KYC" && row.category === "Supplier" && <KycResubmitLinkPanel kycId={row.record_id} />}
+
       <div>
         <h3 className="mb-3 text-sm font-semibold">Approval trail</h3>
         {loading ? (
@@ -160,7 +163,8 @@ function SupplierDetail({ row }: { row: SupplierStatusRow }) {
         )}
         {timeline && row.source === "KYC" && (
           <p className="mt-3 text-[11px] text-muted-foreground">
-            Approval comments are not recorded for regular supplier KYC, only who acted and when.
+            Approval comments are not recorded for regular supplier KYC, only who acted and when. The one exception is a rejection: the reason
+            the supplier was sent is shown with it.
           </p>
         )}
       </div>

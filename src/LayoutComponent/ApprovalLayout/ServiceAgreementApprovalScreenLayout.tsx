@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import {
-  CalendarClock, ChevronRight, FileSignature, FileText, ExternalLink, GitCompare, Layers,
+  CalendarClock, ChevronRight, FileSignature, FileText, ExternalLink, GitCompare, Landmark, Layers,
   RotateCcw, ScrollText, StickyNote, Users, Wallet,
 } from 'lucide-react';
 import { getAuthFileUrl } from '@/Services/authUrl';
@@ -12,8 +12,8 @@ import {
   DetailHero, Fact, FactGrid, Panel, SelectableCard, StatusPill, StickyActionBar, SupplierSplitTable, SupplierSummary, TypeBadge,
 } from '@/CustomComponent/ServiceComponents/ServiceParts';
 import {
-  AGREEMENT_STATUS, approvalRoutes, diffTerms, entersAmountPerCycle, formatDate, formatINR, parseStages,
-  statusMeta, termsFromRow, type ApprovalAction,
+  AGREEMENT_STATUS, STATUTORY_AMOUNT_LABEL, STATUTORY_TAB_LABEL, approvalRoutes, diffTerms, entersAmountPerCycle, formatDate, formatINR,
+  isStatutoryAgreement, parseStages, statusMeta, termsFromRow, type ApprovalAction,
 } from '@/CustomComponent/ServiceComponents/serviceUtils';
 
 // ─── SP response mapping (sp_nt_GetServiceAgreementsForApproval) ───────────
@@ -100,7 +100,7 @@ function AgreementListCard({ agreement, isSelected, onClick }: { agreement: any;
       </span>
 
       <span className="mt-3 flex items-baseline justify-between gap-2 border-t pt-2.5">
-        <span className="text-xs font-medium text-muted-foreground">Rate</span>
+        <span className="text-xs font-medium text-muted-foreground">{isStatutoryAgreement(agreement.service_type_code) ? 'Amount per due' : 'Rate'}</span>
         <span className="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
           {rateLabel(agreement)}
         </span>
@@ -123,6 +123,10 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
   const onSendBack = canAct && routes.canSendBack ? () => handleAction('send_back') : undefined;
   const status = statusMeta(AGREEMENT_STATUS, agreement.status);
   const perCycleEntry = entersAmountPerCycle(agreement.service_type_code);
+  // sql/157: a government / utility due - no supplier, no PO; after approval each due is paid on Statutory Payments
+  const statutory = isStatutoryAgreement(agreement.service_type_code);
+  const due = agreement.statutory_due as { kind?: 'OTHER' | 'GST'; amount_type?: 'FIXED' | 'UNFIXED'; payee_name?: string | null; reference_no?: string | null } | undefined;
+  const dueTab = due?.kind ? STATUTORY_TAB_LABEL[due.kind] : null;
   const vendors: any[] = agreement.vendors ?? [];
   const isRevision = agreement.submit_action === 'RENEWED' || agreement.submit_action === 'RESUBMITTED';
   const changes = useMemo(
@@ -137,11 +141,17 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
           <div className="min-w-0 space-y-4 sm:space-y-5 @4xl:col-span-2">
             <DetailHero
               icon={FileSignature}
-              eyebrow="Service Agreement"
+              eyebrow={statutory ? 'Statutory agreement' : 'Service Agreement'}
               title={agreement.agreement_no}
-              subtitle={[agreement.service_name, vendors.length > 1 ? `${vendors.length} suppliers` : agreement.vendor_name].filter(Boolean).join(' · ')}
+              subtitle={statutory
+                ? [agreement.service_name, due?.payee_name ? `pay to ${due.payee_name}` : null].filter(Boolean).join(' · ')
+                : [agreement.service_name, vendors.length > 1 ? `${vendors.length} suppliers` : agreement.vendor_name].filter(Boolean).join(' · ')}
               badges={<><TypeBadge type={agreement.service_type_code} /><StatusPill tone={status.tone}>{status.label}</StatusPill></>}
-              metrics={[
+              metrics={statutory ? [
+                { label: due?.amount_type === 'UNFIXED' ? 'Estimate per due' : 'Amount per due', value: agreement.rate_amount ? formatINR(agreement.rate_amount) : '—', accent: true },
+                { label: 'Paid on', value: dueTab ? `${dueTab} tab` : '—' },
+                { label: 'How often', value: agreement.cadence_name ?? '—' },
+              ] : [
                 { label: perCycleEntry ? 'Baseline rate' : 'Rate', value: agreement.rate_amount ? formatINR(agreement.rate_amount) : '—', hint: agreement.rate_uom_name ? `per ${agreement.rate_uom_name}` : undefined, accent: true },
                 { label: 'Quantity', value: agreement.qty ?? '—' },
                 { label: 'Cadence', value: agreement.cadence_name ?? '—' },
@@ -181,6 +191,20 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
               </Callout>
             )}
 
+            {statutory && (
+              <Panel icon={Landmark} title="Statutory Payments" description="Once approved, every due date shows on the Statutory Payments screen and is paid there — no PO is raised">
+                <FactGrid>
+                  <Fact label="Paid on">{dueTab ? `${dueTab} tab` : '—'}</Fact>
+                  <Fact label="Amount">{due?.amount_type ? STATUTORY_AMOUNT_LABEL[due.amount_type] : '—'}</Fact>
+                  <Fact label="Pay to">{due?.payee_name || (dueTab ? `Default ${dueTab} payee` : '—')}</Fact>
+                  <Fact label="Reference no.">{due?.reference_no || '—'}</Fact>
+                </FactGrid>
+                {due?.amount_type === 'UNFIXED' && (
+                  <p className="mt-3 text-xs text-muted-foreground">Unfixed: the amount above is an estimate. The actual amount of each due is entered on Statutory Payments from the challan or bill; it is not approved again.</p>
+                )}
+              </Panel>
+            )}
+
             {vendors.length > 0 && (
               <Panel
                 icon={Users}
@@ -199,8 +223,10 @@ function AgreementDetailPanel({ agreement, handleAction }: { agreement: any; han
                 <Fact label="Duration from">{formatDate(agreement.period_start_date)}</Fact>
                 <Fact label="Duration to">{formatDate(agreement.period_end_date)}</Fact>
                 <Fact label="Recurrence">{agreement.cadence_name ?? '—'}</Fact>
-                <Fact label="PO generation day">{agreement.po_generation_day ?? '—'}</Fact>
-                <Fact label="Notify before">{agreement.notify_days_before != null ? `${agreement.notify_days_before} day${Number(agreement.notify_days_before) === 1 ? '' : 's'}` : '—'}</Fact>
+                <Fact label={statutory ? 'Due day' : 'PO generation day'}>{agreement.po_generation_day ?? '—'}</Fact>
+                <Fact label={statutory ? 'Shows on Statutory Payments' : 'Notify before'}>
+                  {agreement.notify_days_before != null ? `${agreement.notify_days_before} day${Number(agreement.notify_days_before) === 1 ? '' : 's'}${statutory ? ' before due' : ''}` : '—'}
+                </Fact>
                 <Fact label="Submitted by">{agreement.created_by ?? '—'}</Fact>
               </FactGrid>
             </Panel>

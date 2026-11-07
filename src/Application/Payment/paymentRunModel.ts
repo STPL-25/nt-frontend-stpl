@@ -76,6 +76,41 @@ export const senderProblem = (fileLines: number, senders: PaymentSender[], chose
 /** How a payment made on a supplier's portal can have been paid. */
 export const PORTAL_MODES = ['UPI', 'Credit Card', 'Debit Card', 'Net Banking', 'Wallet', 'Other'] as const;
 
+/** A portal address the way people read it: "https://pay.acme.in/vendors/" -> "pay.acme.in/vendors". */
+export const portalAddress = (raw: string | null | undefined): string =>
+  String(raw ?? '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+
+/** A portal address as it will be saved: typed without a scheme it gets https:// (sql/91 does the same). */
+export const portalDetailsUrl = (raw: string): string => {
+  const s = raw.trim();
+  return !s || s.includes('://') ? s : `https://${s}`;
+};
+
+export interface PortalDetailsForm { name: string; url: string; instructions: string }
+
+/** Why a portal supplier's portal details cannot be saved yet, or null - the same rules sql/91 applies. */
+export const portalDetailsProblem = (f: PortalDetailsForm): string | null => {
+  const name = f.name.trim();
+  if (!name) return 'Enter the portal / website name.';
+  if (name.length > 150) return 'The portal name can be at most 150 characters.';
+  const url = portalDetailsUrl(f.url);
+  if (!url) return 'Enter the portal address, e.g. https://pay.example.com';
+  if (url.length > 500) return 'The portal address can be at most 500 characters.';
+  if (!/^https?:\/\//i.test(url)) return 'The portal address must start with http:// or https://';
+  if (/\s/.test(url)) return 'The portal address cannot have spaces.';
+  const host = url.replace(/^https?:\/\//i, '').split(/[/?#]/)[0];
+  if (host.includes('@')) return 'The portal address cannot have a "name@" part - enter the site address only.';
+  if (host.indexOf('.') < 1 || host.endsWith('.') || host.includes('..')) return 'Enter the full portal address, e.g. https://pay.example.com';
+  if (f.instructions.trim().length > 1000) return 'The payment instructions can be at most 1000 characters.';
+  return null;
+};
+
+/** True when the form says what the supplier's KYC already says (nothing to save). */
+export const portalDetailsUnchanged = (f: PortalDetailsForm, e: { payment_portal_name?: string | null; payment_portal_url?: string | null; payment_instructions?: string | null }): boolean =>
+  f.name.trim() === (e.payment_portal_name ?? '').trim()
+  && portalDetailsUrl(f.url) === (e.payment_portal_url ?? '').trim()
+  && f.instructions.trim() === (e.payment_instructions ?? '').trim();
+
 export interface PortalForm { mode: string; txnId: string; txnDate: string; paid: string; discount: string }
 
 /** The net amount split into what was paid and the discount: typing the discount fills the amount paid. */

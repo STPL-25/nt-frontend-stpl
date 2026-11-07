@@ -1,3 +1,5 @@
+import type { KycChangeRequest } from "@/Application/SupplierStatus/kycModifications";
+
 // Row shape returned by sp_get_kyc_approval (vw_get_all_kyc_info + resolved master names).
 // The four JSON blocks arrive as strings (FOR JSON PATH) and are parsed in the layout.
 export interface KYCApprovalRecord {
@@ -32,4 +34,17 @@ export interface KYCApprovalRecord {
   kyc_bank_info: string;
   kyc_contact_details: string;
   kyc_uploaded_doc: string;
+  /**
+   * Set (sql/155) when the supplier fixed a rejected KYC through the e-mailed correction link and sent it again: how many times,
+   * when, what they said they corrected, and why it had been rejected.
+   */
+  resubmit_count?: number | null;
+  resubmitted_date?: string | null;
+  resubmit_note?: string | null;
+  last_reject_reason?: string | null;
+  /**
+   * Set when this row is a supplier's request to change its own KYC (made on the /Supplier portal, grn sql/93) instead of a new
+   * submission. The detail panel then compares the previous and current record and the decision goes to the change-request endpoint.
+   */
+  change_request?: KycChangeRequest;
 }

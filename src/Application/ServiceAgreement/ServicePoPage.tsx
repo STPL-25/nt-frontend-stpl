@@ -443,10 +443,10 @@ const ServicePoPage: React.FC = () => {
       <PageHeader
         icon={ReceiptText}
         title="Service Purchase Orders"
-        description="Per-cycle POs raised off approved Service Agreements — Fixed goes straight to approval, Unfixed needs the amount entered first; several suppliers means one PO each. Loans are billed under Loan Payments instead."
+        description="Per-cycle POs raised off approved Service Agreements — Fixed goes straight to approval, Unfixed needs the amount entered first; several suppliers means one PO each."
       />
 
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-3 py-4 sm:px-6 sm:py-6">
+      <div className="w-full space-y-5 px-2 pb-6 pt-1 sm:px-3 lg:px-5">
         {/* Status summary — each tile filters the list below */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {SUMMARY_TILES.map(({ status, icon: Icon, hint }) => {

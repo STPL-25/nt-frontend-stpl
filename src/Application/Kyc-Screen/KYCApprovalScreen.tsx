@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import axios from 'axios';
 import { toast } from 'sonner';
 import { ErrorState, LoadingState } from '@/CustomComponent/PageComponents';
 import KYCApprovalScreenLayout from '@/LayoutComponent/ApprovalLayout/KYCApprovalScreenLayout';
 import useFetch from '@/hooks/useFetchHook';
 import usePost from '@/hooks/usePostHook';
-import { apiGetKycPendingApprovals, apiKycApproveAction } from '@/Services/Api';
+import { apiActKycChangeRequest, apiGetKycChangeRequests, apiGetKycPendingApprovals, apiKycApproveAction } from '@/Services/Api';
+import type { KycChangeRequest } from '@/Application/SupplierStatus/kycModifications';
+import { changeRequestToRecord } from './kycChangeRequestRecord';
 import { useAppState } from '@/imports';
 import { getErrorMessage } from '@/lib/errors';
 import { parseStages } from '@/CustomComponent/ServiceComponents/serviceUtils';
@@ -24,6 +27,8 @@ const KYCApprovalScreen: React.FC = () => {
   const [actionType, setActionType]   = useState<'approve' | 'reject'>('approve');
   const [comments, setComments]       = useState('');
   const [refreshKey, setRefreshKey]   = useState(0);
+  // Suppliers' requests to change their own KYC that are waiting for this approver (grn sql/93): same list, same approval flow.
+  const [changeRequests, setChangeRequests] = useState<KycChangeRequest[]>([]);
 
   const { userData } = useAppState();
   const { postData, loading } = usePost();
@@ -35,6 +40,19 @@ const KYCApprovalScreen: React.FC = () => {
   useEffect(() => {
     if (data && !fetchLoading) setKycList(data.data ?? []);
   }, [data, fetchLoading]);
+
+  useEffect(() => {
+    let cancelled = false;
+    axios.get<{ success: boolean; data: { waiting: KycChangeRequest[] } }>(apiGetKycChangeRequests)
+      .then((res) => { if (!cancelled) setChangeRequests(res.data?.data?.waiting ?? []); })
+      .catch((err) => {
+        if (cancelled) return;
+        setChangeRequests([]);
+        // the new submissions above still work; say so rather than silently hiding the suppliers' change requests
+        toast.error(getErrorMessage(err, 'Could not load the suppliers’ change requests'));
+      });
+    return () => { cancelled = true; };
+  }, [refreshKey]);
 
   useEffect(() => {
     socket.emit(SOCKET_JOIN_KYC_APPROVAL);
@@ -58,6 +76,26 @@ const KYCApprovalScreen: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!selectedKYC) return;
+
+    // A supplier's change request: the same approve / reject, sent to the change-request endpoint (the approver is the session's).
+    if (selectedKYC.change_request) {
+      const request = selectedKYC.change_request;
+      if (actionType === 'reject' && !comments.trim()) { toast.error('Tell the supplier why the change is rejected.'); return; }
+      try {
+        const res = (await postData(apiActKycChangeRequest, {
+          kyc_modified_sno: request.kyc_modified_sno, action: actionType, note: comments.trim() || undefined,
+        })) as { message?: string } | null;
+        setChangeRequests(prev => prev.filter(r => r.kyc_modified_sno !== request.kyc_modified_sno));
+        setSelectedKYC(null);
+        setShowDialog(false);
+        setComments('');
+        toast.success(res?.message ?? `Change request ${actionType === 'approve' ? 'approved' : 'rejected'}`);
+      } catch (err: any) {
+        toast.error(getErrorMessage(err, 'Action failed'));
+      }
+      return;
+    }
+
     const payload = {
       kyc_basic_info_sno: selectedKYC.kyc_basic_info_sno,
       ecno: userData[0]?.ecno,
@@ -66,7 +104,10 @@ const KYCApprovalScreen: React.FC = () => {
       approval_stages: parseStages(selectedKYC),
     };
     try {
-      const res = (await postData(apiKycApproveAction, payload)) as { data?: { supplier_invite?: { loginCreated?: boolean; emailSent?: boolean; reason?: string } }[] } | null;
+      const res = (await postData(apiKycApproveAction, payload)) as {
+        data?: { supplier_invite?: { loginCreated?: boolean; emailSent?: boolean; reason?: string };
+                 resubmit_link?: { issued?: boolean; emailSent?: boolean; sent_to?: string; reason?: string } }[];
+      } | null;
       setKycList(prev => prev.filter(k => k.kyc_basic_info_sno !== selectedKYC.kyc_basic_info_sno));
       setSelectedKYC(null);
       setShowDialog(false);
@@ -78,14 +119,28 @@ const KYCApprovalScreen: React.FC = () => {
       if (actionType === 'approve' && invite && (!invite.loginCreated || !invite.emailSent)) {
         toast.warning(invite.reason ?? 'The supplier portal login or its invite e-mail could not be completed.', { duration: 15000 });
       }
+      // A rejection also e-mails the supplier a private link to correct the KYC (sql/155). Say whether that worked - the supplier
+      // otherwise has no way to know, and a rejected KYC with no link is a dead end.
+      const link = res?.data?.find((r) => r?.resubmit_link)?.resubmit_link;
+      if (actionType === 'reject' && link) {
+        if (link.issued && link.emailSent) toast.info(`A private link to correct the KYC was e-mailed to ${link.sent_to}.`, { duration: 8000 });
+        else toast.warning(`${link.reason ?? 'The correction link could not be sent.'} Open Supplier Status to send it again.`, { duration: 15000 });
+      }
     } catch (err: any) {
       toast.error(getErrorMessage(err, 'Action failed'));
     }
   };
 
+  // New submissions first, then the suppliers' change requests - one list, one approval flow
+  const allRecords = useMemo(
+    () => [...kycList, ...changeRequests.map(changeRequestToRecord)],
+    [kycList, changeRequests],
+  );
+
   const filteredList = useMemo(
-    () => kycList.filter(k => !search || k.company_name.toLowerCase().includes(search.toLowerCase())),
-    [kycList, search],
+    () => allRecords.filter(k => !search || k.company_name.toLowerCase().includes(search.toLowerCase())
+      || (k.supp_code ?? '').toLowerCase().includes(search.toLowerCase())),
+    [allRecords, search],
   );
 
   if (error) {
@@ -99,7 +154,7 @@ const KYCApprovalScreen: React.FC = () => {
   return (
     <KYCApprovalScreenLayout
       approvalName="KYC Approvals"
-      totalCount={kycList.length}
+      totalCount={allRecords.length}
       kycList={filteredList}
       search={search}
       setSearch={setSearch}

@@ -67,10 +67,13 @@ const VendorDrivenPRForm: React.FC<Props> = ({ onSubmitted }) => {
   const [selectedDivision, setSelectedDivision] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('');
 
-  const headerFields = useVendorDrivenPRHeaderFields({ selectedCompany, selectedDivision, selectedBranch });
   const itemFields = useVendorDrivenPRItemFields();
 
   const [header, setHeader] = useState<Record<string, any>>({ payment_cycle_days: 15 });
+  // Only departments that have a Vendor-Driven PR approval workflow are offered (the one already chosen stays).
+  const headerFields = useVendorDrivenPRHeaderFields({
+    selectedCompany, selectedDivision, selectedBranch, keepDeptSno: header.dept_sno,
+  });
   const [headerErrors, setHeaderErrors] = useState<FormErrors>({});
   const [currentItem, setCurrentItem] = useState<VendorDrivenItem>(EMPTY_ITEM);
   const [itemError, setItemError] = useState<string | null>(null);

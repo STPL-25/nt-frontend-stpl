@@ -25,6 +25,38 @@ supplierAxios.interceptors.request.use((config) => {
   return config;
 });
 
+// ── Session expiry ──────────────────────────────────────────────────────────────────────────────────────
+// Every supplier endpoint except login sits behind the supplier JWT check, so a 401 from one of them means the session has
+// expired or is no longer valid. The portal logs the supplier out (back to the login screen) instead of showing an error:
+// the 401 is NOT passed on to the screen that made the call, so no "Failed to load ..." toast follows. The login call is
+// left alone - there a 401 only means "wrong supplier code or password", which the login screen must still show.
+type SessionExpiredListener = () => void;
+const sessionExpiredListeners = new Set<SessionExpiredListener>();
+const SUPPLIER_LOGIN_PATH = '/api/supplier/login';
+
+/** Runs `listener` when the server rejects the supplier's session (401). Returns the function that stops listening. */
+export function onSupplierSessionExpired(listener: SessionExpiredListener): () => void {
+  sessionExpiredListeners.add(listener);
+  return () => { sessionExpiredListeners.delete(listener); };
+}
+
+supplierAxios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    const url = String(error?.config?.url ?? '');
+    if (status !== 401 || url.endsWith(SUPPLIER_LOGIN_PATH)) return Promise.reject(error);
+
+    clearSupplierSession();
+    // Nobody to take the supplier to the login screen (the portal is not mounted): let the caller see the error as before.
+    if (sessionExpiredListeners.size === 0) return Promise.reject(error);
+    sessionExpiredListeners.forEach((listener) => listener());
+    // Deliberately never settles: the portal is switching to the login screen and the calling screen is being unmounted, so
+    // there is nothing for its success or error handler to do - and its error handler would only toast.
+    return new Promise(() => {});
+  },
+);
+
 /** Standard response envelope returned by every grn-service endpoint. */
 export interface ApiEnvelope<T> {
   success: boolean;

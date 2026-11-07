@@ -284,7 +284,7 @@ const SpecialAgreementPage: React.FC = () => {
         description="Product rate agreements with a fixed supplier — Fixed (rate fixed) or Unfixed (rate can change)"
       />
 
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-3 py-4 sm:px-6 sm:py-6">
+      <div className="w-full space-y-5 px-2 pb-6 pt-1 sm:px-3 lg:px-5">
         <Tabs value={view} onValueChange={(v) => setView(v as PageView)}>
           <TabsList className="h-10 w-full sm:w-fit">
             {canSubmit && <TabsTrigger value="create" className="px-4"><FilePlus2 size={15} /> New agreement</TabsTrigger>}
