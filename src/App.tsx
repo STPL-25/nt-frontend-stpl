@@ -17,19 +17,23 @@ import { useSelector, useDispatch } from "react-redux";
 import {
   selectThemeColor,
   selectThemeMode,
+  selectThemePattern,
   selectThemeRadius,
   selectThemeFont,
   selectThemeFontSize,
   THEME_FONT_SIZES,
   THEME_COLORS,
   THEME_FONTS,
+  THEME_PATTERNS,
 } from "./globalState/features/themeSlice";
 import { selectSessionExpired, setSessionExpired, clearUserData } from "./globalState/features/decodeSlice";
 import { clearSidebarData } from "./globalState/features/fetchSidebarDataSlice";
+import Loading from "./CustomComponent/LoadingComponents/Loading";
 
 function ThemeApplier() {
   const color  = useSelector(selectThemeColor);
   const radius = useSelector(selectThemeRadius);
+  const pattern = useSelector(selectThemePattern);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -50,6 +54,12 @@ function ThemeApplier() {
     };
     if (map[radius]) root.classList.add(map[radius]);
   }, [radius]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    THEME_PATTERNS.forEach(({ id }) => root.classList.remove(`pattern-${id}`));
+    root.classList.add(`pattern-${pattern}`);
+  }, [pattern]);
 
   const fontId = useSelector(selectThemeFont);
   useEffect(() => {
@@ -89,14 +99,7 @@ function RootRoute() {
   // Show a neutral loading screen while session is being restored —
   // prevents the login page flashing on every page refresh.
   if (isLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Restoring session…</p>
-        </div>
-      </div>
-    );
+    return <Loading fullScreen size="xl" text="Restoring your workspace…" />;
   }
 
   // Non-staff sessions have a login_id but no ecno — either identity is

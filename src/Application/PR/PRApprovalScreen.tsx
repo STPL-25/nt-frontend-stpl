@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { AlertCircle, Clock } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import ApprovalScreenLayout from '@/LayoutComponent/ApprovalLayout/ApprovalScreenLayout';
 import useFetch from '@/hooks/useFetchHook';
 import usePost from '@/hooks/usePostHook';
@@ -15,6 +15,7 @@ import {
   buildEditPayload, initEditDraft, successMessage, validateEditDraft,
   type ApprovalContext, type EditDraft, type PrAction,
 } from '@/Application/PR/prApprovalContext';
+import { LoadingState } from '@/CustomComponent/PageComponents/LoadingState';
 
 interface APIResponse {
   success: boolean;
@@ -263,16 +264,7 @@ const PRApprovalScreen: React.FC = () => {
   }
 
   if (fetchLoading && prList.length === 0) {
-    return (
-      <div className="min-h-full bg-background flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <Clock className="h-16 w-16 text-slate-300 dark:text-foreground mx-auto animate-spin" />
-          <h3 className="text-xl font-semibold text-muted-foreground dark:text-muted-foreground/70">
-            Loading Purchase Requisitions...
-          </h3>
-        </div>
-      </div>
-    );
+    return <LoadingState fullPage message="Loading purchase requisitions…" />;
   }
 
   return (

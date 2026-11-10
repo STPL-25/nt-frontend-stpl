@@ -372,6 +372,7 @@ export default function ServiceAgreementApprovalScreenLayout({
         }
         emptyContent={
           <DetailEmptyState
+            branded
             icon={Layers}
             title={agreementList.length === 0 ? 'Nothing waiting on you' : 'No agreement selected'}
             description={agreementList.length === 0

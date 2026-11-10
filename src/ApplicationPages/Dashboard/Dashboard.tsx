@@ -77,13 +77,13 @@ const Dashboard: React.FC = () => {
       >
         <Header />
 
-        <main className="relative flex-1 overflow-y-auto overflow-x-hidden bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_42%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_42%,transparent)_1px,transparent_1px)] bg-[size:32px_32px] px-1 pb-4 pt-2 sm:px-2 lg:px-3 lg:pb-6 lg:pt-3">
+        <main className="app-pattern-surface relative flex-1 overflow-y-auto overflow-x-hidden px-1 pb-4 pt-2 sm:px-2 lg:px-3 lg:pb-6 lg:pt-3">
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             <div className="absolute -right-24 -top-28 h-80 w-80 rounded-full bg-primary/[0.10] blur-3xl" />
             <div className="absolute -bottom-40 left-1/4 h-72 w-72 rounded-full bg-primary/[0.07] blur-3xl" />
             <div className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/65 to-background" />
           </div>
-          <div className={`relative h-full w-full ${isFullscreen ? "mt-4" : ""}`}>
+          <div data-app-screen className={`relative h-full w-full ${isFullscreen ? "mt-4" : ""}`}>
             <Suspense
               fallback={
                 <div className="flex min-h-[50vh] items-center justify-center p-4">

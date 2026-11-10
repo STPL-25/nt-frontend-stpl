@@ -232,6 +232,7 @@ export default function ServiceVendorKycApprovalScreenLayout({
         }
         emptyContent={
           <DetailEmptyState
+            branded
             icon={Layers}
             title={kycList.length === 0 ? 'Nothing waiting on you' : 'No KYC selected'}
             description={kycList.length === 0

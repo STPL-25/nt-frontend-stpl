@@ -119,6 +119,148 @@
   }
 }
 
+/* ─── Consistent workspace backgrounds ─────────────────────────────
+ * The selected design is shared by the dashboard, supplier portal and
+ * authentication screens. Content remains above this decorative layer. */
+.app-pattern-surface {
+  --app-pattern-image:
+    linear-gradient(to right, color-mix(in oklab, var(--border) 58%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--border) 58%, transparent) 1px, transparent 1px);
+  --app-pattern-size: 32px 32px;
+  --app-pattern-position: 0 0;
+  --app-pattern-opacity: 0.72;
+  isolation: isolate;
+  background-color: var(--background);
+}
+
+.app-pattern-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--app-pattern-image);
+  background-position: var(--app-pattern-position);
+  background-size: var(--app-pattern-size);
+  opacity: var(--app-pattern-opacity);
+}
+
+/* Several legacy pages paint an opaque colour over their full-height root.
+ * A translucent shared surface keeps the chosen design visible without
+ * changing the opacity of cards, tables, dialogs, or form controls. */
+.app-pattern-surface [data-app-screen] > * > :first-child {
+  background-color: color-mix(in oklab, var(--background) 74%, transparent);
+}
+
+.pattern-dots .app-pattern-surface {
+  --app-pattern-image: radial-gradient(circle, color-mix(in oklab, var(--primary) 28%, transparent) 1.2px, transparent 1.3px);
+  --app-pattern-size: 22px 22px;
+  --app-pattern-opacity: 0.62;
+}
+
+.pattern-diagonal .app-pattern-surface {
+  --app-pattern-image: repeating-linear-gradient(135deg, transparent 0 18px, color-mix(in oklab, var(--border) 65%, transparent) 19px 20px);
+  --app-pattern-size: 28px 28px;
+  --app-pattern-opacity: 0.58;
+}
+
+.pattern-cross .app-pattern-surface {
+  --app-pattern-image:
+    repeating-linear-gradient(45deg, transparent 0 23px, color-mix(in oklab, var(--primary) 13%, transparent) 24px 25px),
+    repeating-linear-gradient(-45deg, transparent 0 23px, color-mix(in oklab, var(--border) 62%, transparent) 24px 25px);
+  --app-pattern-size: 36px 36px;
+  --app-pattern-opacity: 0.65;
+}
+
+.pattern-glow .app-pattern-surface {
+  --app-pattern-image:
+    radial-gradient(circle at 10% 12%, color-mix(in oklab, var(--primary) 20%, transparent), transparent 28%),
+    radial-gradient(circle at 92% 82%, color-mix(in oklab, var(--primary) 14%, transparent), transparent 30%);
+  --app-pattern-size: 100% 100%;
+  --app-pattern-opacity: 1;
+}
+
+.pattern-plain .app-pattern-surface {
+  --app-pattern-image: none;
+}
+
+/* Miniatures shown in Appearance settings. */
+.pattern-preview {
+  background-color: color-mix(in oklab, var(--background) 88%, var(--primary));
+}
+.pattern-preview-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--border) 75%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--border) 75%, transparent) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+.pattern-preview-dots {
+  background-image: radial-gradient(circle, color-mix(in oklab, var(--primary) 45%, transparent) 1.2px, transparent 1.3px);
+  background-size: 12px 12px;
+}
+.pattern-preview-diagonal {
+  background-image: repeating-linear-gradient(135deg, transparent 0 10px, color-mix(in oklab, var(--border) 80%, transparent) 11px 12px);
+}
+.pattern-preview-cross {
+  background-image:
+    repeating-linear-gradient(45deg, transparent 0 13px, color-mix(in oklab, var(--primary) 20%, transparent) 14px 15px),
+    repeating-linear-gradient(-45deg, transparent 0 13px, color-mix(in oklab, var(--border) 70%, transparent) 14px 15px);
+}
+.pattern-preview-glow {
+  background-image:
+    radial-gradient(circle at 18% 18%, color-mix(in oklab, var(--primary) 38%, transparent), transparent 40%),
+    radial-gradient(circle at 84% 82%, color-mix(in oklab, var(--primary) 24%, transparent), transparent 42%);
+}
+
+@media print {
+  .app-pattern-surface::before { display: none; }
+  .app-pattern-surface [data-app-screen] > * > :first-child { background-color: transparent; }
+}
+
+/* ─── Space logo loading animation ───────────────────────────────── */
+@keyframes space-logo-fill {
+  0%   { clip-path: inset(100% 0 0 0); }
+  48%  { clip-path: inset(0 0 0 0); }
+  72%  { clip-path: inset(0 0 0 0); }
+  100% { clip-path: inset(0 0 100% 0); }
+}
+
+@keyframes space-logo-shine {
+  0%   { bottom: 0; opacity: 0; }
+  15%  { opacity: 0.85; }
+  52%  { bottom: calc(100% - 1px); opacity: 0.85; }
+  72%  { opacity: 0; }
+  100% { bottom: calc(100% - 1px); opacity: 0; }
+}
+
+@keyframes space-logo-progress {
+  from { transform: translateX(-120%); }
+  to   { transform: translateX(220%); }
+}
+
+.space-logo-loader {
+  filter: drop-shadow(0 10px 22px color-mix(in oklab, var(--primary) 16%, transparent));
+}
+
+.space-logo-loader__fill {
+  animation: space-logo-fill 2.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+.space-logo-loader__shine {
+  animation: space-logo-shine 2.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  box-shadow: 0 0 10px color-mix(in oklab, var(--primary) 75%, transparent);
+}
+
+.space-logo-loader__progress {
+  animation: space-logo-progress 1.15s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .space-logo-loader__fill { animation: none; clip-path: inset(28% 0 0 0); }
+  .space-logo-loader__shine { display: none; }
+  .space-logo-loader__progress { animation-duration: 2.5s; }
+}
+
 /* ─── Color Theme Overrides ─────────────────────────────────────── */
 
 /* Indigo */

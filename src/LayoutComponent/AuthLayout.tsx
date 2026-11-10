@@ -140,7 +140,7 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle, bran
   const b = { ...DEFAULT_BRAND, ...brand };
 
   return (
-    <main className="relative flex min-h-screen overflow-hidden bg-background text-foreground">
+    <main className="app-pattern-surface relative flex min-h-screen overflow-hidden bg-background text-foreground">
       <section className="relative hidden min-h-screen overflow-hidden lg:flex lg:w-[46%] lg:flex-col lg:justify-between xl:w-[48%]">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/15 via-background to-primary/[0.07]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,color-mix(in_oklab,var(--primary)_20%,transparent),transparent_42%),radial-gradient(circle_at_86%_86%,color-mix(in_oklab,var(--primary)_12%,transparent),transparent_50%)]" />

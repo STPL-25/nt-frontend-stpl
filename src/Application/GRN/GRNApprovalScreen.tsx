@@ -5,6 +5,7 @@ import { Check, ChevronRight, ClipboardCheck, FileText, History, Loader2, Packag
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { SpaceLogoLoader } from '@/CustomComponent/LoadingComponents/Loading';
 import SidebarDetailLayout from '@/LayoutComponent/SidebarDetailLayout';
 import {
   ApprovalActivity, DetailEmptyState, DetailHero, Fact, FactGrid, Panel, SearchInput, SelectableCard, StatusPill,
@@ -195,7 +196,7 @@ const GRNApprovalScreen: React.FC = () => {
             </Button>
           </div>
           {loading && rows.length === 0 ? (
-            <div className="flex h-40 items-center justify-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div>
+            <SpaceLogoLoader size="md" text="Loading GRN approvals…" className="h-40 py-0" />
           ) : filtered.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted-foreground">{search ? 'No matches found' : 'No GRNs awaiting your approval'}</p>
           ) : filtered.map(r => {
@@ -223,7 +224,7 @@ const GRNApprovalScreen: React.FC = () => {
       hasSelection={!!selected}
       detailContent={detailContent}
       emptyContent={
-        <DetailEmptyState icon={ClipboardCheck} title="Select a GRN" description="Choose a GRN from the list to review its details and invoice, then approve or reject it." />
+        <DetailEmptyState branded icon={ClipboardCheck} title="Select a GRN" description="Choose a GRN from the list to review its details and invoice, then approve or reject it." />
       }
       mobileListLabel="GRNs"
       mobileSelectionTitle={selected?.grn_no}

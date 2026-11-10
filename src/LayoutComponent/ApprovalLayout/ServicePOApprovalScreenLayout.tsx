@@ -318,6 +318,7 @@ export default function ServicePoApprovalScreenLayout({
         }
         emptyContent={
           <DetailEmptyState
+            branded
             icon={Layers}
             title={cycleList.length === 0 ? 'Nothing waiting on you' : 'No cycle selected'}
             description={cycleList.length === 0

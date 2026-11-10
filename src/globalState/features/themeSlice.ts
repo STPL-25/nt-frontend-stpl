@@ -3,6 +3,22 @@ import type { RootState } from '../store'
 
 export type ThemeColor = 'blue' | 'purple' | 'green' | 'orange' | 'teal' | 'rose' | 'amber' | 'indigo' | 'sky' | 'cyan' | 'emerald' | 'lime' | 'pink' | 'fuchsia' | 'red' | 'slate' | 'mint' | 'peach' | 'lavender' | 'babyblue' | 'blush' | 'lemon' | 'sage' | 'aqua'
 export type ThemeMode = 'light' | 'dark' | 'system'
+export type ThemePattern = 'grid' | 'dots' | 'diagonal' | 'cross' | 'glow' | 'plain'
+
+export interface ThemePatternConfig {
+  id: ThemePattern
+  label: string
+  description: string
+}
+
+export const THEME_PATTERNS: ThemePatternConfig[] = [
+  { id: 'grid',     label: 'Grid',       description: 'Crisp square tiles' },
+  { id: 'dots',     label: 'Dots',       description: 'Soft dot matrix' },
+  { id: 'diagonal', label: 'Diagonal',   description: 'Fine angled lines' },
+  { id: 'cross',    label: 'Crosshatch', description: 'Layered mini squares' },
+  { id: 'glow',     label: 'Aurora',     description: 'Calm ambient glow' },
+  { id: 'plain',    label: 'Clean',      description: 'No background pattern' },
+]
 
 export interface ThemeColorConfig {
   id: ThemeColor
@@ -74,6 +90,7 @@ export const THEME_FONT_SIZES = [
 interface ThemeState {
   color: ThemeColor
   mode: ThemeMode
+  pattern: ThemePattern
   radius: number
   font: string
   fontSize: string
@@ -93,6 +110,9 @@ const stored = loadStored()
 const initialState: ThemeState = {
   color: (stored.color as ThemeColor) ?? 'blue',
   mode: (stored.mode as ThemeMode) ?? 'light',
+  pattern: THEME_PATTERNS.some((item) => item.id === stored.pattern)
+    ? (stored.pattern as ThemePattern)
+    : 'grid',
   radius: stored.radius ?? 0.625,
   font: THEME_FONTS.some((f) => f.id === stored.font) ? (stored.font as string) : 'default',
   fontSize: THEME_FONT_SIZES.some((f) => f.id === stored.fontSize) ? (stored.fontSize as string) : 'default',
@@ -116,6 +136,10 @@ const themeSlice = createSlice({
       state.mode = action.payload
       persist({ ...state })
     },
+    setThemePattern(state, action: PayloadAction<ThemePattern>) {
+      state.pattern = action.payload
+      persist({ ...state })
+    },
     setThemeRadius(state, action: PayloadAction<number>) {
       state.radius = action.payload
       persist({ ...state })
@@ -131,10 +155,11 @@ const themeSlice = createSlice({
   },
 })
 
-export const { setThemeColor, setThemeMode, setThemeRadius, setThemeFont, setThemeFontSize } = themeSlice.actions
+export const { setThemeColor, setThemeMode, setThemePattern, setThemeRadius, setThemeFont, setThemeFontSize } = themeSlice.actions
 
 export const selectThemeColor  = (s: RootState) => s.theme.color
 export const selectThemeMode   = (s: RootState) => s.theme.mode
+export const selectThemePattern = (s: RootState) => s.theme.pattern
 export const selectThemeRadius = (s: RootState) => s.theme.radius
 export const selectThemeFontSize = (s: RootState) => s.theme.fontSize
 export const selectThemeFont   = (s: RootState) => s.theme.font

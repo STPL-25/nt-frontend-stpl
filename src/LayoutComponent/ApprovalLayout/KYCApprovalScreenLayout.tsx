@@ -752,6 +752,7 @@ export default function KYCApprovalScreenLayout({
           : null}
         emptyContent={
           <DetailEmptyState
+            branded
             icon={Layers}
             title={totalCount === 0 ? 'Nothing waiting on you' : 'No KYC selected'}
             description={totalCount === 0

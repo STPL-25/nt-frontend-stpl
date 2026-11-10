@@ -43,7 +43,7 @@ describe("ThemeSettings component", () => {
   it("renders when open=true", () => {
     renderSheet(true);
     expect(screen.getByTestId("sheet")).toBeTruthy();
-    expect(screen.getByText("Appearance Settings")).toBeTruthy();
+    expect(screen.getByText("Appearance")).toBeTruthy();
   });
 
   it("does not render when open=false", () => {
@@ -65,6 +65,12 @@ describe("ThemeSettings component", () => {
     expect(screen.getByText("System")).toBeTruthy();
   });
 
+  it("changes the workspace background design", () => {
+    const { store } = renderSheet();
+    fireEvent.click(screen.getByRole("button", { name: "Dots workspace background" }));
+    expect(store.getState().theme.pattern).toBe("dots");
+  });
+
   it("shows radius options", () => {
     renderSheet();
     expect(screen.getByText("None")).toBeTruthy();
@@ -84,16 +90,17 @@ describe("ThemeSettings component", () => {
     expect(store.getState().theme.mode).toBe("dark");
   });
 
-  it("Reset to Defaults button resets to blue/system/0.625", () => {
+  it("Reset to defaults resets color, mode, pattern, and radius", () => {
     const { store } = renderSheet();
     // First change to something else
     fireEvent.click(screen.getByText("Rose"));
     expect(store.getState().theme.color).toBe("rose");
 
     // Reset
-    fireEvent.click(screen.getByText("Reset to Defaults"));
+    fireEvent.click(screen.getByText("Reset to defaults"));
     expect(store.getState().theme.color).toBe("blue");
-    expect(store.getState().theme.mode).toBe("system");
+    expect(store.getState().theme.mode).toBe("light");
+    expect(store.getState().theme.pattern).toBe("grid");
     expect(store.getState().theme.radius).toBe(0.625);
   });
 });

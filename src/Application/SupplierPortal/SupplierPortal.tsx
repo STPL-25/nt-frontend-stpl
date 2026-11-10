@@ -22,6 +22,7 @@ import SupplierRfqList from './SupplierRfqList';
 import SupplierRfqEntry from './SupplierRfqEntry';
 import SupplierMyKyc from './SupplierMyKyc';
 import type { SupplierNotificationTarget } from './supplierNotificationModel';
+import Loading from '@/CustomComponent/LoadingComponents/Loading';
 
 type View =
   | { name: 'rfq-list' }
@@ -122,11 +123,7 @@ const SupplierPortal: React.FC = () => {
   }, []);
 
   if (restoring) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
+    return <Loading fullScreen size="xl" text="Restoring supplier workspace…" />;
   }
 
   if (!supplier) {
@@ -187,14 +184,14 @@ const SupplierPortal: React.FC = () => {
           onOpenNotification={handleOpenNotification}
         />
 
-        <main className="relative flex-1 overflow-y-auto overflow-x-hidden bg-[linear-gradient(to_right,color-mix(in_oklab,var(--border)_42%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--border)_42%,transparent)_1px,transparent_1px)] bg-[size:32px_32px] px-1 pb-4 pt-2 sm:px-2 lg:px-3 lg:pb-6 lg:pt-3 print:overflow-visible print:bg-none print:p-0">
+        <main className="app-pattern-surface relative flex-1 overflow-y-auto overflow-x-hidden px-1 pb-4 pt-2 sm:px-2 lg:px-3 lg:pb-6 lg:pt-3 print:overflow-visible print:bg-none print:p-0">
           <div className="pointer-events-none absolute inset-0 overflow-hidden print:hidden">
             <div className="absolute -right-24 -top-28 h-80 w-80 rounded-full bg-primary/[0.10] blur-3xl" />
             <div className="absolute -bottom-40 left-1/4 h-72 w-72 rounded-full bg-primary/[0.07] blur-3xl" />
             <div className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/65 to-background" />
           </div>
 
-          <div className="relative h-full w-full">
+          <div data-app-screen className="relative h-full w-full">
             {view.name === 'rfq-list' ? (
               <div className="h-full w-full">
                 <SupplierRfqList onOpen={(rfq_supplier_sno) => setView({ name: 'rfq-entry', rfq_supplier_sno })} />

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { ArrowRightCircle, Banknote, Check, ChevronRight, ClipboardCheck, FileText, Hourglass, Info, Landmark, Loader2, Percent, RefreshCw, Undo2, X, XCircle } from 'lucide-react';
+import { ArrowRightCircle, Check, ChevronRight, ClipboardCheck, FileText, Hourglass, Info, Landmark, Loader2, Percent, RefreshCw, Undo2, X, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -30,6 +30,7 @@ import {
 import { msmeNote, rupees } from './paymentRunModel';
 import { leftLine, parseAmount, reduceProblem } from './partPaymentModel';
 import { enteredLine } from './tdsRateModel';
+import { SpaceLogoLoader } from '@/CustomComponent/LoadingComponents/Loading';
 
 const SCREEN = 'PaymentApprovalScreen';
 
@@ -592,12 +593,16 @@ const PaymentApprovalPage: React.FC = () => {
               </div>
             </div>
             {loading && rows.length === 0 ? (
-              <div className="flex h-40 items-center justify-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div>
+              <SpaceLogoLoader size="md" text="Loading payment approvals…" className="h-40 py-0" />
             ) : rows.length === 0 ? (
               <div className="m-3 flex flex-col items-center rounded-2xl border border-dashed border-primary/20 bg-gradient-to-b from-primary/[0.07] to-card px-4 py-8 text-center">
-                <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/20">
-                  <ClipboardCheck className="h-5 w-5" />
-                </span>
+                {search ? (
+                  <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/20">
+                    <ClipboardCheck className="h-5 w-5" />
+                  </span>
+                ) : (
+                  <SpaceLogoLoader size="lg" text="" className="mb-2 py-0" />
+                )}
                 <p className="text-sm font-semibold text-foreground">
                   {search ? 'No matches found' : tab === 'mine' ? 'You are all caught up' : 'No payments yet'}
                 </p>
@@ -639,7 +644,7 @@ const PaymentApprovalPage: React.FC = () => {
         detailContent={detailContent}
         emptyContent={(
           <DetailEmptyState
-            icon={Banknote}
+            branded
             title={selectedId != null ? 'Loading payment…' : 'Select a payment'}
             description="Choose a payment from the list to review its invoices, deductions and approval path, then approve, forward, send back or reject it. Approved payments are paid from Payment Run."
           />

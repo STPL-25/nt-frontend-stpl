@@ -511,6 +511,7 @@ export default function ApprovalScreenLayout({
         }
         emptyContent={
           <DetailEmptyState
+            branded
             icon={Layers}
             title={prList.length === 0 ? 'Nothing waiting on you' : 'No PR selected'}
             description={prList.length === 0

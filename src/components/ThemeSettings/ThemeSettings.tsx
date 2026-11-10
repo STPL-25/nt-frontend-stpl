@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import {
   setThemeColor,
   setThemeMode,
+  setThemePattern,
   setThemeRadius,
   setThemeFont,
   selectThemeFont,
@@ -23,8 +24,10 @@ import {
   THEME_FONTS,
   selectThemeColor,
   selectThemeMode,
+  selectThemePattern,
   selectThemeRadius,
   THEME_COLORS,
+  THEME_PATTERNS,
   type ThemeColor,
 } from "@/globalState/features/themeSlice";
 import type { AppDispatch } from "@/globalState/store";
@@ -92,6 +95,7 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({ open, onOpenChange }) => 
 
   const currentColor  = useSelector(selectThemeColor);
   const currentMode   = useSelector(selectThemeMode);
+  const currentPattern = useSelector(selectThemePattern);
   const currentRadius = useSelector(selectThemeRadius);
   const currentFont   = useSelector(selectThemeFont);
   const currentFontSize = useSelector(selectThemeFontSize);
@@ -111,6 +115,10 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({ open, onOpenChange }) => 
     applyRadiusClass(radius);
   };
 
+  const handlePatternChange = (pattern: (typeof THEME_PATTERNS)[number]["id"]) => {
+    dispatch(setThemePattern(pattern));
+  };
+
   const handleFontChange = (font: string) => {
     dispatch(setThemeFont(font));
   };
@@ -120,6 +128,7 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({ open, onOpenChange }) => 
     dispatch(setThemeFontSize("default"));
     handleColorChange("blue");
     handleModeChange("light");
+    handlePatternChange("grid");
     handleRadiusChange(0.625);
   };
 
@@ -212,6 +221,46 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({ open, onOpenChange }) => 
                   </div>
                 </div>
               ))}
+            </div>
+          </section>
+
+          {/* ── Workspace background ────────────────────────────────── */}
+          <section>
+            <div className="mb-3 flex items-center justify-between">
+              <SectionLabel>Workspace background</SectionLabel>
+              <span className="mb-2.5 text-[9px] font-medium text-muted-foreground">
+                All screens
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {THEME_PATTERNS.map((pattern) => {
+                const isActive = currentPattern === pattern.id;
+                return (
+                  <button
+                    key={pattern.id}
+                    type="button"
+                    aria-label={`${pattern.label} workspace background`}
+                    aria-pressed={isActive}
+                    onClick={() => handlePatternChange(pattern.id)}
+                    className={cn(
+                      "group overflow-hidden rounded-xl border-2 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                      isActive
+                        ? "border-primary shadow-sm"
+                        : "border-border/50 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-sm"
+                    )}
+                  >
+                    <span className={cn("pattern-preview relative block h-14", `pattern-preview-${pattern.id}`)}>
+                      <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full border border-white/70 bg-background/80 shadow-sm backdrop-blur">
+                        {isActive ? <Check className="h-3 w-3 text-primary" /> : null}
+                      </span>
+                    </span>
+                    <span className="block border-t border-border/50 bg-card px-2.5 py-2">
+                      <span className="block text-[10px] font-semibold text-foreground">{pattern.label}</span>
+                      <span className="block text-[9px] leading-4 text-muted-foreground">{pattern.description}</span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </section>
 

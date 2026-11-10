@@ -3,9 +3,11 @@ import { configureStore } from "@reduxjs/toolkit";
 import themeReducer, {
   setThemeColor,
   setThemeMode,
+  setThemePattern,
   setThemeRadius,
   selectThemeColor,
   selectThemeMode,
+  selectThemePattern,
   selectThemeRadius,
   THEME_COLORS,
 } from "@/globalState/features/themeSlice";
@@ -21,7 +23,8 @@ describe("themeSlice — reducers", () => {
   it("has correct initial state", () => {
     const store = buildStore();
     expect(selectThemeColor(store.getState() as any)).toBe("blue");
-    expect(selectThemeMode(store.getState() as any)).toBe("system");
+    expect(selectThemeMode(store.getState() as any)).toBe("light");
+    expect(selectThemePattern(store.getState() as any)).toBe("grid");
     expect(selectThemeRadius(store.getState() as any)).toBe(0.625);
   });
 
@@ -41,6 +44,12 @@ describe("themeSlice — reducers", () => {
     const store = buildStore();
     store.dispatch(setThemeRadius(0.5));
     expect(selectThemeRadius(store.getState() as any)).toBe(0.5);
+  });
+
+  it("setThemePattern updates the workspace background", () => {
+    const store = buildStore();
+    store.dispatch(setThemePattern("dots"));
+    expect(selectThemePattern(store.getState() as any)).toBe("dots");
   });
 
   it("state is replaced cleanly on multiple dispatches", () => {

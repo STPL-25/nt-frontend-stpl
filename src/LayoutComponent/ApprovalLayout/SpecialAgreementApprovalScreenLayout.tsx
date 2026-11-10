@@ -262,6 +262,7 @@ export default function SpecialAgreementApprovalScreenLayout({
         detailContent={selectedAgreement ? <DetailPanel agreement={selectedAgreement} handleAction={handleAction} /> : null}
         emptyContent={
           <DetailEmptyState
+            branded
             icon={Layers}
             title={agreementList.length === 0 ? 'Nothing waiting on you' : 'No agreement selected'}
             description={agreementList.length === 0

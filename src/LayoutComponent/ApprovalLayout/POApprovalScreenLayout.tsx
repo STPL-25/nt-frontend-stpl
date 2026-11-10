@@ -697,6 +697,7 @@ export default function POApprovalScreenLayout({
         detailContent={selectedPR ? <PRDetailPanel pr={selectedPR} handleAction={handleAction} onSelectQuotation={onSelectQuotation} selectingSno={selectingSno} /> : null}
         emptyContent={
           <DetailEmptyState
+            branded
             icon={ShoppingCart}
             title={prList.length === 0 ? 'Nothing waiting on you' : 'No PO selected'}
             description={prList.length === 0

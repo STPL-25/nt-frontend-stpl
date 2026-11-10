@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { SpaceLogoLoader } from '@/CustomComponent/LoadingComponents/Loading';
 import {
   AGREEMENT_TYPE_LABEL, TONE, computeAmount, formatDate, formatINR,
   type ApprovalAction, type ApprovalRoute, type ServiceAgreementKind, type SupplierShare, type Tone,
@@ -554,20 +555,25 @@ export function StickyActionBar({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function DetailEmptyState({ icon: Icon = Layers, title, description }: {
-  icon?: LucideIcon; title: string; description: string;
+export function DetailEmptyState({ icon: Icon = Layers, visual, branded = false, title, description }: {
+  icon?: LucideIcon; visual?: React.ReactNode; branded?: boolean; title: string; description: string;
 }) {
+  const stateVisual = visual ?? (branded ? <SpaceLogoLoader size="xl" text="" className="py-0" /> : null);
   return (
     <div className="flex h-full min-h-[50vh] items-center justify-center p-6">
       <div className="relative isolate w-full max-w-md overflow-hidden rounded-3xl border border-dashed border-primary/25 bg-gradient-to-b from-primary/[0.07] via-card to-card px-7 py-12 text-center shadow-sm">
         <span aria-hidden className="pointer-events-none absolute -left-14 -top-16 -z-10 h-44 w-44 rounded-full bg-primary/10 blur-3xl" />
         <span aria-hidden className="pointer-events-none absolute -bottom-20 -right-16 -z-10 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
-        <div className="relative mx-auto mb-5 w-fit">
-          <span aria-hidden className="absolute inset-0 -m-4 rounded-full border border-primary/15" />
-          <span className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15 text-primary shadow-sm ring-1 ring-primary/20">
-            <Icon className="h-8 w-8" strokeWidth={1.6} />
-          </span>
-        </div>
+        {stateVisual ? (
+          <div className="relative mx-auto mb-5 w-fit">{stateVisual}</div>
+        ) : (
+          <div className="relative mx-auto mb-5 w-fit">
+            <span aria-hidden className="absolute inset-0 -m-4 rounded-full border border-primary/15" />
+            <span className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15 text-primary shadow-sm ring-1 ring-primary/20">
+              <Icon className="h-8 w-8" strokeWidth={1.6} />
+            </span>
+          </div>
+        )}
         <h3 className="text-lg font-semibold tracking-tight text-foreground">{title}</h3>
         <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{description}</p>
       </div>
